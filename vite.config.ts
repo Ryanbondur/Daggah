@@ -1,7 +1,8 @@
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  base: './',
+  // Project Pages: https://ryanbondur.github.io/Daggah/
+  base: '/Daggah/',
   build: {
     chunkSizeWarningLimit: 2000,
   },

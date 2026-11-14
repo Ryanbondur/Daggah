@@ -4,6 +4,12 @@ Dark-fantasy, portrait (9:16) browser auto-combat RPG. Current slice: four class
 
 Stack: Vite + TypeScript + Phaser 3. Phaser renders the stage (camp and battle); DOM/CSS renders the HUD, panes and modals.
 
+## Play (Safari / iPhone)
+
+Public build on GitHub Pages: **https://ryanbondur.github.io/Daggah/**
+
+Pushes to `main` build and deploy via `.github/workflows/deploy-pages.yml` (`base: /Daggah/`).
+
 ## Run
 
 ```bash
