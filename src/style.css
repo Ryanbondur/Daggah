@@ -63,8 +63,8 @@ button {
   width: min(100vw, calc(100dvh * 0.5625));
   container-type: inline-size;
   display: grid;
-  /* Match ref bands: stage ~38%, HUD ~11%, parchment pane ~42%, nav ~9% */
-  grid-template-rows: 38% 11% 42% 9%;
+  /* Match ref bands: stage ~37%, HUD ~12%, parchment pane ~42%, nav ~9% */
+  grid-template-rows: 37% 12% 42% 9%;
   background: var(--stone-0);
   overflow: hidden;
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
@@ -308,16 +308,16 @@ button {
 }
 .orb {
   position: absolute;
-  bottom: 1.2cqw;
-  width: 22cqw;
-  height: 22cqw;
+  bottom: 2.4cqw;
+  width: 17.5cqw;
+  height: 17.5cqw;
   z-index: 4;
 }
 .orb.hp {
-  left: 2.2cqw;
+  left: 4cqw;
 }
 .orb.en {
-  right: 2.2cqw;
+  right: 4cqw;
 }
 .orb .ring {
   position: absolute;
@@ -392,27 +392,27 @@ button {
 }
 .orb img.guard {
   position: absolute;
-  bottom: -4.2cqw;
-  width: 17cqw;
+  bottom: -3.4cqw;
+  width: 13.5cqw;
   z-index: 5;
   pointer-events: none;
   filter: drop-shadow(0 0.5cqw 0.6cqw rgba(0, 0, 0, 0.75));
 }
 .orb.hp img.guard {
-  left: -9.2cqw;
+  left: -7.6cqw;
 }
 .orb.en img.guard {
-  right: -9.2cqw;
+  right: -7.6cqw;
 }
 .orb .ring {
   z-index: 2;
 }
 .xpbar {
   position: absolute;
-  left: 14cqw;
-  right: 14cqw;
-  bottom: 0.6cqw;
-  height: 3cqw;
+  left: 13cqw;
+  right: 13cqw;
+  bottom: 0.8cqw;
+  height: 2.8cqw;
   background: #120f10;
   border: 0.4cqw solid #1f1c24;
   box-shadow: 0 0 0 0.28cqw #4a4552;
@@ -497,7 +497,7 @@ button {
   position: absolute;
   left: 0;
   right: 0;
-  top: 38%;
+  top: 37%;
   bottom: 9%;
   z-index: 7;
 }
