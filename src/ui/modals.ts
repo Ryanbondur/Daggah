@@ -223,7 +223,7 @@ export function showSettings(ctx: UIContext): void {
         <div class="chip-row">
           <button class="chip" data-action="dev-xp">+500 XP</button>
           <button class="chip" data-action="dev-lvl">+1 Level</button>
-          <button class="chip" data-action="dev-acts">Clear Acts 1-6</button>
+          <button class="chip" data-action="dev-acts">Clear Acts 1-8</button>
           <button class="chip" data-action="dev-res">+Keys +Crystals</button>
           <button class="chip" data-action="dev-loot">Roll 5 drops</button>
         </div>
@@ -265,7 +265,7 @@ export function showSettings(ctx: UIContext): void {
         g.devGrantXp(Math.max(1, (g.save.level < 20 ? xpNeeded(g.save.level) - g.save.xp : 0)));
         break;
       case 'dev-acts':
-        g.devUnlockThroughAct(6);
+        g.devUnlockThroughAct(8);
         break;
       case 'dev-res':
         g.devGrantResources();

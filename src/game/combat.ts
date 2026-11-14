@@ -113,6 +113,8 @@ interface Buffs {
   firstSwing: boolean;
   critBonus: number;
   critBonusT: number;
+  shadowCharges: number;
+  postUltT: number;
 }
 
 function freshBuffs(): Buffs {
@@ -143,6 +145,8 @@ function freshBuffs(): Buffs {
     firstSwing: true,
     critBonus: 0,
     critBonusT: 0,
+    shadowCharges: 1,
+    postUltT: 0,
   };
 }
 
@@ -180,6 +184,7 @@ export class Battle {
     const maxHp = hero.stats.hp;
     const maxEn = maxEnergy(hero.level);
     this.hero = { hp: maxHp, maxHp, energy: maxEn * run.startEnergy, maxEnergy: maxEn };
+    this.buffs.shadowCharges = 1 + (hero.effects.shadowstepCharges ?? 0);
     if (run.startNode === 0 && run.nodes[0]?.type === 'camp') {
       this.state = 'rest';
       this.nodeIndex = 0;
@@ -294,6 +299,7 @@ export class Battle {
     b.immuneT = Math.max(0, b.immuneT - dt);
     b.smokeT = Math.max(0, b.smokeT - dt);
     b.stealthT = Math.max(0, b.stealthT - dt);
+    b.postUltT = Math.max(0, b.postUltT - dt);
     if (b.critBonusT > 0) {
       b.critBonusT -= dt;
       if (b.critBonusT <= 0) b.critBonus = 0;
@@ -350,7 +356,16 @@ export class Battle {
       }
     }
     for (const id of Object.keys(this.cds) as SkillId[]) {
-      this.cds[id] = Math.max(0, (this.cds[id] ?? 0) - dt);
+      const before = this.cds[id] ?? 0;
+      this.cds[id] = Math.max(0, before - dt);
+      if (
+        id === 'shadowstep' &&
+        before > 0 &&
+        (this.cds[id] ?? 0) <= 0 &&
+        this.buffs.shadowCharges <= 0
+      ) {
+        this.buffs.shadowCharges = 1 + (this.heroInput.effects.shadowstepCharges ?? 0);
+      }
     }
     this.lockT = Math.max(0, this.lockT - dt);
   }
@@ -637,6 +652,9 @@ export class Battle {
       const skillBonus = inp.effects.skillDmgPct[opts.skill] ?? 0;
       if (skillBonus) dmg *= 1 + skillBonus / 100;
     }
+    if (this.buffs.postUltT > 0 && inp.effects.postUltDmgPct > 0) {
+      dmg *= 1 + inp.effects.postUltDmgPct / 100;
+    }
     if (e.shredT > 0) dmg *= 1.2;
     if (e.markT > 0) dmg *= 1.2;
     if (e.vulnT > 0) dmg *= 1.25;
@@ -826,10 +844,19 @@ export class Battle {
   private cast(id: SkillId): void {
     const def = SKILL_BY_ID[id];
     this.hero.energy -= this.skillCost(id);
-    this.cds[id] = this.skillCd(id);
+    if (id === 'shadowstep' && this.buffs.shadowCharges > 1) {
+      this.buffs.shadowCharges -= 1;
+      this.cds[id] = 1;
+    } else {
+      this.cds[id] = this.skillCd(id);
+      if (id === 'shadowstep') this.buffs.shadowCharges = 0;
+    }
     this.lockT = CAST_LOCK;
     this.heroSwingAnim = 0.3;
     this.events.push({ t: 'skill', id, name: def.name, ultimate: !!def.ultimate });
+    if (def.ultimate && this.heroInput.effects.postUltDmgPct > 0) {
+      this.buffs.postUltT = Math.max(this.buffs.postUltT, this.heroInput.effects.postUltDuration);
+    }
     const b = this.buffs;
     const front = this.frontEnemy();
     switch (id) {
@@ -1011,7 +1038,7 @@ export class Battle {
         break;
       }
       case 'cloak-of-shadows': {
-        b.immuneT = Math.max(b.immuneT, 2);
+        b.immuneT = Math.max(b.immuneT, 2 + this.heroInput.effects.cloakDurationBonus);
         const heal = Math.round(this.hero.maxHp * 0.1);
         this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + heal);
         this.events.push({ t: 'heal', amount: heal });
@@ -1027,6 +1054,7 @@ export class Battle {
     this.hero.hp = this.hero.maxHp;
     this.hero.energy = this.hero.maxEnergy * 0.5;
     this.buffs = freshBuffs();
+    this.buffs.shadowCharges = 1 + (this.heroInput.effects.shadowstepCharges ?? 0);
     this.cds = {};
     this.enemies = [];
     this.setState('walk');

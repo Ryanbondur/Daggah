@@ -95,6 +95,25 @@ describe('gear', () => {
     const fx = computeHero(11, gear, 'Ranger').effects;
     expect(fx.hastePct).toBeGreaterThanOrEqual(6);
   });
+
+  it('applies Act 7-8 set bonuses (Nightfang, Gloomveil, Echoplate)', () => {
+    const gear = starterGear('Rogue');
+    const rng = mulberry32(33);
+    gear.weapon = rollItem(rng, { gearLevel: 13, rarity: 'rare', slot: 'weapon', setId: 'nightfang' });
+    gear.chest = rollItem(rng, { gearLevel: 13, rarity: 'rare', slot: 'chest', setId: 'nightfang' });
+    expect(computeHero(13, gear, 'Rogue').effects.critDmgPct).toBeGreaterThanOrEqual(10);
+    gear.belt = rollItem(rng, { gearLevel: 13, rarity: 'rare', slot: 'belt', setId: 'gloomveil' });
+    gear.helmet = rollItem(rng, { gearLevel: 13, rarity: 'rare', slot: 'helmet', setId: 'gloomveil' });
+    gear.gloves = rollItem(rng, { gearLevel: 13, rarity: 'epic', slot: 'gloves', setId: 'gloomveil' });
+    gear.boots = rollItem(rng, { gearLevel: 13, rarity: 'epic', slot: 'boots', setId: 'gloomveil' });
+    const gloom = computeHero(13, gear, 'Rogue').effects;
+    expect(gloom.hastePct).toBeGreaterThanOrEqual(8);
+    expect(gloom.shadowstepCharges).toBeGreaterThanOrEqual(1);
+    gear.shoulders = rollItem(rng, { gearLevel: 15, rarity: 'epic', slot: 'shoulders', setId: 'echoplate' });
+    gear.legs = rollItem(rng, { gearLevel: 15, rarity: 'epic', slot: 'legs', setId: 'echoplate' });
+    const echo = computeHero(15, gear, 'Rogue').effects;
+    expect(echo.atkPct).toBeGreaterThanOrEqual(7);
+  });
 });
 
 describe('save', () => {

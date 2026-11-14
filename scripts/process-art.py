@@ -162,6 +162,8 @@ def main() -> None:
         "bg-frostvein",
         "bg-witchmire",
         "bg-cinderreach",
+        "bg-ashen-spire",
+        "bg-echoing-dark",
     ):
         save_bg(bg)
 
@@ -177,6 +179,8 @@ def main() -> None:
         "enemy-frost-wisp", "enemy-ice-hound", "enemy-rime-brute", "boss-rime-queen",
         "enemy-spore-tick", "enemy-mire-slug", "enemy-witchmire-hag", "boss-bog-hydra",
         "enemy-magma-scarab", "enemy-ash-walker", "enemy-cinder-knight", "boss-forge-colossus",
+        "enemy-ash-bat", "enemy-slag-imp", "enemy-magma-knight", "boss-spire-tyrant",
+        "enemy-echo-wisp", "enemy-crystal-mite", "enemy-crystal-golem", "boss-resonance-queen",
     ]
     for e in enemies:
         single(e, f"sprites/{e}.webp", 380)
@@ -187,6 +191,8 @@ def main() -> None:
     slice_sheet("icons-gear-d", "icons/gear-d", GEAR_SLOTS, 160)
     slice_sheet("icons-gear-e", "icons/gear-e", GEAR_SLOTS, 160)
     slice_sheet("icons-gear-f", "icons/gear-f", GEAR_SLOTS, 160)
+    slice_sheet("icons-gear-g", "icons/gear-g", GEAR_SLOTS, 160)
+    slice_sheet("icons-gear-h", "icons/gear-h", GEAR_SLOTS, 160)
     slice_sheet("icons-skills-warrior", "icons/skills", SKILLS_WARRIOR, 160, dilate=6)
     slice_sheet("icons-skills-mage", "icons/skills", SKILLS_MAGE, 160, dilate=6)
     slice_sheet("icons-skills-ranger", "icons/skills", SKILLS_RANGER, 160, dilate=6)
