@@ -62,10 +62,28 @@ async function boot(): Promise<void> {
   (window as unknown as { __daggah: unknown }).__daggah = { game, phaser: null };
 
   window.setInterval(() => game.persist(), 5000);
-  window.addEventListener('pagehide', () => game.persist());
+
+  // iPhone Safari freezes rAF/Phaser while backgrounded — catch up on resume via sim ticks.
+  let backgroundedAt: number | null = null;
+  const markBackgrounded = () => {
+    if (backgroundedAt == null) backgroundedAt = Date.now();
+    game.persist();
+  };
+  const applyResumeCatchUp = () => {
+    if (backgroundedAt == null) return;
+    const elapsed = Date.now() - backgroundedAt;
+    backgroundedAt = null;
+    game.applyOffline(elapsed);
+  };
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) game.persist();
+    if (document.hidden) markBackgrounded();
+    else applyResumeCatchUp();
   });
+  // Page Lifecycle (Safari): freeze ≈ background kill of timers/rAF.
+  document.addEventListener('freeze', markBackgrounded);
+  document.addEventListener('resume', applyResumeCatchUp);
+  window.addEventListener('pagehide', markBackgrounded);
+  window.addEventListener('pageshow', applyResumeCatchUp);
 }
 
 void boot();

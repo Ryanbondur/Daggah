@@ -85,6 +85,7 @@ import type { Rng } from './rng';
 import { defaultRng } from './rng';
 import { scheduleCloudPush } from './cloudSave';
 import { exportSaveCode, importSaveCode } from './saveCode';
+import { applyOfflineProgress, type OfflineSummary } from './offline';
 import type { SaveData, Storage } from './state';
 import {
   BAG_CAP,
@@ -99,6 +100,8 @@ import {
   stageToActStage,
   writeSave,
 } from './state';
+export type { OfflineSummary } from './offline';
+export { OFFLINE_CAP_MS, OFFLINE_MIN_MS, formatOfflineToast } from './offline';
 
 export type Mode = 'camp' | 'stage' | 'dungeon';
 
@@ -204,6 +207,8 @@ export class Game {
   private listeners = new Set<Listener>();
   private acc = 0;
   private dungeonCtx: DungeonCtx | null = null;
+  /** Suppress per-event toasts/chat while applying AFK catch-up. */
+  private quiet = false;
 
   constructor(storage?: Storage, rng: Rng = defaultRng) {
     this.storage = storage;
@@ -262,13 +267,51 @@ export class Game {
   }
 
   toast(text: string, kind: 'good' | 'bad' | 'info' = 'info'): void {
+    if (this.quiet) return;
     this.emit({ t: 'toast', text, kind });
   }
 
   say(text: string): void {
+    if (this.quiet) return;
     this.chat.push(text);
     if (this.chat.length > 30) this.chat.shift();
     this.emit({ t: 'chat', text });
+  }
+
+  beginQuiet(): void {
+    this.quiet = true;
+  }
+
+  endQuiet(): void {
+    this.quiet = false;
+  }
+
+  clearAccumulator(): void {
+    this.acc = 0;
+  }
+
+  /**
+   * Advance battle by one fixed sim step (used by AFK catch-up).
+   * Does not apply the rAF dt clamp — callers own the wall-clock budget.
+   */
+  stepSim(dt: number = STEP): void {
+    const b: Battle | null = this.battle;
+    if (!b) return;
+    b.update(dt);
+    const events = b.drain();
+    // Skip per-hit FX during AFK catch-up — resume would flood the scene.
+    if (!this.quiet) {
+      for (const ev of events) this.emit({ t: 'battle', ev });
+    }
+    this.processEvents(b, events);
+  }
+
+  /**
+   * Apply offline / background gains for elapsed wall-clock ms (capped).
+   * Campaign chains stages; dungeons finish the current paid run only.
+   */
+  applyOffline(elapsedMs: number, now = Date.now()): OfflineSummary | null {
+    return applyOfflineProgress(this, elapsedMs, now);
   }
 
   // ---- derived ------------------------------------------------------------
