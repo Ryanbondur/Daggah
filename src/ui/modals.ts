@@ -379,10 +379,14 @@ export function showClanHall(ctx: UIContext): void {
     body = `<p class="ai-banner">Solo playtest: create or join, then fill AI teammates for the other three classes. Live multiplayer is not online yet.</p>
       <p>Found a clan for ${CLAN_CREATE_COST} crystals, or join with a code (local mock).</p>
       <label class="field">Clan name<input id="clan-name" maxlength="24" placeholder="Nightscar Wolves" /></label>
-      <button class="btn red" data-action="clan-create">Create Clan (−${CLAN_CREATE_COST})</button>
+      <div class="clan-actions">
+        <button class="btn red" data-action="clan-create">Create Clan (−${CLAN_CREATE_COST})</button>
+      </div>
       <label class="field">Join code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" /></label>
-      <button class="btn gold" data-action="clan-join">Join Clan</button>
-      <button class="btn stone" data-action="clan-practice">Queue practice 4v4 (AI)</button>`;
+      <div class="clan-actions">
+        <button class="btn gold" data-action="clan-join">Join Clan</button>
+        <button class="btn stone" data-action="clan-practice">Queue practice 4v4 (AI)</button>
+      </div>`;
   } else {
     const missing = g.clanMissingClasses();
     const rows = clan.members
