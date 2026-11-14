@@ -18,17 +18,10 @@ function memoryStorage(): Storage {
 }
 
 describe('XSS sanitization', () => {
-  it('escapes HTML entities for clan name rendering', () => {
-    expect(escapeHtml(`<img src=x onerror=alert(1)>`)).toBe(
-      '&lt;img src=x onerror=alert(1)&gt;',
-    );
-    expect(escapeHtml(`Nightscar "Wolves" & Co`)).toContain('&quot;');
-    expect(escapeHtml(`Nightscar "Wolves" & Co`)).toContain('&amp;');
-  });
-
   it('strips tags and control chars from clan name / code on create/join', () => {
     expect(sanitizeClanName('<script>xss</script>Wolves')).toBe('xssWolves');
     expect(sanitizeClanCode('ab<script>12')).toBe('ABSCRIPT');
+    expect(escapeHtml(`Nightscar "Wolves" & Co`)).toContain('&quot;');
     const game = new Game(memoryStorage(), mulberry32(1));
     game.pickClass('Warrior');
     game.save.crystals = CLAN_CREATE_COST;

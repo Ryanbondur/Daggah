@@ -3,6 +3,7 @@ import type { RarityId, SetId, SlotId } from '../data/types';
 import { DEFAULT_LOADOUT, defaultPrimary, skillsForPlaystyle, CLASS_PLAYSTYLES, isUnlocked } from '../data/skills';
 import type { HeroClass, SkillId } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
+import { sanitizePlainText } from '../util/text';
 import type { Rng } from './rng';
 
 export const CLAN_CREATE_COST = 500;
@@ -187,19 +188,26 @@ export function buildMockMember(
   return buildAiMember(rng, heroClass, level, role, 'scaled');
 }
 
-/** Normalize older saves that lack `isAi`. */
+/** Strip tags / control chars from member display names. */
+export function sanitizeMemberName(name: string): string {
+  return sanitizePlainText(name, 32) || 'Unknown';
+}
+
+/** Normalize older saves that lack `isAi`; sanitize display strings. */
 export function normalizeClanMember(m: ClanMember): ClanMember {
-  return { ...m, isAi: m.isPlayer ? false : m.isAi !== false };
+  return {
+    ...m,
+    name: sanitizeMemberName(typeof m.name === 'string' ? m.name : 'Unknown'),
+    role: (['leader', 'officer', 'member'] as const).includes(m.role as ClanRole)
+      ? (m.role as ClanRole)
+      : 'member',
+    isAi: m.isPlayer ? false : m.isAi !== false,
+  };
 }
 
 /** Strip tags / control chars from clan name before storage. */
 export function sanitizeClanName(name: string): string {
-  const cleaned = name
-    .replace(/<[^>]*>/g, '')
-    .replace(/[\u0000-\u001F\u007F]/g, '')
-    .trim()
-    .slice(0, 24);
-  return cleaned || 'Nameless Clan';
+  return sanitizePlainText(name, 24) || 'Nameless Clan';
 }
 
 /** Normalize join codes to safe alphanumerics. */

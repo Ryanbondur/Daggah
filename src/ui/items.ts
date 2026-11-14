@@ -25,7 +25,7 @@ export function slotHtml(
     .filter(Boolean)
     .join(' ');
   const data = opts.action
-    ? ` data-action="${opts.action}" data-id="${item.id}" data-slot="${opts.slot ?? item.slot}"`
+    ? ` data-action="${opts.action}" data-id="${escapeHtml(item.id)}" data-slot="${escapeHtml(opts.slot ?? item.slot)}"`
     : '';
   return `<button class="${cls}" style="${area}"${data} aria-label="${escapeHtml(item.name)}">
     <img src="${itemIcon(item)}" alt="" draggable="false" />

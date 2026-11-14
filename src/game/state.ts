@@ -1,11 +1,17 @@
 import type { Gear } from '../data/gear';
-import { starterGear } from '../data/gear';
+import { SLOTS, starterGear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import { defaultTutorial, type TutorialState } from '../data/tutorial';
-import type { HeroClass, Item, RarityId, SkillId } from '../data/types';
+import type { HeroClass, Item, RarityId, SkillId, SlotId } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
+import { sanitizeDomId, sanitizePlainText } from '../util/text';
 import type { ClanData, SeasonData } from './clan';
-import { defaultSeason, normalizeClanMember } from './clan';
+import {
+  defaultSeason,
+  normalizeClanMember,
+  sanitizeClanCode,
+  sanitizeClanName,
+} from './clan';
 
 /**
  * Stable localStorage key (not versioned).
@@ -167,6 +173,50 @@ function isRarityId(v: unknown): v is RarityId {
   return typeof v === 'string' && (RARITY_IDS as string[]).includes(v);
 }
 
+function isSlotId(v: unknown): v is SlotId {
+  return typeof v === 'string' && (SLOTS as string[]).includes(v);
+}
+
+/** Harden item display strings / ids from save or import blobs. */
+export function sanitizeItem(item: Item): Item {
+  return {
+    ...item,
+    id: sanitizeDomId(typeof item.id === 'string' ? item.id : 'id', 80),
+    name: sanitizePlainText(typeof item.name === 'string' ? item.name : '', 64) || 'Unknown Item',
+    slot: isSlotId(item.slot) ? item.slot : 'weapon',
+    rarity: isRarityId(item.rarity) ? item.rarity : 'common',
+  };
+}
+
+function sanitizeItemList(list: Item[] | undefined): Item[] {
+  if (!Array.isArray(list)) return [];
+  return list.filter((i) => i && typeof i === 'object').map((i) => sanitizeItem(i as Item));
+}
+
+function sanitizeGear(gear: Gear | undefined, fallback: Gear): Gear {
+  const base = { ...fallback, ...(gear ?? {}) };
+  const out: Gear = {};
+  for (const slot of SLOTS) {
+    const piece = base[slot];
+    if (piece) out[slot] = sanitizeItem(piece);
+  }
+  return out;
+}
+
+function sanitizeClan(clan: ClanData): ClanData {
+  return {
+    ...clan,
+    id: sanitizeDomId(typeof clan.id === 'string' ? clan.id : 'clan', 48),
+    name: sanitizeClanName(typeof clan.name === 'string' ? clan.name : ''),
+    code: sanitizeClanCode(typeof clan.code === 'string' ? clan.code : '') || 'UNKNOWN',
+    members: (clan.members ?? []).map((m) => {
+      const member = normalizeClanMember(m);
+      const gear = member.gear ? sanitizeGear(member.gear, {}) : undefined;
+      return gear ? { ...member, gear } : member;
+    }),
+  };
+}
+
 function normalizeSettings(
   parsed: Partial<Settings> | undefined,
   fresh: Settings,
@@ -208,12 +258,7 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
       typeof parsed.clanTokensDayKey === 'string' ? parsed.clanTokensDayKey : fresh.clanTokensDayKey,
     clanWins: typeof parsed.clanWins === 'number' ? parsed.clanWins : 0,
     clanLosses: typeof parsed.clanLosses === 'number' ? parsed.clanLosses : 0,
-    clan: parsed.clan
-      ? {
-          ...parsed.clan,
-          members: (parsed.clan.members ?? []).map((m) => normalizeClanMember(m)),
-        }
-      : null,
+    clan: parsed.clan ? sanitizeClan(parsed.clan) : null,
     season: parsed.season?.startedAt ? parsed.season : defaultSeason(parsed.createdAt ?? now),
     tutorial:
       tut && typeof tut.step === 'number'
@@ -259,11 +304,11 @@ export function normalizeParsedSave(
       version: SAVE_VERSION,
       heroClass: 'Warrior',
       classPicked: true,
-      gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
+      gear: sanitizeGear({ ...fresh.gear, ...(parsed.gear ?? {}) }, fresh.gear),
       settings: normalizeSettings(parsed.settings, fresh.settings),
       dungeons: parsed.dungeons ?? {},
-      bag: parsed.bag ?? [],
-      pending: parsed.pending ?? [],
+      bag: sanitizeItemList(parsed.bag),
+      pending: sanitizeItemList(parsed.pending),
       loadout: parsed.loadout?.length ? parsed.loadout : fresh.loadout,
       seenSkills: parsed.seenSkills ?? fresh.seenSkills,
       ...migrateClanFields(parsed, fresh, now),
@@ -280,11 +325,11 @@ export function normalizeParsedSave(
       version: SAVE_VERSION,
       heroClass: parsed.heroClass,
       classPicked: parsed.classPicked !== false,
-      gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
+      gear: sanitizeGear({ ...fresh.gear, ...(parsed.gear ?? {}) }, fresh.gear),
       settings: normalizeSettings(parsed.settings, fresh.settings),
       dungeons: parsed.dungeons ?? {},
-      bag: parsed.bag ?? [],
-      pending: parsed.pending ?? [],
+      bag: sanitizeItemList(parsed.bag),
+      pending: sanitizeItemList(parsed.pending),
       loadout: parsed.loadout?.length ? parsed.loadout : [...DEFAULT_LOADOUT[parsed.heroClass]],
       seenSkills: parsed.seenSkills ?? [...DEFAULT_LOADOUT[parsed.heroClass]],
       ...migrateClanFields(parsed, fresh, now),
