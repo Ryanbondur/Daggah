@@ -1,4 +1,5 @@
 import type { Rng } from '../game/rng';
+import { applyNightscarSoftPity } from '../game/nightscarPity';
 import type {
   HeroClass,
   IconPack,
@@ -114,8 +115,23 @@ const DROP_WEIGHTS: Record<DropSource, Record<RarityId, number>> = {
   'nightscar-boss': { common: 20, rare: 40, epic: 28, legendary: 12 },
 };
 
-export function rollRarity(rng: Rng, source: DropSource): RarityId {
-  const w = DROP_WEIGHTS[source];
+/** Base drop weights for a source (before Nightscar soft pity). */
+export function baseDropWeights(source: DropSource): Record<RarityId, number> {
+  return { ...DROP_WEIGHTS[source] };
+}
+
+/**
+ * Resolve rarity weights. `pity` only affects Nightscar Apex sources
+ * (`nightscar-*`); other tables ignore it.
+ */
+export function dropWeightsFor(source: DropSource, pity = 0): Record<RarityId, number> {
+  const base = baseDropWeights(source);
+  if (!source.startsWith('nightscar-') || pity <= 0) return base;
+  return applyNightscarSoftPity(base, pity);
+}
+
+export function rollRarity(rng: Rng, source: DropSource, pity = 0): RarityId {
+  const w = dropWeightsFor(source, pity);
   const total = RARITY_ORDER.reduce((s, r) => s + w[r], 0);
   let roll = rng.next() * total;
   for (const r of RARITY_ORDER) {

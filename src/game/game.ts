@@ -81,6 +81,7 @@ import type { BattleEvent, HeroInput, RunDef } from './combat';
 import { Battle, STEP } from './combat';
 import type { PvpResult } from './pvp';
 import { buildOpponentRoster, simulatePvp } from './pvp';
+import { nextNightscarPity } from './nightscarPity';
 import type { Rng } from './rng';
 import { defaultRng } from './rng';
 import { scheduleCloudPush } from './cloudSave';
@@ -573,6 +574,7 @@ export class Game {
     rec.cleared = true;
     rec.clears += 1;
     this.save.dungeons[ctx.dungeon.id] = rec;
+    this.resolveNightscarPity(ctx.dungeon, ctx.loot);
     this.bumpDaily('dungeons');
     this.advanceTutorial('dungeon-key');
     this.dungeonCtx = null;
@@ -813,6 +815,7 @@ export class Game {
     xp = Math.round(xp);
     const dc = this.save.dungeons[d.id];
     if (dc) dc.clears += 1;
+    this.resolveNightscarPity(d, loot);
     this.gainXp(xp);
     this.say(`Swept ${d.name}.`);
     this.emit({
@@ -849,11 +852,18 @@ export class Game {
   private rollDungeonItem(d: DungeonDef, floor: number, source: DropSource): Item {
     const [lo, hi] = d.glBand;
     const gl = Math.round(lo + ((hi - lo) * (floor - 1)) / (d.floors - 1));
+    const pity = d.endgame ? this.save.nightscarPity : 0;
     return rollItem(this.rng, {
       gearLevel: gl,
-      rarity: rollRarity(this.rng, source),
+      rarity: rollRarity(this.rng, source, pity),
       setId: this.rng.pick(d.sets),
     });
+  }
+
+  /** Soft pity only tracks successful Nightscar Apex clears/sweeps. */
+  private resolveNightscarPity(d: DungeonDef, loot: Item[]): void {
+    if (!d.endgame) return;
+    this.save.nightscarPity = nextNightscarPity(this.save.nightscarPity, loot);
   }
 
   isUpgrade(item: Item): boolean {
