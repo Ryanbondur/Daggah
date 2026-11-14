@@ -166,6 +166,7 @@ def main() -> None:
         "bg-echoing-dark",
         "bg-voidgate",
         "bg-nightscar-depths",
+        "bg-clan-arena",
     ):
         save_bg(bg)
 
@@ -199,6 +200,7 @@ def main() -> None:
     slice_sheet("icons-gear-h", "icons/gear-h", GEAR_SLOTS, 160)
     slice_sheet("icons-gear-i", "icons/gear-i", GEAR_SLOTS, 160)
     slice_sheet("icons-gear-j", "icons/gear-j", GEAR_SLOTS, 160)
+    slice_sheet("icons-gear-k", "icons/gear-k", GEAR_SLOTS, 160)
     slice_sheet("icons-skills-warrior", "icons/skills", SKILLS_WARRIOR, 160, dilate=6)
     slice_sheet("icons-skills-mage", "icons/skills", SKILLS_MAGE, 160, dilate=6)
     slice_sheet("icons-skills-ranger", "icons/skills", SKILLS_RANGER, 160, dilate=6)
@@ -208,6 +210,9 @@ def main() -> None:
     single("ui-gargoyle", "ui/gargoyle.webp", 420)
     single("ui-hooded-statue", "ui/hooded-statue.webp", 420)
     single("ui-battle-button", "ui/battle-button.webp", 320)
+    single("ui-clan-token", "ui/clan-token.webp", 220)
+    single("ui-clan-hall", "ui/clan-hall.webp", 220)
+    single("ui-season-board", "ui/season-board.webp", 220)
 
 
 if __name__ == "__main__":

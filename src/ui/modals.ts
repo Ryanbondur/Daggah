@@ -2,14 +2,16 @@ import { SETS, computeHero, setCounts } from '../data/gear';
 import type { HeroClass, SetId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_LABEL } from '../data/types';
 import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
-import type { RunResult } from '../game/game';
+import { CLAN_CREATE_COST, TOKEN_DAY_CAP, TOKEN_LOSS, TOKEN_WIN } from '../game/clan';
+import { CLAN_VENDOR, type RunResult } from '../game/game';
+import type { PvpResult } from '../game/pvp';
 import { BAG_CAP } from '../game/state';
 import { formatStat } from '../data/gear';
 import { CLASS_PLAYSTYLES } from '../data/skills';
 import type { UIContext } from './context';
 import { fmt } from './context';
 import { CHECK_SVG, cardHtml, slotHtml } from './items';
-import { heroSprite } from './assets';
+import { asset, heroSprite } from './assets';
 
 const STAT_ORDER: StatKey[] = [
   'atk',
@@ -227,6 +229,9 @@ export function showSettings(ctx: UIContext): void {
           <button class="chip" data-action="dev-res">+Keys +Crystals</button>
           <button class="chip" data-action="dev-loot">Roll 5 drops</button>
         </div>
+        <h3>Season</h3>
+        <p>Local 30-day season stub. Reset keeps clan membership and opens class pick.</p>
+        <button class="chip" data-action="season-reset">Reset season (local)</button>
         <h3>Save</h3>
         <p>Progress saves automatically to this browser.</p>
         <button class="chip" data-action="reset" style="color:#8a281f">Reset save</button>
@@ -236,6 +241,7 @@ export function showSettings(ctx: UIContext): void {
     { onDismiss: () => ctx.closeModal() },
   );
   let armed = false;
+  let seasonArmed = false;
   el.addEventListener('click', (ev) => {
     const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
     if (!t) return;
@@ -274,6 +280,17 @@ export function showSettings(ctx: UIContext): void {
         ctx.closeModal();
         g.devRollLoot(5);
         break;
+      case 'season-reset':
+        if (!seasonArmed) {
+          seasonArmed = true;
+          t.textContent = 'Tap again to start next season';
+        } else {
+          g.resetSeasonLocal();
+          ctx.closeModal();
+          ctx.skillStyle = 'bladestorm';
+          ctx.showClassPick();
+        }
+        break;
       case 'reset':
         if (!armed) {
           armed = true;
@@ -304,12 +321,216 @@ export function showChat(ctx: UIContext): void {
   ctx.openModal(
     `<div class="sheet">
       <h2>Chat</h2>
-      <div class="tabs" style="margin-bottom:2cqw"><button class="tb on">System</button><button class="tb" style="opacity:.5">Clan (soon)</button></div>
+      <div class="tabs" style="margin-bottom:2cqw"><button class="tb on">System</button><button class="tb" style="opacity:.55">Clan</button></div>
       <div class="body">${lines}</div>
       <div class="btns"><button class="btn gold" data-action="close">Close</button></div>
     </div>`,
     { onDismiss: () => ctx.closeModal() },
   ).addEventListener('click', (ev) => {
+    if ((ev.target as HTMLElement).closest('[data-action="close"]')) ctx.closeModal();
+  });
+}
+
+export function showClanHall(ctx: UIContext): void {
+  const g = ctx.game;
+  g.refreshClanTokenDay();
+  const clan = g.clan;
+  let body = '';
+  if (!clan) {
+    body = `<p>Found a clan for ${CLAN_CREATE_COST} crystals, or join with a code (local mock).</p>
+      <label class="field">Clan name<input id="clan-name" maxlength="24" placeholder="Nightscar Wolves" /></label>
+      <button class="btn red" data-action="clan-create">Create Clan (−${CLAN_CREATE_COST})</button>
+      <label class="field">Join code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" /></label>
+      <button class="btn gold" data-action="clan-join">Join Clan</button>`;
+  } else {
+    const missing = g.clanMissingClasses();
+    const rows = clan.members
+      .map(
+        (m) =>
+          `<div class="row"><span>${m.isPlayer ? '★ ' : ''}${m.name} <small>${m.role}</small></span><b>${m.heroClass} · CP ${fmt(m.cp)}</b></div>`,
+      )
+      .join('');
+    const classCheck = HERO_CLASSES.map((c) => {
+      const ok = clan.members.some((m) => m.heroClass === c);
+      return `<span class="class-pip ${ok ? 'on' : ''}">${c[0]}</span>`;
+    }).join('');
+    body = `<div class="clan-banner"><img src="${asset('ui/clan-hall.webp')}" alt="" /><div><b>${clan.name}</b><span>Code ${clan.code}</span><div class="class-pips">${classCheck}</div></div></div>
+      <div class="body-scroll">${rows}</div>
+      ${missing.length ? `<p class="warn">Missing: ${missing.join(', ')}. Recruit to fill the 4v4 roster.</p>` : '<p>Roster has one of each class — ready to queue.</p>'}
+      <div class="btns" style="flex-wrap:wrap">
+        <button class="btn stone" data-action="clan-recruit">Recruit roster</button>
+        <button class="btn red ${g.clanRosterReady() ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
+        <button class="btn tan" data-action="clan-leave">Leave</button>
+      </div>
+      <p class="tagline">Win +${TOKEN_WIN} / Loss +${TOKEN_LOSS} tokens (cap ${TOKEN_DAY_CAP}/day). Uses your gear + skills; allies are local mocks.</p>`;
+  }
+  const el = ctx.openModal(
+    `<div class="sheet clan-sheet">
+      <h2>Clan Hall</h2>
+      <div class="body">${body}</div>
+      <div class="btns"><button class="btn gold" data-action="close">Close</button></div>
+    </div>`,
+    { onDismiss: () => ctx.closeModal() },
+  );
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    const act = t.dataset.action!;
+    if (act === 'close') {
+      ctx.closeModal();
+      return;
+    }
+    if (act === 'clan-create') {
+      const name = (el.querySelector('#clan-name') as HTMLInputElement | null)?.value ?? '';
+      const err = g.createClan(name);
+      if (err) g.toast(err, 'bad');
+      else {
+        ctx.closeModal();
+        showClanHall(ctx);
+      }
+      return;
+    }
+    if (act === 'clan-join') {
+      const code = (el.querySelector('#clan-code') as HTMLInputElement | null)?.value ?? '';
+      const err = g.joinClan(code);
+      if (err) g.toast(err, 'bad');
+      else {
+        ctx.closeModal();
+        showClanHall(ctx);
+      }
+      return;
+    }
+    if (act === 'clan-recruit') {
+      const err = g.recruitClanRoster();
+      if (err) g.toast(err, err.includes('already') ? 'info' : 'bad');
+      ctx.closeModal();
+      showClanHall(ctx);
+      return;
+    }
+    if (act === 'clan-queue') {
+      if (!g.clanRosterReady()) {
+        g.toast('Need one of each class', 'bad');
+        return;
+      }
+      const err = g.queueClanPvp();
+      if (err) g.toast(err, 'bad');
+      // pvp modal opened via game event
+      return;
+    }
+    if (act === 'clan-leave') {
+      g.leaveClan();
+      ctx.closeModal();
+      showClanHall(ctx);
+    }
+  });
+}
+
+export function showSeasonBoard(ctx: UIContext): void {
+  const g = ctx.game;
+  const day = g.seasonDay;
+  const remainH = Math.ceil(g.seasonRemainingMs / 3_600_000);
+  let armed = false;
+  const el = ctx.openModal(
+    `<div class="sheet">
+      <h2>Season ${g.save.season.seasonId}</h2>
+      <div class="body">
+        <div class="season-hero"><img src="${asset('ui/season-board.webp')}" alt="" />
+          <div><b>Day ${day} / 30</b><span>~${remainH}h remaining</span></div>
+        </div>
+        <div class="row"><span>Clan record</span><b>${g.save.clanWins}W / ${g.save.clanLosses}L</b></div>
+        <div class="row"><span>Clan tokens</span><b>${fmt(g.save.clanTokens)}</b></div>
+        <div class="row"><span>Tokens today</span><b>${g.save.clanTokensEarnedToday} / ${TOKEN_DAY_CAP}</b></div>
+        <p>Participation tiers (Recruit / Campaigner / Warlord / Legend) are design-ready; this build tracks wins and the timer only.</p>
+        <p>Local reset wipes level, gear, and currencies; keeps clan membership and re-opens class pick.</p>
+        <button class="chip" data-action="season-reset" style="color:#8a281f">Reset season (local)</button>
+      </div>
+      <div class="btns"><button class="btn gold" data-action="close">Close</button></div>
+    </div>`,
+    { onDismiss: () => ctx.closeModal() },
+  );
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    if (t.dataset.action === 'close') ctx.closeModal();
+    if (t.dataset.action === 'season-reset') {
+      if (!armed) {
+        armed = true;
+        t.textContent = 'Tap again to confirm season reset';
+      } else {
+        g.resetSeasonLocal();
+        ctx.closeModal();
+        ctx.skillStyle = 'bladestorm';
+        ctx.showClassPick();
+      }
+    }
+  });
+}
+
+export function showClanArmorer(ctx: UIContext): void {
+  const g = ctx.game;
+  const offers = CLAN_VENDOR.map((o, i) => {
+    const afford = g.save.clanTokens >= o.cost;
+    return `<button class="vendor-row ${afford ? '' : 'dim'}" data-action="buy" data-i="${i}">
+      <img src="${asset(`icons/gear-k/${o.slot}.webp`)}" alt="" />
+      <span><b>${o.label}</b><small>Clanforged set · Gear Lv.18–20</small></span>
+      <b class="price"><img src="${asset('ui/clan-token.webp')}" alt="" />${o.cost}</b>
+    </button>`;
+  }).join('');
+  const el = ctx.openModal(
+    `<div class="sheet">
+      <h2>Clan Armorer</h2>
+      <div class="body">
+        <p>Spend Clan Tokens on endgame <b>Clanforged</b> gear. 2pc +8% PvP CP · 4pc +10% token gains.</p>
+        <div class="row"><span>Your tokens</span><b>${fmt(g.save.clanTokens)}</b></div>
+        <div class="vendor-list">${offers}</div>
+      </div>
+      <div class="btns"><button class="btn gold" data-action="close">Close</button></div>
+    </div>`,
+    { onDismiss: () => ctx.closeModal() },
+  );
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    if (t.dataset.action === 'close') ctx.closeModal();
+    if (t.dataset.action === 'buy') {
+      const err = g.buyClanVendor(Number(t.dataset.i));
+      if (err) g.toast(err, 'bad');
+      else {
+        ctx.closeModal();
+        showClanArmorer(ctx);
+      }
+    }
+  });
+}
+
+export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number): void {
+  const ally = result.allyTeam
+    .map((f) => `<div class="pvp-f"><b>${f.heroClass}</b><span>${f.name}</span><i>${f.hp}/${f.maxHp}</i></div>`)
+    .join('');
+  const enemy = result.enemyTeam
+    .map((f) => `<div class="pvp-f"><b>${f.heroClass}</b><span>${f.name}</span><i>${f.hp}/${f.maxHp}</i></div>`)
+    .join('');
+  const log = result.log
+    .filter((e) => e.t === 'kill' || e.t === 'end' || e.t === 'skill')
+    .slice(-8)
+    .map((e) => `<div class="row"><span>${e.text}</span></div>`)
+    .join('');
+  const el = ctx.openModal(
+    `<div class="sheet pvp-sheet">
+      <h2>${result.won ? 'Clan Victory' : 'Clan Defeat'}</h2>
+      <div class="body">
+        <div class="pvp-arena" style="background-image:url('${asset('bg/bg-clan-arena.jpg')}')"></div>
+        <div class="row"><span>Score</span><b>${result.allyKills} – ${result.enemyKills}${result.timedOut ? ' (timeout)' : ''}</b></div>
+        <div class="row"><span>Duration</span><b>${result.duration}s</b></div>
+        <div class="row"><span>Clan Tokens</span><b>+${tokens}</b></div>
+        <div class="pvp-teams"><div><h3>Your clan</h3>${ally}</div><div><h3>Rivals</h3>${enemy}</div></div>
+        <div class="body-scroll">${log}</div>
+      </div>
+      <div class="btns"><button class="btn gold" data-action="close">OK</button></div>
+    </div>`,
+    {},
+  );
+  el.addEventListener('click', (ev) => {
     if ((ev.target as HTMLElement).closest('[data-action="close"]')) ctx.closeModal();
   });
 }

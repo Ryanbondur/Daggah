@@ -11,7 +11,7 @@ import {
 } from '../data/acts';
 import type { DropSource } from '../data/gear';
 import {
-  ALL_SET_IDS,
+  DROP_SET_IDS,
   RARITIES,
   cpDelta,
   computeHero,
@@ -23,11 +23,30 @@ import {
 import { QUESTS } from '../data/quests';
 import type { QuestDef } from '../data/quests';
 import { BAR_SIZE, DEFAULT_LOADOUT, PLAYSTYLES, SKILL_BY_ID, isUnlocked, skillsForClass } from '../data/skills';
-import type { HeroClass, Item, SkillId, StatKey } from '../data/types';
-import { STAT_KEYS } from '../data/types';
+import type { HeroClass, Item, SkillId, SlotId, StatKey } from '../data/types';
+import { HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
+import type { ClanData } from './clan';
+import {
+  CLAN_CREATE_COST,
+  TOKEN_DAY_CAP,
+  TOKEN_LOSS,
+  TOKEN_WIN,
+  applyTokenCap,
+  createClan,
+  dayKey,
+  joinClanByCode,
+  missingClasses,
+  pickQueueRoster,
+  recruitForRoster,
+  rosterReady,
+  seasonDay,
+  seasonRemainingMs,
+} from './clan';
 import type { BattleEvent, HeroInput, RunDef } from './combat';
 import { Battle, STEP } from './combat';
+import type { PvpResult } from './pvp';
+import { buildOpponentRoster, simulatePvp } from './pvp';
 import type { Rng } from './rng';
 import { defaultRng } from './rng';
 import type { SaveData, Storage } from './state';
@@ -63,7 +82,19 @@ export type GameEvent =
   | { t: 'toast'; text: string; kind: 'good' | 'bad' | 'info' }
   | { t: 'levelUp'; level: number; newSkills: SkillId[] }
   | { t: 'result'; result: RunResult }
+  | { t: 'pvp'; result: PvpResult; tokens: number }
   | { t: 'chat'; text: string };
+
+/** Clan Armorer catalog (GDD Clanforged). */
+export const CLAN_VENDOR: { slot: SlotId; rarity: 'epic' | 'legendary'; cost: number; label: string }[] = [
+  { slot: 'weapon', rarity: 'epic', cost: 40, label: 'Clanforged Weapon (Epic)' },
+  { slot: 'chest', rarity: 'epic', cost: 35, label: 'Clanforged Chest (Epic)' },
+  { slot: 'helmet', rarity: 'epic', cost: 30, label: 'Clanforged Helm (Epic)' },
+  { slot: 'ring', rarity: 'epic', cost: 30, label: 'Clanforged Ring (Epic)' },
+  { slot: 'weapon', rarity: 'legendary', cost: 80, label: 'Clanforged Weapon (Legendary)' },
+  { slot: 'medal', rarity: 'legendary', cost: 70, label: 'Clanforged Medal (Legendary)' },
+  { slot: 'amulet', rarity: 'legendary', cost: 70, label: 'Clanforged Amulet (Legendary)' },
+];
 
 type Listener = (e: GameEvent) => void;
 
@@ -850,6 +881,187 @@ export class Game {
     return true;
   }
 
+  // ---- clan / season / PvP -----------------------------------------------
+
+  refreshClanTokenDay(now = Date.now()): void {
+    const key = dayKey(now);
+    if (this.save.clanTokensDayKey !== key) {
+      this.save.clanTokensDayKey = key;
+      this.save.clanTokensEarnedToday = 0;
+    }
+  }
+
+  get clan(): ClanData | null {
+    return this.save.clan;
+  }
+
+  get seasonDay(): number {
+    return seasonDay(this.save.season);
+  }
+
+  get seasonRemainingMs(): number {
+    return seasonRemainingMs(this.save.season);
+  }
+
+  syncPlayerClanMember(): void {
+    const clan = this.save.clan;
+    if (!clan) return;
+    const me = clan.members.find((m) => m.isPlayer);
+    if (!me) return;
+    me.heroClass = this.save.heroClass;
+    me.level = this.save.level;
+    me.cp = this.cp;
+    me.loadout = [...this.save.loadout];
+    me.primary = this.save.primary;
+  }
+
+  createClan(name: string): string | null {
+    if (this.save.clan) return 'Already in a clan.';
+    if (!this.save.classPicked) return 'Pick a class first.';
+    if (this.save.crystals < CLAN_CREATE_COST) return `Need ${CLAN_CREATE_COST} crystals to found a clan.`;
+    this.save.crystals -= CLAN_CREATE_COST;
+    this.save.clan = createClan(this.rng, name, {
+      heroClass: this.save.heroClass,
+      level: this.save.level,
+      cp: this.cp,
+      loadout: this.save.loadout,
+      primary: this.save.primary,
+    });
+    this.say(`Clan ${this.save.clan.name} founded. Code ${this.save.clan.code}.`);
+    this.toast(`Clan founded (−${CLAN_CREATE_COST} crystals)`, 'good');
+    this.changed();
+    return null;
+  }
+
+  joinClan(code: string): string | null {
+    if (this.save.clan) return 'Already in a clan.';
+    if (!this.save.classPicked) return 'Pick a class first.';
+    if (!code.trim()) return 'Enter a clan code.';
+    this.save.clan = joinClanByCode(this.rng, code, {
+      heroClass: this.save.heroClass,
+      level: this.save.level,
+      cp: this.cp,
+      loadout: this.save.loadout,
+      primary: this.save.primary,
+    });
+    this.say(`Joined ${this.save.clan.name} (${this.save.clan.code}).`);
+    this.toast(`Joined ${this.save.clan.name}`, 'good');
+    this.changed();
+    return null;
+  }
+
+  leaveClan(): string | null {
+    if (!this.save.clan) return 'Not in a clan.';
+    const name = this.save.clan.name;
+    this.save.clan = null;
+    this.say(`Left ${name}.`);
+    this.changed();
+    return null;
+  }
+
+  recruitClanRoster(): string | null {
+    if (!this.save.clan) return 'Join or create a clan first.';
+    const added = recruitForRoster(this.save.clan, this.rng, this.save.level);
+    if (!added.length) {
+      if (rosterReady(this.save.clan.members)) return 'Roster already has one of each class.';
+      return 'Clan is full.';
+    }
+    this.save.clan.members.push(...added);
+    this.toast(`Recruited ${added.length}: ${added.map((m) => m.heroClass).join(', ')}`, 'good');
+    this.changed();
+    return null;
+  }
+
+  clanRosterReady(): boolean {
+    return !!this.save.clan && rosterReady(this.save.clan.members);
+  }
+
+  clanMissingClasses(): HeroClass[] {
+    return this.save.clan ? missingClasses(this.save.clan.members) : [...HERO_CLASSES];
+  }
+
+  /** Queue local 4v4 auto-battle. Returns error or null + emits pvp event. */
+  queueClanPvp(): string | null {
+    if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
+    if (!this.save.clan) return 'Join a clan first.';
+    this.syncPlayerClanMember();
+    const roster = pickQueueRoster(this.save.clan.members, this.save.heroClass);
+    if (!roster) return 'Need 4 members with one of each class ready.';
+    const avgCp = roster.reduce((s, m) => s + m.cp, 0) / roster.length;
+    const enemies = buildOpponentRoster(this.rng, roster, avgCp);
+    const result = simulatePvp(roster, enemies, this.save.gear, this.save.level, this.rng);
+    this.refreshClanTokenDay();
+    const base = result.won ? TOKEN_WIN : TOKEN_LOSS;
+    const tokenPct = this.totals.effects.tokenGainPct;
+    const gain = Math.round(base * (1 + tokenPct / 100));
+    const { awarded, earnedToday } = applyTokenCap(this.save.clanTokensEarnedToday, gain);
+    this.save.clanTokensEarnedToday = earnedToday;
+    this.save.clanTokens += awarded;
+    if (result.won) this.save.clanWins += 1;
+    else this.save.clanLosses += 1;
+    const capNote =
+      awarded < gain ? ` (day cap ${TOKEN_DAY_CAP}; +${awarded})` : ` (+${awarded} tokens)`;
+    this.say(`Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${capNote}.`);
+    this.toast(`${result.won ? 'Victory' : 'Defeat'}${capNote}`, result.won ? 'good' : 'bad');
+    this.emit({ t: 'pvp', result, tokens: awarded });
+    this.changed();
+    return null;
+  }
+
+  buyClanVendor(index: number): string | null {
+    const offer = CLAN_VENDOR[index];
+    if (!offer) return 'Unknown offer.';
+    if (this.save.clanTokens < offer.cost) return `Need ${offer.cost} clan tokens.`;
+    this.save.clanTokens -= offer.cost;
+    const gl = Math.max(18, Math.min(20, this.save.level));
+    const item = rollItem(this.rng, {
+      gearLevel: gl,
+      rarity: offer.rarity,
+      slot: offer.slot,
+      setId: 'clanforged',
+      icon: 'k',
+    });
+    this.queueLoot([item], false);
+    this.toast(`Bought ${item.name}`, 'good');
+    this.changed();
+    return null;
+  }
+
+  /** Local season reset hook — wipes progression, keeps clan membership + cosmetics stub. */
+  resetSeasonLocal(): void {
+    const clan = this.save.clan;
+    const seasonId = this.save.season.seasonId + 1;
+    const keepTokens = 0; // GDD: clan tokens reset
+    this.save = defaultSave();
+    this.save.clan = clan
+      ? {
+          ...clan,
+          members: clan.members.map((m) =>
+            m.isPlayer
+              ? {
+                  ...m,
+                  level: 1,
+                  cp: 0,
+                  loadout: [...DEFAULT_LOADOUT[m.heroClass]],
+                  primary: null,
+                  heroClass: m.heroClass,
+                }
+              : m,
+          ),
+        }
+      : null;
+    this.save.season = { seasonId, startedAt: Date.now() };
+    this.save.clanTokens = keepTokens;
+    this.save.classPicked = false;
+    this.battle = null;
+    this.mode = 'camp';
+    this.dungeonCtx = null;
+    this.lives = MAX_LIVES;
+    this.say(`Season ${seasonId} begins. Re-pick your class.`);
+    this.emit({ t: 'run' });
+    this.changed();
+  }
+
   // ---- settings & dev -----------------------------------------------------
 
   setSpeed(speed: number): void {
@@ -878,6 +1090,7 @@ export class Game {
     this.save.keys = Math.min(KEY_CAP, this.save.keys + 5);
     this.save.crystals += 500;
     this.save.dust += 200;
+    this.save.clanTokens += 100;
     this.changed();
   }
 
@@ -905,7 +1118,7 @@ export class Game {
         rollItem(this.rng, {
           gearLevel: Math.max(1, Math.min(this.save.level, this.rng.int(1, 8))),
           rarity: rollRarity(this.rng, 'dungeon-floor'),
-          setId: this.rng.pick(ALL_SET_IDS),
+          setId: this.rng.pick(DROP_SET_IDS),
         }),
       );
     }

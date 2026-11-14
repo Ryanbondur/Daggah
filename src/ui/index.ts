@@ -11,11 +11,15 @@ import type { PlaystyleId } from '../data/types';
 import {
   showBag,
   showChat,
+  showClanArmorer,
+  showClanHall,
   showClassPick,
   showCompare,
   showHero,
   showItemInfo,
+  showPvpResult,
   showResult,
+  showSeasonBoard,
   showSettings,
 } from './modals';
 import { renderAdventure, renderCamp, renderSkill, renderTown } from './panes';
@@ -131,6 +135,9 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
     showChat: () => showChat(ctx),
     showItemInfo: (slot) => showItemInfo(ctx, slot),
     showClassPick: () => showClassPick(ctx),
+    showClanHall: () => showClanHall(ctx),
+    showSeasonBoard: () => showSeasonBoard(ctx),
+    showClanArmorer: () => showClanArmorer(ctx),
     flashSlot(slot) {
       flash = slot;
     },
@@ -302,6 +309,10 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
       case 'result':
         resultQueue.push(e.result);
         break;
+      case 'pvp':
+        if (modalEl) closeModalInternal(false);
+        showPvpResult(ctx, e.result, e.tokens);
+        break;
       default:
         break;
     }
@@ -383,6 +394,15 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
         break;
       case 'dungeon-sweep':
         game.sweepDungeon(d.id!);
+        break;
+      case 'clan-hall':
+        showClanHall(ctx);
+        break;
+      case 'season-board':
+        showSeasonBoard(ctx);
+        break;
+      case 'clan-armorer':
+        showClanArmorer(ctx);
         break;
       default:
         break;

@@ -382,6 +382,18 @@ export const SETS: Record<SetId, SetDef> = {
       { pieces: 6, text: 'Class ultimate +20% dmg' },
     ],
   },
+  clanforged: {
+    id: 'clanforged',
+    name: 'Clanforged',
+    act: 0,
+    favors: 'Clan PvP',
+    icon: 'k',
+    bonuses: [
+      { pieces: 2, text: '+8% CP in PvP' },
+      { pieces: 4, text: '+10% clan token gains' },
+      { pieces: 6, text: 'Clanforged legendary visual' },
+    ],
+  },
 };
 
 export interface SetEffects {
@@ -414,6 +426,10 @@ export interface SetEffects {
   postUltDuration: number;
   ultimateCostPct: number;
   ultimateDmgPct: number;
+  /** Clanforged 2pc — applied in PvP only. */
+  pvpCpPct: number;
+  /** Clanforged 4pc — token reward multiplier. */
+  tokenGainPct: number;
 }
 
 export function emptySetEffects(): SetEffects {
@@ -447,6 +463,8 @@ export function emptySetEffects(): SetEffects {
     postUltDuration: 0,
     ultimateCostPct: 0,
     ultimateDmgPct: 0,
+    pvpCpPct: 0,
+    tokenGainPct: 0,
   };
 }
 
@@ -518,6 +536,8 @@ export function computeSetEffects(gear: Gear): SetEffects {
   }
   if (n('nightscar-regalia') >= 4) fx.skillPowerPct += 12;
   if (n('nightscar-regalia') >= 6) fx.ultimateDmgPct += 20;
+  if (n('clanforged') >= 2) fx.pvpCpPct += 8;
+  if (n('clanforged') >= 4) fx.tokenGainPct += 10;
   return fx;
 }
 
@@ -660,6 +680,8 @@ export function starterGear(heroClass: HeroClass = 'Warrior'): Gear {
 }
 
 export const ALL_SET_IDS = Object.keys(SETS) as SetId[];
+/** Act/dungeon drop pool — Clanforged is vendor-only. */
+export const DROP_SET_IDS = ALL_SET_IDS.filter((id) => id !== 'clanforged');
 
 export function salvageValue(item: Item): { dust: number; crystals: number } {
   return RARITIES[item.rarity].salvage;

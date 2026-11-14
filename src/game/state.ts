@@ -3,9 +3,11 @@ import { starterGear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import type { HeroClass, Item, SkillId } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
+import type { ClanData, SeasonData } from './clan';
+import { defaultSeason } from './clan';
 
-export const SAVE_KEY = 'daggah.save.v2';
-export const SAVE_VERSION = 2;
+export const SAVE_KEY = 'daggah.save.v3';
+export const SAVE_VERSION = 3;
 export const BAG_CAP = 24;
 export const KEY_CAP = 8;
 export const KEY_REGEN_MS = 30 * 60 * 1000;
@@ -48,6 +50,14 @@ export interface SaveData {
   salvageCount: number;
   settings: Settings;
   createdAt: number;
+  /** Clan PvP currency. */
+  clanTokens: number;
+  clanTokensEarnedToday: number;
+  clanTokensDayKey: string;
+  clanWins: number;
+  clanLosses: number;
+  clan: ClanData | null;
+  season: SeasonData;
 }
 
 export function defaultSave(now = Date.now()): SaveData {
@@ -76,6 +86,13 @@ export function defaultSave(now = Date.now()): SaveData {
     salvageCount: 0,
     settings: { autoSalvageReplaced: true, autoSalvageWorse: false, speed: 1 },
     createdAt: now,
+    clanTokens: 0,
+    clanTokensEarnedToday: 0,
+    clanTokensDayKey: new Date(now).toISOString().slice(0, 10),
+    clanWins: 0,
+    clanLosses: 0,
+    clan: null,
+    season: defaultSeason(now),
   };
 }
 
@@ -89,12 +106,35 @@ function isHeroClass(v: unknown): v is HeroClass {
   return typeof v === 'string' && (HERO_CLASSES as string[]).includes(v);
 }
 
+function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: number): Pick<
+  SaveData,
+  | 'clanTokens'
+  | 'clanTokensEarnedToday'
+  | 'clanTokensDayKey'
+  | 'clanWins'
+  | 'clanLosses'
+  | 'clan'
+  | 'season'
+> {
+  return {
+    clanTokens: typeof parsed.clanTokens === 'number' ? parsed.clanTokens : 0,
+    clanTokensEarnedToday: typeof parsed.clanTokensEarnedToday === 'number' ? parsed.clanTokensEarnedToday : 0,
+    clanTokensDayKey:
+      typeof parsed.clanTokensDayKey === 'string' ? parsed.clanTokensDayKey : fresh.clanTokensDayKey,
+    clanWins: typeof parsed.clanWins === 'number' ? parsed.clanWins : 0,
+    clanLosses: typeof parsed.clanLosses === 'number' ? parsed.clanLosses : 0,
+    clan: parsed.clan ?? null,
+    season: parsed.season?.startedAt ? parsed.season : defaultSeason(parsed.createdAt ?? now),
+  };
+}
+
 export function loadSave(storage: Storage | undefined, now = Date.now()): SaveData {
   const fresh = defaultSave(now);
   if (!storage) return fresh;
   try {
-    // Prefer v2; migrate readable v1 Warrior saves if present.
-    const raw = storage.getItem(SAVE_KEY) ?? storage.getItem('daggah.save.v1');
+    // Prefer v3; migrate readable v2 / Warrior v1.
+    const raw =
+      storage.getItem(SAVE_KEY) ?? storage.getItem('daggah.save.v2') ?? storage.getItem('daggah.save.v1');
     if (!raw) return fresh;
     const parsed = JSON.parse(raw) as Partial<SaveData> & { version?: number };
     if (!parsed) return fresh;
@@ -112,25 +152,36 @@ export function loadSave(storage: Storage | undefined, now = Date.now()): SaveDa
         pending: parsed.pending ?? [],
         loadout: parsed.loadout?.length ? parsed.loadout : fresh.loadout,
         seenSkills: parsed.seenSkills ?? fresh.seenSkills,
+        ...migrateClanFields(parsed, fresh, now),
       };
       writeSave(storage, migrated);
       storage.removeItem('daggah.save.v1');
+      storage.removeItem('daggah.save.v2');
       return migrated;
     }
-    if (parsed.version !== SAVE_VERSION || !isHeroClass(parsed.heroClass)) return fresh;
-    return {
-      ...fresh,
-      ...parsed,
-      heroClass: parsed.heroClass,
-      classPicked: parsed.classPicked !== false,
-      gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
-      settings: { ...fresh.settings, ...(parsed.settings ?? {}) },
-      dungeons: parsed.dungeons ?? {},
-      bag: parsed.bag ?? [],
-      pending: parsed.pending ?? [],
-      loadout: parsed.loadout?.length ? parsed.loadout : [...DEFAULT_LOADOUT[parsed.heroClass]],
-      seenSkills: parsed.seenSkills ?? [...DEFAULT_LOADOUT[parsed.heroClass]],
-    };
+    if ((parsed.version === 2 || parsed.version === SAVE_VERSION) && isHeroClass(parsed.heroClass)) {
+      const migrated: SaveData = {
+        ...fresh,
+        ...parsed,
+        version: SAVE_VERSION,
+        heroClass: parsed.heroClass,
+        classPicked: parsed.classPicked !== false,
+        gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
+        settings: { ...fresh.settings, ...(parsed.settings ?? {}) },
+        dungeons: parsed.dungeons ?? {},
+        bag: parsed.bag ?? [],
+        pending: parsed.pending ?? [],
+        loadout: parsed.loadout?.length ? parsed.loadout : [...DEFAULT_LOADOUT[parsed.heroClass]],
+        seenSkills: parsed.seenSkills ?? [...DEFAULT_LOADOUT[parsed.heroClass]],
+        ...migrateClanFields(parsed, fresh, now),
+      };
+      if (parsed.version !== SAVE_VERSION) {
+        writeSave(storage, migrated);
+        storage.removeItem('daggah.save.v2');
+      }
+      return migrated;
+    }
+    return fresh;
   } catch {
     return fresh;
   }
@@ -147,6 +198,7 @@ export function writeSave(storage: Storage | undefined, save: SaveData): void {
 
 export function clearSave(storage: Storage | undefined): void {
   storage?.removeItem(SAVE_KEY);
+  storage?.removeItem('daggah.save.v2');
   storage?.removeItem('daggah.save.v1');
 }
 

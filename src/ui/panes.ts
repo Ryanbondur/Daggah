@@ -11,6 +11,7 @@ import {
   skillsForPlaystyle,
 } from '../data/skills';
 import type { PlaystyleId, SkillId } from '../data/types';
+import { CLAN_CREATE_COST, TOKEN_DAY_CAP } from '../game/clan';
 import { KEY_CAP, STAGES_PER_ACT } from '../game/state';
 import { asset, navIcon, skillIcon } from './assets';
 import type { UIContext } from './context';
@@ -115,6 +116,12 @@ function fmtTime(ms: number): string {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
+function fmtSeasonRemain(ms: number): string {
+  const d = Math.floor(ms / 86_400_000);
+  const h = Math.floor((ms % 86_400_000) / 3_600_000);
+  return `${d}d ${h}h`;
+}
+
 export function renderAdventure(ctx: UIContext): string {
   const g = ctx.game;
   const s = g.save;
@@ -166,23 +173,52 @@ export function renderAdventure(ctx: UIContext): string {
 
 export function renderTown(ctx: UIContext): string {
   const g = ctx.game;
-  const day = Math.min(30, Math.floor((Date.now() - g.save.createdAt) / 86_400_000) + 1);
+  g.refreshClanTokenDay();
+  const day = g.seasonDay;
+  const remain = fmtSeasonRemain(g.seasonRemainingMs);
+  const clan = g.clan;
+  const tokens = g.save.clanTokens;
+  const earned = g.save.clanTokensEarnedToday;
   const quests = QUESTS.map((q, i) => {
     const state = i < g.save.questIndex ? 'on' : i === g.save.questIndex ? '' : 'off';
     return `<div class="row ${state}"><span>${i < g.save.questIndex ? '[x] ' : '[ ] '}${q.text}</span></div>`;
   }).join('');
+  const clanHint = clan
+    ? `${clan.name} · ${clan.members.length} members · ${g.clanRosterReady() ? 'Roster ready' : 'Need one of each class'}`
+    : `Create (${CLAN_CREATE_COST} crystals) or join by code`;
   return `<div class="pane-inner scroll">
-    <div class="tab-title">Town <small>Season 1  -  Day ${day}/30</small></div>
+    <div class="tab-title">Town <small>Season ${g.save.season.seasonId}  -  Day ${day}/30 · ${remain}</small></div>
+    <div class="res-bar">
+      <span class="res"><img src="${asset('ui/clan-token.webp')}" alt="" />${fmt(tokens)} <small>${earned}/${TOKEN_DAY_CAP} today</small></span>
+      <span class="res"><img src="${navIcon('crystal')}" alt="" />${fmt(g.save.crystals)}</span>
+      <span class="res">${g.save.clanWins}W / ${g.save.clanLosses}L</span>
+    </div>
     <div class="town-grid">
       <div class="town-card"><img src="${asset('icons/gear-a/weapon.webp')}" alt="" /><b>Blacksmith</b><span>Dust to Gear Level upgrades.</span><span class="soon">Coming soon</span></div>
       <div class="town-card"><img src="${navIcon('crystal')}" alt="" /><b>Quartermaster</b><span>Spend crystals on keys and bag space.</span><span class="soon">Coming soon</span></div>
-      <div class="town-card"><img src="${asset('icons/skills/executioners-guard.webp')}" alt="" /><b>Clan Hall</b><span>4v4 clan battles. One of each class.</span><span class="soon">Coming soon</span></div>
-      <div class="town-card"><img src="${navIcon('town')}" alt="" /><b>Season Board</b><span>30-day seasons with participation rewards.</span><span class="soon">Coming soon</span></div>
+      <button class="town-card clickable" data-action="clan-hall">
+        <img src="${asset('ui/clan-hall.webp')}" alt="" />
+        <b>Clan Hall</b>
+        <span>4v4 auto-battles. One of each class.</span>
+        <span class="live">${clanHint}</span>
+      </button>
+      <button class="town-card clickable" data-action="season-board">
+        <img src="${asset('ui/season-board.webp')}" alt="" />
+        <b>Season Board</b>
+        <span>30-day season timer and local reset.</span>
+        <span class="live">Day ${day}/30</span>
+      </button>
+      <button class="town-card clickable" data-action="clan-armorer">
+        <img src="${asset('icons/gear-k/weapon.webp')}" alt="" />
+        <b>Clan Armorer</b>
+        <span>Spend Clan Tokens on Clanforged gear.</span>
+        <span class="live">${fmt(tokens)} tokens</span>
+      </button>
     </div>
     <h3 style="margin:1cqw 0 0;font-family:var(--font-title);font-size:3.6cqw">Onboarding quests</h3>
     <div class="sheet-lite">${quests}</div>
     <button class="chip" data-action="settings" style="align-self:flex-start">Settings</button>
-    <div class="tagline">Class locked for the season: ${g.save.heroClass}. Reset save to pick a new class. Clear Act 10 to unlock Nightscar Apex endgame. Clans / seasons next.</div>
+    <div class="tagline">Class locked for the season: ${g.save.heroClass}. Reset season (or save) to re-pick. Clan 4v4 uses your equipped gear and skill bar.</div>
   </div>`;
 }
 
