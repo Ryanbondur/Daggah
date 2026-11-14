@@ -1,0 +1,26 @@
+{
+  "name": "daggah",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Daggah — browser mobile auto-combat RPG (v1 vertical slice)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "art": "python3 scripts/process-art.py"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/lilita-one": "^5.3.0",
+    "@fontsource/playfair-display": "^5.3.0",
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}
