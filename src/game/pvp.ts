@@ -4,7 +4,7 @@ import type { HeroClass, SkillId, Stats } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
 import { maxEnergy } from '../data/xp';
 import type { ClanMember } from './clan';
-import { buildMockMember } from './clan';
+import { buildAiMember } from './clan';
 import type { Rng } from './rng';
 
 export const PVP_TIMEOUT_S = 90;
@@ -16,6 +16,7 @@ export interface PvpFighter {
   team: 'ally' | 'enemy';
   heroClass: HeroClass;
   level: number;
+  isAi: boolean;
   stats: Stats;
   effects: SetEffects;
   loadout: SkillId[];
@@ -45,8 +46,10 @@ export interface PvpResult {
   log: PvpEvent[];
   allyHpLeft: number;
   enemyHpLeft: number;
-  allyTeam: { name: string; heroClass: HeroClass; hp: number; maxHp: number }[];
-  enemyTeam: { name: string; heroClass: HeroClass; hp: number; maxHp: number }[];
+  allyTeam: { name: string; heroClass: HeroClass; hp: number; maxHp: number; isAi: boolean }[];
+  enemyTeam: { name: string; heroClass: HeroClass; hp: number; maxHp: number; isAi: boolean }[];
+  /** True when this match used AI fillers / AI rivals (solo playtest). */
+  practiceAi: boolean;
 }
 
 function scaleStats(stats: Stats, pct: number): Stats {
@@ -72,7 +75,10 @@ function fighterFromMember(
   rng: Rng,
 ): PvpFighter {
   const level = m.isPlayer && liveLevel != null ? liveLevel : m.level;
-  const gear = m.isPlayer && liveGear ? liveGear : m.gear ?? buildMockMember(rng, m.heroClass, level).gear!;
+  const gear =
+    m.isPlayer && liveGear
+      ? liveGear
+      : m.gear ?? buildAiMember(rng, m.heroClass, level, 'member', team === 'enemy' ? 'endgame' : 'scaled').gear!;
   const totals = computeHero(level, gear, m.heroClass);
   const stats = scaleStats(totals.stats, totals.effects.pvpCpPct);
   const loadout = (m.isPlayer ? m.loadout : m.loadout.length ? m.loadout : DEFAULT_LOADOUT[m.heroClass]).slice(0, 4);
@@ -80,12 +86,14 @@ function fighterFromMember(
   const maxEn = maxEnergy(level);
   const side = team === 'ally' ? 0.2 : 0.8;
   const classOffset = HERO_CLASSES.indexOf(m.heroClass) * 0.06;
+  const isAi = m.isPlayer ? false : m.isAi !== false;
   return {
     id: `${team}_${m.id}`,
     name: m.name,
     team,
     heroClass: m.heroClass,
     level,
+    isAi,
     stats,
     effects: totals.effects,
     loadout,
@@ -101,23 +109,29 @@ function fighterFromMember(
   };
 }
 
+/**
+ * Enemy clan for 4v4 practice: one of each class with endgame/testing gear,
+ * CP nudged toward the ally average (±15%).
+ */
 export function buildOpponentRoster(rng: Rng, ally: ClanMember[], avgCp: number): ClanMember[] {
   const team: ClanMember[] = [];
   for (const cls of HERO_CLASSES) {
     const mirror = ally.find((m) => m.heroClass === cls);
-    const level = Math.max(1, Math.min(20, (mirror?.level ?? 10) + Math.floor(rng.next() * 3) - 1));
-    const m = buildMockMember(rng, cls, level);
-    // Nudge CP toward matchmaking band (±15%).
+    const baseLevel = Math.max(
+      1,
+      Math.min(20, Math.max(mirror?.level ?? 10, Math.round(avgCp > 0 ? 12 : 10)) + Math.floor(rng.next() * 3) - 1),
+    );
+    // Prefer endgame kit when allies are mid/high CP or high level; else scale down.
+    const useEndgame = avgCp >= 600 || baseLevel >= 12;
+    let m = buildAiMember(rng, cls, useEndgame ? Math.max(baseLevel, 16) : baseLevel, 'member', useEndgame ? 'endgame' : 'scaled');
     const target = avgCp * (0.85 + rng.next() * 0.3);
     if (m.cp > 0 && target > 0) {
       const ratio = target / m.cp;
-      const gl = Math.max(1, Math.min(20, Math.round(level * Math.sqrt(Math.max(0.5, ratio)))));
-      m.level = gl;
-      m.gear = buildMockMember(rng, cls, gl).gear;
-      m.cp = computeHero(gl, m.gear!, cls).cp;
-      m.loadout = m.loadout;
+      const gl = Math.max(1, Math.min(20, Math.round(m.level * Math.sqrt(Math.max(0.5, ratio)))));
+      const tier = gl >= 16 || useEndgame ? 'endgame' : 'scaled';
+      m = buildAiMember(rng, cls, gl, 'member', tier);
     }
-    m.name = `Rival ${cls}`;
+    m.name = `AI Rival ${cls}`;
     team.push(m);
   }
   return team;
@@ -277,7 +291,16 @@ export function simulatePvp(
   const snap = (team: 'ally' | 'enemy') =>
     fighters
       .filter((f) => f.team === team)
-      .map((f) => ({ name: f.name, heroClass: f.heroClass, hp: Math.max(0, Math.round(f.hp)), maxHp: f.maxHp }));
+      .map((f) => ({
+        name: f.name,
+        heroClass: f.heroClass,
+        hp: Math.max(0, Math.round(f.hp)),
+        maxHp: f.maxHp,
+        isAi: f.isAi,
+      }));
+
+  const practiceAi =
+    fighters.some((f) => f.team === 'ally' && f.isAi) || fighters.some((f) => f.team === 'enemy' && f.isAi);
 
   return {
     won,
@@ -290,6 +313,7 @@ export function simulatePvp(
     enemyHpLeft: Math.round(enemyHpLeft),
     allyTeam: snap('ally'),
     enemyTeam: snap('enemy'),
+    practiceAi,
   };
 }
 

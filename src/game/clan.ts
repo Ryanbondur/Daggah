@@ -1,4 +1,5 @@
 import { computeHero, rollItem, starterGear, type Gear } from '../data/gear';
+import type { RarityId, SetId, SlotId } from '../data/types';
 import { DEFAULT_LOADOUT, defaultPrimary, skillsForPlaystyle, CLASS_PLAYSTYLES, isUnlocked } from '../data/skills';
 import type { HeroClass, SkillId } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
@@ -14,6 +15,8 @@ export const SEASON_DAYS = 30;
 export const SEASON_MS = SEASON_DAYS * 86_400_000;
 
 export type ClanRole = 'leader' | 'officer' | 'member';
+/** AI gear quality for solo playtests until live multiplayer. */
+export type AiGearTier = 'scaled' | 'endgame';
 
 export interface ClanMember {
   id: string;
@@ -21,12 +24,14 @@ export interface ClanMember {
   heroClass: HeroClass;
   role: ClanRole;
   isPlayer: boolean;
+  /** True for bot/AI fillers and rivals (not human multiplayer). */
+  isAi: boolean;
   level: number;
   /** Snapshot CP for UI / matchmaking display. */
   cp: number;
   loadout: SkillId[];
   primary: SkillId | null;
-  /** Mock members keep a gear snapshot for PvP; player uses live save gear. */
+  /** AI members keep a gear snapshot for PvP; player uses live save gear. */
   gear?: Gear;
 }
 
@@ -60,7 +65,7 @@ export function dayKey(now = Date.now()): string {
   return new Date(now).toISOString().slice(0, 10);
 }
 
-const MOCK_NAMES = [
+const AI_NAMES = [
   'Ashen Blade',
   'Rime Whisper',
   'Quillmark',
@@ -92,39 +97,99 @@ export function loadoutForLevel(heroClass: HeroClass, level: number, preferStyle
   return merged.slice(0, 4);
 }
 
-export function mockGearFor(rng: Rng, level: number, heroClass: HeroClass): Gear {
+function pickAiRarity(rng: Rng, tier: AiGearTier): RarityId {
+  const r = rng.next();
+  if (tier === 'endgame') {
+    return r > 0.55 ? 'legendary' : 'epic';
+  }
+  if (r > 0.88) return 'legendary';
+  if (r > 0.55) return 'epic';
+  if (r > 0.2) return 'rare';
+  return 'common';
+}
+
+function pickAiSet(rng: Rng, tier: AiGearTier, slot: SlotId): SetId | undefined {
+  if (tier === 'endgame') {
+    // Mix Nightscar + Clanforged so AI rivals exercise PvP set bonuses in playtests.
+    if (rng.next() > 0.45) return 'clanforged';
+    return 'nightscar-regalia';
+  }
+  if (rng.next() > 0.65) return undefined;
+  // Light set presence when scaled to the player.
+  void slot;
+  return rng.next() > 0.5 ? 'nightscar-regalia' : undefined;
+}
+
+/** Build AI gear: `scaled` tracks player level; `endgame` uses high GL + sets for practice. */
+export function aiGearFor(
+  rng: Rng,
+  level: number,
+  heroClass: HeroClass,
+  tier: AiGearTier = 'scaled',
+): Gear {
   const gear = starterGear(heroClass);
-  const gl = Math.max(1, Math.min(20, level));
-  const slots = Object.keys(gear) as (keyof Gear)[];
+  const gl =
+    tier === 'endgame'
+      ? Math.max(18, Math.min(20, Math.max(level, 18)))
+      : Math.max(1, Math.min(20, level));
+  const slots = Object.keys(gear) as SlotId[];
   for (const slot of slots) {
-    const rarityRoll = rng.next();
-    const rarity = rarityRoll > 0.92 ? 'legendary' : rarityRoll > 0.7 ? 'epic' : rarityRoll > 0.35 ? 'rare' : 'common';
-    gear[slot] = rollItem(rng, { gearLevel: gl, rarity, slot });
+    const rarity = pickAiRarity(rng, tier);
+    const setId = pickAiSet(rng, tier, slot);
+    gear[slot] = rollItem(rng, {
+      gearLevel: gl,
+      rarity,
+      slot,
+      setId,
+      icon: setId === 'clanforged' ? 'k' : setId === 'nightscar-regalia' ? 'j' : undefined,
+    });
   }
   return gear;
 }
 
-export function buildMockMember(
+/** @deprecated Prefer aiGearFor — kept for call-site compatibility. */
+export function mockGearFor(rng: Rng, level: number, heroClass: HeroClass): Gear {
+  return aiGearFor(rng, level, heroClass, 'scaled');
+}
+
+export function buildAiMember(
   rng: Rng,
   heroClass: HeroClass,
   level: number,
   role: ClanRole = 'member',
+  tier: AiGearTier = 'scaled',
 ): ClanMember {
-  const gear = mockGearFor(rng, level, heroClass);
+  const gear = aiGearFor(rng, level, heroClass, tier);
   const totals = computeHero(level, gear, heroClass);
-  const loadout = loadoutForLevel(heroClass, level, Math.floor(rng.next() * 2));
+  const loadout = loadoutForLevel(heroClass, Math.max(level, tier === 'endgame' ? 18 : level), Math.floor(rng.next() * 2));
   return {
-    id: `npc_${heroClass.toLowerCase()}_${Math.floor(rng.next() * 1e9).toString(36)}`,
-    name: rng.pick(MOCK_NAMES),
+    id: `ai_${heroClass.toLowerCase()}_${Math.floor(rng.next() * 1e9).toString(36)}`,
+    name: rng.pick(AI_NAMES),
     heroClass,
     role,
     isPlayer: false,
+    isAi: true,
     level,
     cp: totals.cp,
     loadout,
     primary: defaultPrimary(loadout),
     gear,
   };
+}
+
+/** @deprecated Prefer buildAiMember. */
+export function buildMockMember(
+  rng: Rng,
+  heroClass: HeroClass,
+  level: number,
+  role: ClanRole = 'member',
+): ClanMember {
+  return buildAiMember(rng, heroClass, level, role, 'scaled');
+}
+
+/** Normalize older saves that lack `isAi`. */
+export function normalizeClanMember(m: ClanMember): ClanMember {
+  return { ...m, isAi: m.isPlayer ? false : m.isAi !== false };
 }
 
 export function createClan(
@@ -139,6 +204,7 @@ export function createClan(
     heroClass: player.heroClass,
     role: 'leader',
     isPlayer: true,
+    isAi: false,
     level: player.level,
     cp: player.cp,
     loadout: [...player.loadout],
@@ -162,9 +228,9 @@ export function joinClanByCode(
   const clan = createClan(rng, `Clan ${clean.slice(0, 4)}`, player);
   clan.code = clean;
   clan.members[0].role = 'member';
-  // Prefill mock leader of a different class when possible.
+  // Prefill AI leader of a different class when possible.
   const other = HERO_CLASSES.find((c) => c !== player.heroClass) ?? 'Warrior';
-  const leader = buildMockMember(rng, other, Math.max(1, player.level - 1), 'leader');
+  const leader = buildAiMember(rng, other, Math.max(1, player.level - 1), 'leader', 'scaled');
   leader.name = 'Hall Warden';
   clan.members.unshift(leader);
   return clan;
@@ -180,22 +246,34 @@ export function rosterReady(members: ClanMember[]): boolean {
   return missingClasses(members).length === 0;
 }
 
-/** Fill empty class slots with mock recruits (up to clan max). */
-export function recruitForRoster(clan: ClanData, rng: Rng, playerLevel: number): ClanMember[] {
+/**
+ * Auto-fill empty class slots with AI teammates (player class stays human).
+ * Enough AI so 4v4 always queues — one of each class.
+ */
+export function fillAiRoster(
+  clan: ClanData,
+  rng: Rng,
+  playerLevel: number,
+  tier: AiGearTier = 'scaled',
+): ClanMember[] {
   const added: ClanMember[] = [];
   const missing = missingClasses(clan.members);
   for (const cls of missing) {
     if (clan.members.length + added.length >= CLAN_MAX_SIZE) break;
-    const m = buildMockMember(rng, cls, Math.max(1, playerLevel + Math.floor(rng.next() * 3) - 1));
-    added.push(m);
+    const lvl = Math.max(1, playerLevel + Math.floor(rng.next() * 3) - 1);
+    added.push(buildAiMember(rng, cls, lvl, 'member', tier));
   }
-  // Pad to min size with random extras if still short (duplicate classes not allowed for queue).
   while (clan.members.length + added.length < CLAN_MIN_SIZE) {
     const free = HERO_CLASSES.filter((c) => ![...clan.members, ...added].some((m) => m.heroClass === c));
     if (!free.length) break;
-    added.push(buildMockMember(rng, free[0], playerLevel));
+    added.push(buildAiMember(rng, free[0], playerLevel, 'member', tier));
   }
   return added;
+}
+
+/** @deprecated Prefer fillAiRoster. */
+export function recruitForRoster(clan: ClanData, rng: Rng, playerLevel: number): ClanMember[] {
+  return fillAiRoster(clan, rng, playerLevel, 'scaled');
 }
 
 /** Pick one of each class for the 4v4 queue (player always included). */
