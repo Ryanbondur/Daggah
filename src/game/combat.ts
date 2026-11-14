@@ -4,6 +4,7 @@ import type { SetEffects } from '../data/gear';
 import { SKILL_BY_ID, defaultPrimary } from '../data/skills';
 import type { HeroClass, SkillId, Stats } from '../data/types';
 import { maxEnergy } from '../data/xp';
+import { goldFromKill } from './shop';
 import type { Rng } from './rng';
 
 export const HERO_X = 0.24;
@@ -712,7 +713,7 @@ export class Battle {
     e.dead = true;
     e.deathT = 0;
     const xp = Math.max(1, Math.round(e.xp));
-    const gold = Math.max(1, Math.round(xp * 0.8));
+    const gold = goldFromKill(e.tier, e.def.role);
     this.events.push({ t: 'kill', enemyId: e.id, role: e.def.role, xp, gold, defId: e.def.id });
     const healPct = this.heroInput.effects.onKillHealPct;
     if (healPct > 0) {

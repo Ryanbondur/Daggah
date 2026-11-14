@@ -87,6 +87,8 @@ import { defaultRng } from './rng';
 import { scheduleCloudPush } from './cloudSave';
 import { exportSaveCode, importSaveCode } from './saveCode';
 import { applyOfflineProgress, type OfflineSummary } from './offline';
+import type { DailyShopOffer } from './shop';
+import { buildDailyOffers, hashDayKey } from './shop';
 import type { SaveData, Storage } from './state';
 import {
   BAG_CAP,
@@ -217,6 +219,7 @@ export class Game {
     this.save = loadSave(storage);
     this.refreshKeys();
     this.refreshDaily();
+    this.refreshShop();
     this.noteSeasonLogin();
     if (!availableSpeeds(this.save.level).includes(this.save.settings.speed)) {
       this.save.settings.speed = 1;
@@ -441,6 +444,7 @@ export class Game {
 
   private onKill(ev: Extract<BattleEvent, { t: 'kill' }>): void {
     this.save.gold += ev.gold;
+    this.persist();
     if (this.dungeonCtx) this.dungeonCtx.xp += ev.xp;
     this.gainXp(ev.xp);
     if (this.mode === 'stage' && ev.role === 'elite' && this.rng.chance(0.12)) {
@@ -1157,6 +1161,43 @@ export class Game {
     };
   }
 
+  /** Roll / rotate the Town daily merchant once per calendar day. */
+  refreshShop(now = Date.now()): void {
+    const key = dayKey(now);
+    if (this.save.shop?.dayKey === key && typeof this.save.shop.seed === 'number') return;
+    this.save.shop = {
+      dayKey: key,
+      seed: hashDayKey(key),
+      purchased: [],
+    };
+    this.persist();
+  }
+
+  /** Today's merchant slate (refreshes when the calendar day changes). */
+  dailyShopOffers(now = Date.now()): DailyShopOffer[] {
+    this.refreshShop(now);
+    return buildDailyOffers(this.save.shop.seed, {
+      level: this.save.level,
+      stagesCleared: this.save.stagesCleared,
+      purchased: this.save.shop.purchased,
+    });
+  }
+
+  /** Buy a daily merchant offer for Gold. Returns error or null. */
+  buyDailyShop(index: number, now = Date.now()): string | null {
+    const offers = this.dailyShopOffers(now);
+    const offer = offers[index];
+    if (!offer) return 'Unknown offer.';
+    if (offer.purchased || this.save.shop.purchased.includes(index)) return 'Already purchased today.';
+    if (this.save.gold < offer.price) return `Need ${offer.price} gold.`;
+    this.save.gold -= offer.price;
+    this.save.shop.purchased = [...this.save.shop.purchased, index];
+    this.queueLoot([offer.item], false);
+    this.toast(`Bought ${offer.item.name} (−${offer.price} gold)`, 'good');
+    this.changed();
+    return null;
+  }
+
   noteSeasonLogin(now = Date.now()): void {
     const key = dayKey(now);
     if (!this.save.seasonLoginDays.includes(key)) {
@@ -1624,6 +1665,7 @@ export class Game {
     this.save.keys = Math.min(KEY_CAP, this.save.keys + 5);
     this.save.crystals += 500;
     this.save.dust += 200;
+    this.save.gold += 1000;
     this.save.clanTokens += 100;
     this.changed();
   }
