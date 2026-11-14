@@ -31,6 +31,19 @@ export const BAG_CAP = 24;
 export const KEY_CAP = 8;
 export const KEY_REGEN_MS = 30 * 60 * 1000;
 export const DUNGEON_CRYSTAL_COST = 50;
+
+/** Ms until the next dungeon key regenerates; 0 when already at cap. */
+export function msUntilNextKey(keys: number, keysAt: number, now: number): number {
+  if (keys >= KEY_CAP) return 0;
+  return Math.max(0, KEY_REGEN_MS - (now - keysAt));
+}
+
+/** Adventure HUD label: "next key in Xm" or "full" at cap. */
+export function formatKeyRegenLabel(keys: number, remainingMs: number): string {
+  if (keys >= KEY_CAP) return 'full';
+  const minutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+  return `next key in ${minutes}m`;
+}
 export const STAGES_PER_ACT = 5;
 export const PLAYABLE_STAGES = 50;
 

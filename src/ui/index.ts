@@ -4,6 +4,7 @@ import type { NodeType } from '../data/acts';
 import { xpToNext } from '../data/xp';
 import { playSfx, unlockAudio } from '../game/audio';
 import type { Game, RunResult } from '../game/game';
+import { formatKeyRegenLabel } from '../game/state';
 import { asset, navIcon, skillIcon } from './assets';
 import type { CampPane, ClanPane, ModalOpts, Tab, UIContext } from './context';
 import { fmt } from './context';
@@ -614,14 +615,16 @@ export function mountUI(
     updateHud();
     keyTick += 1;
     if (keyTick % 30 === 0 && ctx.tab === 'adventure' && !modalEl) {
-      const t = pane.querySelector('.res-bar small');
-      if (t) t.textContent = `+1 in ${fmtMs(game.nextKeyInMs())}`;
+      const before = game.save.keys;
+      game.refreshKeys();
+      if (game.save.keys !== before) {
+        game.changed();
+      } else {
+        const regen = pane.querySelector('.res-keys .keys-regen');
+        if (regen) regen.textContent = formatKeyRegenLabel(game.save.keys, game.nextKeyInMs());
+      }
     }
     requestAnimationFrame(frameLoop);
-  }
-  function fmtMs(ms: number): string {
-    const s = Math.ceil(ms / 1000);
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 
   renderChat();
