@@ -767,11 +767,11 @@ export function showResult(ctx: UIContext, r: RunResult): void {
   let buttons = '';
   if (r.kind === 'dungeon') {
     const cells = r.loot.map((it) => slotHtml(it, {})).join('');
-    body = `<p>${r.success ? 'Boss defeated! Spoils of the vault:' : r.note ?? ''}</p>
+    body = `<p>${r.success ? 'Boss defeated! Spoils of the vault:' : escapeHtml(r.note ?? '')}</p>
       <div class="row"><span>XP gained</span><b>${fmt(r.xp)}</b></div>
       <div class="row"><span>Gear found</span><b>${r.loot.length}</b></div>
       ${r.loot.length ? `<div class="loot-row">${cells}</div>` : ''}
-      ${r.success && r.note ? `<p>${r.note}</p>` : ''}`;
+      ${r.success && r.note ? `<p>${escapeHtml(r.note)}</p>` : ''}`;
     buttons = r.loot.length
       ? `<button class="btn stone" data-action="res-salvage">Salvage Non-Upgrades</button>
          <button class="btn gold" data-action="res-review">Review Gear</button>`
@@ -790,11 +790,11 @@ export function showResult(ctx: UIContext, r: RunResult): void {
     buttons = `<button class="btn stone" data-action="res-farm">Farm Dungeon</button>
       <button class="btn gold" data-action="res-retry">Retry Stage</button>`;
   } else {
-    body = `<p>${r.note ?? ''}</p>`;
+    body = `<p>${escapeHtml(r.note ?? '')}</p>`;
     buttons = `<button class="btn gold" data-action="res-ok">${r.kind === 'actClear' ? 'Onward' : 'Back to Camp'}</button>`;
   }
   const el = ctx.openModal(
-    `<div class="sheet"><h2>${r.title}</h2><div class="body">${body}</div><div class="btns">${buttons}</div></div>`,
+    `<div class="sheet"><h2>${escapeHtml(r.title)}</h2><div class="body">${body}</div><div class="btns">${buttons}</div></div>`,
     {},
   );
   el.addEventListener('click', (ev) => {

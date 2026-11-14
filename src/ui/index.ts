@@ -205,7 +205,9 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
     const title = game.title;
     const titleEl = $('#stage-title');
     const m = title.match(/^(\[[^\]]+\])\s+(.*?)\s+(\d+-\d+)$/);
-    const html = m ? `${m[1]} ${m[2]}<br />${m[3]}` : title;
+    const html = m
+      ? `${escapeHtml(m[1]!)} ${escapeHtml(m[2]!)}<br />${escapeHtml(m[3]!)}`
+      : escapeHtml(title);
     if (titleEl.innerHTML !== html) titleEl.innerHTML = html;
     $('#cp').textContent = fmt(game.cp);
     const power = game.stagePowerReadout();
@@ -331,7 +333,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
         if (modalEl) break;
         const el = document.createElement('div');
         el.className = 'levelup';
-        const skills = e.newSkills.map((id) => SKILL_BY_ID[id].name);
+        const skills = e.newSkills.map((id) => escapeHtml(SKILL_BY_ID[id].name));
         el.innerHTML = `<b>Level ${e.level}!</b>${skills.length ? `<span>New skill: ${skills.join(', ')}</span>` : ''}`;
         frame.appendChild(el);
         setTimeout(() => el.remove(), 3300);
