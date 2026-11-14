@@ -1783,6 +1783,177 @@ button {
   color: #8a281f;
   font-weight: 800;
 }
+.town-card.clickable {
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.town-card.clickable:hover,
+.town-card.clickable:focus-visible {
+  border-color: #a87828;
+  outline: none;
+  transform: translateY(-0.3cqw);
+}
+.town-card .live {
+  color: #1f6b2a;
+  font-weight: 800;
+  font-size: 2.5cqw;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8cqw;
+  margin: 1.6cqw 0;
+  font-size: 3cqw;
+  color: #4d473e;
+  text-align: left;
+}
+.field input {
+  font: inherit;
+  padding: 1.6cqw 2cqw;
+  border: 0.35cqw solid #6a5c45;
+  border-radius: 1cqw;
+  background: #f7efd8;
+  color: #2a2420;
+}
+.clan-banner,
+.season-hero {
+  display: flex;
+  gap: 2cqw;
+  align-items: center;
+  margin-bottom: 2cqw;
+  text-align: left;
+}
+.clan-banner img,
+.season-hero img {
+  width: 14cqw;
+  height: 14cqw;
+  object-fit: contain;
+}
+.clan-banner b,
+.season-hero b {
+  display: block;
+  font-family: var(--font-title);
+  font-size: 4cqw;
+}
+.clan-banner span,
+.season-hero span {
+  font-size: 2.8cqw;
+  color: #6b655a;
+}
+.class-pips {
+  display: flex;
+  gap: 0.8cqw;
+  margin-top: 1cqw;
+}
+.class-pip {
+  width: 5.5cqw;
+  height: 5.5cqw;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 2.6cqw;
+  font-weight: 800;
+  background: #cfc4ae;
+  color: #6b655a;
+  border: 0.3cqw solid #8a8372;
+}
+.class-pip.on {
+  background: #3a5a3a;
+  color: #e8f0d8;
+  border-color: #1f6b2a;
+}
+.body-scroll {
+  max-height: 28cqw;
+  overflow: auto;
+  margin: 1cqw 0;
+}
+.clan-sheet .warn {
+  color: #8a281f;
+  font-weight: 700;
+  font-size: 3cqw;
+}
+.vendor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2cqw;
+  margin-top: 1.6cqw;
+}
+.vendor-row {
+  display: grid;
+  grid-template-columns: 9cqw 1fr auto;
+  gap: 1.6cqw;
+  align-items: center;
+  padding: 1.4cqw;
+  border: 0.35cqw solid #6a5c45;
+  border-radius: 1.2cqw;
+  background: linear-gradient(180deg, #f4ead2, #e6d7b4);
+  font: inherit;
+  color: #2c261c;
+  text-align: left;
+  cursor: pointer;
+}
+.vendor-row.dim {
+  opacity: 0.55;
+}
+.vendor-row img {
+  width: 8cqw;
+  height: 8cqw;
+  object-fit: contain;
+}
+.vendor-row b {
+  display: block;
+  font-size: 3.1cqw;
+}
+.vendor-row small {
+  color: #6b655a;
+  font-size: 2.4cqw;
+}
+.vendor-row .price {
+  display: flex;
+  align-items: center;
+  gap: 0.6cqw;
+  font-size: 3.2cqw;
+  color: #6a3a12;
+}
+.vendor-row .price img {
+  width: 4.5cqw;
+  height: 4.5cqw;
+}
+.pvp-sheet .pvp-arena {
+  height: 22cqw;
+  border-radius: 1.2cqw;
+  background-size: cover;
+  background-position: center;
+  border: 0.35cqw solid #4a4034;
+  margin-bottom: 1.6cqw;
+  box-shadow: inset 0 0 2cqw rgba(0, 0, 0, 0.45);
+}
+.pvp-teams {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.6cqw;
+  margin: 1.6cqw 0;
+  text-align: left;
+}
+.pvp-teams h3 {
+  margin: 0 0 0.8cqw;
+  font-family: var(--font-title);
+  font-size: 3.2cqw;
+}
+.pvp-f {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.8cqw;
+  font-size: 2.6cqw;
+  padding: 0.4cqw 0;
+  border-bottom: 0.25cqw dotted rgba(90, 80, 60, 0.35);
+}
+.pvp-f b {
+  color: #6a3a12;
+}
 .tiers .row {
   font-size: 3cqw;
 }

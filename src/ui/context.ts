@@ -19,6 +19,9 @@ export interface UIContext {
   showChat(): void;
   showItemInfo(slot: string): void;
   showClassPick(): void;
+  showClanHall(): void;
+  showSeasonBoard(): void;
+  showClanArmorer(): void;
   flashSlot(slot: string): void;
 }
 

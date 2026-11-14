@@ -90,9 +90,10 @@ export type SetId =
   | 'gloomveil'
   | 'echoplate'
   | 'voidwoven'
-  | 'nightscar-regalia';
+  | 'nightscar-regalia'
+  | 'clanforged';
 
-export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j';
+export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k';
 
 export interface Item {
   id: string;

@@ -1,6 +1,6 @@
 # Daggah
 
-Dark-fantasy, portrait (9:16) browser auto-combat RPG. Current slice: four classes (Warrior, Mage, Ranger, Rogue), Acts 1–10 through Nightscar Apex, gear sets, skills, dungeons and local save.
+Dark-fantasy, portrait (9:16) browser auto-combat RPG. Current slice: four classes (Warrior, Mage, Ranger, Rogue), Acts 1–10 through Nightscar Apex, gear sets, skills, dungeons, **local clans + 4v4 auto-battle PvP**, Clanforged vendor, and a 30-day season stub.
 
 Stack: Vite + TypeScript + Phaser 3. Phaser renders the stage (camp and battle); DOM/CSS renders the HUD, panes and modals.
 
@@ -17,51 +17,40 @@ npm run art        # re-slice generated art from art-src/ into public/assets/ (n
 
 ## What is in this slice
 
-- **Class pick**: on a new save (or after Reset), choose Warrior / Mage / Ranger / Rogue. Class is locked for the season; reset to pick again.
+- **Class pick**: on a new save (or after Reset / season reset), choose Warrior / Mage / Ranger / Rogue. Class is locked for the season.
 - **Camp**: 12-slot gear pane, HP and Energy orbs, level/XP track, speed toggle, onboarding quest strip, bag, hero stats and settings.
 - **Battle**: auto-combat west→east through stage nodes. Skills fire from the equipped 4-bar; center **Battle** starts a run and force-casts Primary mid-fight.
 - **Skill**: each class has 2 playstyles × 4 skills (8 total). Equip freely within class out of combat.
-- **Adventure**: Acts 1–10 (through Voidgate and Nightscar Depths), 5 stages each. Dungeons through Gate Reliquary and **Nightscar Apex** (endgame, stingy drops, unlock after Act 10 clear). Keys regenerate over time; sweep after first clear.
-- **Sets**: Ember Raider, Cavern Cleaver/Bulwark, Gravemarch, Ashen Codex, Rime Circlet, Quillstorm, Deadeye, Cinderstride, Nightfang, Gloomveil, Echoplate, Voidwoven, Nightscar Regalia (2/4/6-piece bonuses).
-- **Gear compare**: CP + per-stat deltas; Replace / Salvage / bag keep. Auto-salvage options in Settings.
-- **Town**: stub cards + onboarding quests + Settings.
-- **Save**: `daggah.save.v2` (migrates readable Warrior v1 saves). Autosaves on change and every 5s.
+- **Adventure**: Acts 1–10 (through Voidgate and Nightscar Depths), 5 stages each. Dungeons through Gate Reliquary and **Nightscar Apex** (endgame, stingy drops).
+- **Sets**: Ember Raider through Nightscar Regalia, plus vendor-only **Clanforged** (2pc +8% PvP CP, 4pc +10% token gains).
+- **Town**: Clan Hall (create/join, roster, 4v4 queue), Season Board (30-day timer + local reset), Clan Armorer (token shop). Blacksmith / Quartermaster still stubbed.
+- **Clans / 4v4 (client-local)**: create (500 crystals) or join by code; recruit mock members for missing classes; queue when roster has one of each class. Auto-battle uses your gear + skills; win 20 / loss 5 tokens (200/day cap).
+- **Save**: `daggah.save.v3` (migrates v2 / Warrior v1). Autosaves on change and every 5s.
 
-Out of scope: clans/4v4 PvP, seasons server.
+Out of scope: server seasons / matchmaking / true multiplayer clans.
 
 ## Controls
 
 - Bottom nav: Camp · Skill · Battle · Adventure · Town.
 - Center **Battle**: start current stage, then force-cast Primary.
 - Top-right HUD swords: start or retreat. Speed cycles unlocked multipliers.
-- Settings playtest tools: +500 XP, +1 Level, Clear Acts 1–10, +Keys +Crystals, Roll 5 drops, Reset save (reopens class pick).
+- Settings playtest tools: +500 XP, +1 Level, Clear Acts 1–10, +Keys +Crystals +Tokens, Roll 5 drops, Reset season, Reset save.
 
 ## Project layout
 
 ```
 src/data/    types, XP, skills (all classes), gear/sets/CP, acts 1-10 + enemies, quests
-src/game/    combat engine, Game controller, save, tests
+src/game/    combat engine, clan/PvP, Game controller, save, tests
 src/stage/   Phaser StageScene
-src/ui/      DOM panes, modals (incl. class pick), HUD
+src/ui/      DOM panes, modals (clan/season/vendor/PvP), HUD
 scripts/     process-art.py
 art-src/     raw generated art → public/assets/
 ```
 
-`src/game/sim.test.ts` auto-plays a Warrior through all 50 stages and smoke-clears Act 1 on Mage/Ranger/Rogue.
-
-## Design assumptions
-
-- CP uses the GDD formula (smaller than the reference "+167" scale).
-- Quest 1 pays 300 crystals.
-- Mid/late enemy growth softens after Act 2, 4, 6, and 8 so Acts 9–10 stay clearable with dungeon farming.
-- Nightscar Apex floors use stingier rarity weights; the boss uses the GDD endgame table (higher legendary chase).
-- Art is best-effort dark-fantasy cartoon (Sonnet 5.5 unavailable for GenerateImage this run); chroma-keyed via `npm run art`.
-
 ## Playtest checklist
 
-1. Fresh load → class pick → pick each class once (reset between) and confirm hero sprite + default loadout.
-2. Warrior: Battle 1-1, loot compare, salvage 5, claim quest.
-3. Skill pane: switch both playstyles, equip 4 skills, set Primary star.
-4. Adventure: push into Act 9 Voidgate and Act 10 Nightscar Depths; enter Gate Reliquary / Nightscar Apex after act clears.
-5. Settings → Clear Acts 1–10, farm Nightscar Apex, Review Gear (Voidwoven / Nightscar Regalia).
-6. Reload: progress persists. Reset: class pick returns.
+1. Town → Clan Hall → Create (need 500 crystals; Settings → +Keys +Crystals) or Join with any code.
+2. Recruit roster → Queue 4v4 → review result modal and token gain.
+3. Clan Armorer → buy Clanforged piece → compare/equip; 2/4pc bonuses show in hero sheet.
+4. Season Board → day timer; optional local season reset → class pick returns, clan kept.
+5. Reload: clan + tokens persist on `daggah.save.v3`.
