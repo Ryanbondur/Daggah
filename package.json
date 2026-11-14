@@ -1,7 +1,7 @@
 {
   "name": "daggah",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Daggah — browser mobile auto-combat RPG (v1 vertical slice)",
   "type": "module",
   "scripts": {

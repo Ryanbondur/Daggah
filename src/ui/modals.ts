@@ -15,6 +15,7 @@ import { asset, heroSprite } from './assets';
 import { escapeHtml } from './escape';
 import { SEASON_MILESTONES } from '../data/season';
 import { TUTORIAL_STEPS } from '../data/tutorial';
+import { WHATS_NEW } from '../data/whatsNew';
 import { playstyleCommitted } from '../data/skills';
 
 const STAT_ORDER: StatKey[] = [
@@ -750,6 +751,7 @@ export function showTutorialCoach(ctx: UIContext): void {
     if (t.dataset.action === 'tut-skip') {
       g.skipTutorial();
       ctx.closeModal();
+      maybeShowWhatsNew(ctx);
       return;
     }
     if (t.dataset.action === 'tut-go') {
@@ -759,6 +761,49 @@ export function showTutorialCoach(ctx: UIContext): void {
       }
     }
   });
+}
+
+/** Dismissible release notes — once per APP_CONTENT_VERSION (stored on save). */
+export function showWhatsNew(ctx: UIContext): void {
+  const g = ctx.game;
+  if (!g.shouldShowWhatsNew()) return;
+  const bullets = WHATS_NEW.bullets
+    .map((b) => `<li>${escapeHtml(b)}</li>`)
+    .join('');
+  const el = ctx.openModal(
+    `<div class="sheet tutorial-sheet whats-new-sheet">
+      <h2>${escapeHtml(WHATS_NEW.title)}</h2>
+      <div class="body">
+        <p class="tagline">Since your last visit</p>
+        <ul class="whats-new-list">${bullets}</ul>
+      </div>
+      <div class="btns">
+        <button class="btn gold" data-action="whats-new-ok">Got it</button>
+      </div>
+    </div>`,
+    {
+      className: 'tutorial-dim',
+      onDismiss: () => {
+        g.dismissWhatsNew();
+        ctx.closeModal();
+      },
+    },
+  );
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    if (t.dataset.action === 'whats-new-ok') {
+      g.dismissWhatsNew();
+      ctx.closeModal();
+    }
+  });
+}
+
+export function maybeShowWhatsNew(ctx: UIContext): void {
+  if (!ctx.game.shouldShowWhatsNew() || ctx.modalOpen) return;
+  setTimeout(() => {
+    if (!ctx.modalOpen) showWhatsNew(ctx);
+  }, 400);
 }
 
 export function showResult(ctx: UIContext, r: RunResult): void {

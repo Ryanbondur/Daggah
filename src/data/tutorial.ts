@@ -1,4 +1,9 @@
-export type TutorialStepId = 'auto-attack' | 'first-drop' | 'equip-skills' | 'dungeon-key';
+export type TutorialStepId =
+  | 'auto-attack'
+  | 'first-drop'
+  | 'equip-skills'
+  | 'dungeon-key'
+  | 'clan';
 
 export interface TutorialStep {
   id: TutorialStepId;
@@ -8,31 +13,40 @@ export interface TutorialStep {
   tab?: 'camp' | 'skill' | 'adventure' | 'clan' | 'battle';
 }
 
-/** Guided first-run chain. Skip is only offered after the player has completed it once. */
+/**
+ * Guided first-run chain (core loop: fight → gear → skills → dungeon → clan).
+ * Skip is only offered after the player has completed it once.
+ */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'auto-attack',
-    title: 'Auto-attack',
-    body: 'Tap the center Battle button. Your hero walks east and auto-attacks — no need to mash.',
+    title: 'Fight',
+    body: 'Tap Battle. Your hero auto-attacks — no mashing.',
     tab: 'battle',
   },
   {
     id: 'first-drop',
-    title: 'Compare gear',
-    body: 'When gear drops, compare Combat Power and green arrows. Replace upgrades or Salvage junk.',
+    title: 'Gear',
+    body: 'Compare Combat Power and arrows. Replace upgrades; Salvage junk.',
     tab: 'camp',
   },
   {
     id: 'equip-skills',
-    title: 'Equip 4 skills',
-    body: 'Open Skill and fill all 4 bar slots. One playstyle set beats a mixed bar.',
+    title: 'Skills',
+    body: 'Open Skill and fill all 4 bar slots. Stick to one playstyle.',
     tab: 'skill',
   },
   {
     id: 'dungeon-key',
-    title: 'Dungeon key',
-    body: 'Adventure → clear Act 1 → Enter Hollow Crypt with a dungeon key for set gear.',
+    title: 'Dungeon',
+    body: 'Adventure → clear Act 1 → Enter a dungeon with a key for set gear.',
     tab: 'adventure',
+  },
+  {
+    id: 'clan',
+    title: 'Clan',
+    body: 'Clan tab: create or join, fill AI teammates, queue 4v4 for tokens.',
+    tab: 'clan',
   },
 ];
 

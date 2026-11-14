@@ -22,6 +22,7 @@ import {
   showSeasonBoard,
   showSettings,
   showTutorialCoach,
+  maybeShowWhatsNew,
 } from './modals';
 import { escapeHtml } from './escape';
 import { renderAdventure, renderCamp, renderClan, renderSkill } from './panes';
@@ -588,6 +589,8 @@ export function mountUI(
     setTimeout(() => {
       if (!ctx.modalOpen) showTutorialCoach(ctx);
     }, 400);
+  } else {
+    maybeShowWhatsNew(ctx);
   }
   requestAnimationFrame(frameLoop);
 

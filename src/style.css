@@ -2426,6 +2426,19 @@ button {
   font-size: 4.2cqw;
   color: #5a3a12;
 }
+.whats-new-list {
+  margin: 1.5cqw 0 0;
+  padding: 0 0 0 4.5cqw;
+  color: #4d473e;
+  font-size: 3.2cqw;
+  line-height: 1.35;
+}
+.whats-new-list li {
+  margin: 0 0 1.4cqw;
+}
+.whats-new-list li:last-child {
+  margin-bottom: 0;
+}
 .season-timer {
   margin-top: 1cqw;
   height: 1.4cqw;

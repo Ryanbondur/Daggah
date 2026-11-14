@@ -1,7 +1,8 @@
 import type { Gear } from '../data/gear';
 import { SLOTS, starterGear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
-import { defaultTutorial, type TutorialState } from '../data/tutorial';
+import { defaultTutorial, TUTORIAL_STEPS, type TutorialState } from '../data/tutorial';
+import { APP_CONTENT_VERSION } from '../data/whatsNew';
 import type { HeroClass, Item, RarityId, SkillId, SlotId } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
 import { sanitizeDomId, sanitizePlainText } from '../util/text';
@@ -82,6 +83,12 @@ export interface SaveData {
   season: SeasonData;
   /** First-run tutorial coach. */
   tutorial: TutorialState;
+  /**
+   * Last dismissed What’s new content version (`APP_CONTENT_VERSION`).
+   * Fresh saves seed to the current version (skip notes on first play).
+   * Missing on legacy saves → empty string so notes show once after migrate.
+   */
+  lastSeenContentVersion: string;
   /** Claimed season milestone ids. */
   seasonClaimed: string[];
   /** Distinct calendar days played this season (for Recruit tier). */
@@ -141,6 +148,7 @@ export function defaultSave(now = Date.now()): SaveData {
     clan: null,
     season: defaultSeason(now),
     tutorial: defaultTutorial(),
+    lastSeenContentVersion: APP_CONTENT_VERSION,
     seasonClaimed: [],
     seasonLoginDays: [new Date(now).toISOString().slice(0, 10)],
     daily: {
@@ -245,12 +253,25 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   | 'clan'
   | 'season'
   | 'tutorial'
+  | 'lastSeenContentVersion'
   | 'seasonClaimed'
   | 'seasonLoginDays'
   | 'daily'
 > {
   const day = new Date(now).toISOString().slice(0, 10);
   const tut = parsed.tutorial;
+  let tutorial: TutorialState;
+  if (tut && typeof tut.step === 'number') {
+    const everCompleted = !!tut.everCompleted;
+    // Completing an older shorter coach should not reopen when we add steps.
+    const step = everCompleted ? Math.max(tut.step, TUTORIAL_STEPS.length) : tut.step;
+    tutorial = { step, everCompleted, skipped: !!tut.skipped };
+  } else {
+    tutorial = fresh.tutorial;
+  }
+  // Legacy saves omit the field → '' so What’s new shows once for returning players.
+  const lastSeenContentVersion =
+    typeof parsed.lastSeenContentVersion === 'string' ? parsed.lastSeenContentVersion : '';
   return {
     clanTokens: typeof parsed.clanTokens === 'number' ? parsed.clanTokens : 0,
     clanTokensEarnedToday: typeof parsed.clanTokensEarnedToday === 'number' ? parsed.clanTokensEarnedToday : 0,
@@ -260,14 +281,8 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
     clanLosses: typeof parsed.clanLosses === 'number' ? parsed.clanLosses : 0,
     clan: parsed.clan ? sanitizeClan(parsed.clan) : null,
     season: parsed.season?.startedAt ? parsed.season : defaultSeason(parsed.createdAt ?? now),
-    tutorial:
-      tut && typeof tut.step === 'number'
-        ? {
-            step: tut.step,
-            everCompleted: !!tut.everCompleted,
-            skipped: !!tut.skipped,
-          }
-        : fresh.tutorial,
+    tutorial,
+    lastSeenContentVersion,
     seasonClaimed: Array.isArray(parsed.seasonClaimed) ? parsed.seasonClaimed.filter((x) => typeof x === 'string') : [],
     seasonLoginDays: Array.isArray(parsed.seasonLoginDays)
       ? parsed.seasonLoginDays.filter((x) => typeof x === 'string')
