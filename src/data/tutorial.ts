@@ -5,7 +5,7 @@ export interface TutorialStep {
   title: string;
   body: string;
   /** Nav tab hint for the coach mark. */
-  tab?: 'camp' | 'skill' | 'adventure' | 'town' | 'battle';
+  tab?: 'camp' | 'skill' | 'adventure' | 'clan' | 'battle';
 }
 
 /** Guided first-run chain. Skip is only offered after the player has completed it once. */

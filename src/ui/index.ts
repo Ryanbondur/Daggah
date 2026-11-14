@@ -5,7 +5,7 @@ import { xpToNext } from '../data/xp';
 import { playSfx, unlockAudio } from '../game/audio';
 import type { Game, RunResult } from '../game/game';
 import { asset, navIcon, skillIcon } from './assets';
-import type { ModalOpts, Tab, UIContext } from './context';
+import type { ClanPane, ModalOpts, Tab, UIContext } from './context';
 import { fmt } from './context';
 import { CLASS_PLAYSTYLES } from '../data/skills';
 import type { PlaystyleId } from '../data/types';
@@ -13,7 +13,6 @@ import {
   showBag,
   showChat,
   showClanArmorer,
-  showClanHall,
   showClassPick,
   showCompare,
   showHero,
@@ -25,7 +24,7 @@ import {
   showTutorialCoach,
 } from './modals';
 import { escapeHtml } from './escape';
-import { renderAdventure, renderCamp, renderSkill, renderTown } from './panes';
+import { renderAdventure, renderCamp, renderClan, renderSkill } from './panes';
 import { ICON } from './svg';
 import { heroSprite } from './assets';
 
@@ -70,7 +69,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
       <button class="nav-btn" data-tab="skill"><img src="${navIcon('skill')}" alt="" />Skill<span class="new" id="new-badge" hidden>New</span></button>
       <div></div>
       <button class="nav-btn" data-tab="adventure"><img src="${navIcon('adventure')}" alt="" />Adventure</button>
-      <button class="nav-btn" data-tab="town"><img src="${navIcon('town')}" alt="" />Town</button>
+      <button class="nav-btn" data-tab="clan"><img src="${navIcon('clan')}" alt="" />Clan</button>
       <button class="battle-btn" id="battle-btn" data-action="battle" aria-label="Battle">
         <img class="frame-img" src="${asset('ui/battle-button.webp')}" alt="" draggable="false" />
         <span class="skill-face"><img id="battle-skill" src="" alt="" draggable="false" /></span>
@@ -98,6 +97,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
   const ctx: UIContext = {
     game,
     tab: 'camp',
+    clanPane: 'hall',
     skillStyle: CLASS_PLAYSTYLES[game.save.heroClass][0],
     skillBarFocus: null,
     get modalOpen() {
@@ -145,7 +145,10 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
     showChat: () => showChat(ctx),
     showItemInfo: (slot) => showItemInfo(ctx, slot),
     showClassPick: () => showClassPick(ctx),
-    showClanHall: () => showClanHall(ctx),
+    showClanHall: () => {
+      ctx.clanPane = 'hall';
+      ctx.setTab('clan');
+    },
     showSeasonBoard: () => showSeasonBoard(ctx),
     showClanArmorer: () => showClanArmorer(ctx),
     flashSlot(slot) {
@@ -181,8 +184,8 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
       case 'adventure':
         pane.innerHTML = renderAdventure(ctx);
         break;
-      case 'town':
-        pane.innerHTML = renderTown(ctx);
+      case 'clan':
+        pane.innerHTML = renderClan(ctx);
         break;
     }
     const sc = pane.querySelector('.pane-inner.scroll');
@@ -453,8 +456,62 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
       case 'dungeon-sweep':
         game.sweepDungeon(d.id!);
         break;
+      case 'clan-pane': {
+        const paneId = d.pane as ClanPane;
+        if (paneId === 'hall' || paneId === 'board' || paneId === 'town') {
+          ctx.clanPane = paneId;
+          ctx.render();
+        }
+        break;
+      }
       case 'clan-hall':
-        showClanHall(ctx);
+        ctx.clanPane = 'hall';
+        ctx.setTab('clan');
+        break;
+      case 'clan-create': {
+        const name = (pane.querySelector('#clan-name') as HTMLInputElement | null)?.value ?? '';
+        const err = game.createClan(name);
+        if (err) game.toast(err, 'bad');
+        else {
+          ctx.clanPane = 'hall';
+          ctx.render();
+        }
+        break;
+      }
+      case 'clan-join': {
+        const code = (pane.querySelector('#clan-code') as HTMLInputElement | null)?.value ?? '';
+        const err = game.joinClan(code);
+        if (err) game.toast(err, 'bad');
+        else {
+          ctx.clanPane = 'hall';
+          ctx.render();
+        }
+        break;
+      }
+      case 'clan-recruit': {
+        const err = game.fillAiClanRoster();
+        if (err) game.toast(err, err.includes('already') ? 'info' : 'bad');
+        ctx.render();
+        break;
+      }
+      case 'clan-practice': {
+        const err = game.queuePractice4v4();
+        if (err) game.toast(err, 'bad');
+        break;
+      }
+      case 'clan-queue': {
+        if (!game.clanRosterReady()) {
+          game.toast('Need one of each class — Fill AI roster', 'bad');
+          break;
+        }
+        const err = game.queueClanPvp();
+        if (err) game.toast(err, 'bad');
+        break;
+      }
+      case 'clan-leave':
+        game.leaveClan();
+        ctx.clanPane = 'hall';
+        ctx.render();
         break;
       case 'season-board':
         showSeasonBoard(ctx);

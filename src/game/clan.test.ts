@@ -8,6 +8,8 @@ import {
   TOKEN_LOSS,
   TOKEN_WIN,
   applyTokenCap,
+  buildClanLeaderboard,
+  clanSeasonScore,
   createClan,
   fillAiRoster,
   pickQueueRoster,
@@ -141,6 +143,29 @@ describe('4v4 auto-battle', () => {
     const added = recruitForRoster(clan, rng, 8);
     expect(added.length).toBe(3);
     expect(added.every((m) => m.isAi)).toBe(true);
+  });
+});
+
+describe('clan leaderboard', () => {
+  it('ranks player clan among local rivals by season score', () => {
+    expect(clanSeasonScore(5, 1, 100, 4)).toBe(5 * 100 + 100 + 4 * 8 - 12);
+    const board = buildClanLeaderboard(1, {
+      name: 'Test Wolves',
+      wins: 99,
+      losses: 0,
+      tokens: 500,
+      members: 8,
+    });
+    expect(board[0]?.isPlayer).toBe(true);
+    expect(board[0]?.name).toBe('Test Wolves');
+    expect(board[0]?.rank).toBe(1);
+    expect(board.every((e, i) => e.rank === i + 1)).toBe(true);
+    expect(board.length).toBeGreaterThan(5);
+  });
+
+  it('omits player row when not in a clan', () => {
+    const board = buildClanLeaderboard(2, null);
+    expect(board.every((e) => !e.isPlayer)).toBe(true);
   });
 });
 

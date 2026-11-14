@@ -1925,6 +1925,199 @@ button {
   display: flex;
   gap: 1.4cqw;
 }
+/* ----------------------------------------------------------- clan tab */
+.clan-tab .clan-subs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1cqw;
+  margin: 0.4cqw 0 1.6cqw;
+}
+.clan-sub {
+  font-family: var(--font-title);
+  font-weight: 800;
+  font-size: 3.2cqw;
+  padding: 1.4cqw 0.6cqw;
+  color: #5a5348;
+  background: rgba(255, 255, 255, 0.22);
+  border: 0.35cqw solid rgba(60, 54, 44, 0.35);
+  border-radius: 1cqw;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.clan-sub.on {
+  color: #2a2420;
+  background: linear-gradient(180deg, #f4e6c4, #e2cfa0);
+  border-color: #a87828;
+}
+.clan-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4cqw;
+}
+.clan-forms {
+  display: flex;
+  flex-direction: column;
+  gap: 2cqw;
+}
+.clan-form {
+  padding: 2cqw;
+  background: rgba(255, 255, 255, 0.28);
+  border: 0.35cqw solid rgba(60, 54, 44, 0.35);
+  border-radius: 1.2cqw;
+  text-align: left;
+}
+.clan-form h3,
+.pane-h {
+  margin: 0 0 0.6cqw;
+  font-family: var(--font-title);
+  font-size: 3.6cqw;
+  font-weight: 800;
+  color: #2a2420;
+}
+.clan-form p {
+  margin: 0 0 1cqw;
+  font-size: 2.8cqw;
+  color: #5d574d;
+  line-height: 1.35;
+}
+.clan-form .btn,
+.clan-practice-cta {
+  width: 100%;
+  margin-top: 0.6cqw;
+}
+.clan-banner-pane {
+  padding: 1.6cqw;
+  background: rgba(255, 255, 255, 0.28);
+  border: 0.35cqw solid rgba(60, 54, 44, 0.35);
+  border-radius: 1.2cqw;
+}
+.clan-code {
+  font-family: var(--font-num);
+  letter-spacing: 0.08em;
+  color: #6a4a18;
+  font-style: normal;
+}
+.clan-roster {
+  max-height: 36cqw;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8cqw;
+}
+.clan-member {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.2cqw;
+  align-items: center;
+  padding: 1.2cqw 1.6cqw;
+  background: rgba(255, 255, 255, 0.22);
+  border: 0.25cqw solid rgba(60, 54, 44, 0.28);
+  border-radius: 1cqw;
+  font-size: 2.9cqw;
+  text-align: left;
+}
+.clan-member b {
+  font-size: 2.7cqw;
+  color: #3a3428;
+  white-space: nowrap;
+}
+.clan-member small {
+  opacity: 0.7;
+}
+.clan-actions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2cqw;
+}
+.clan-actions-row .btn {
+  width: 100%;
+}
+.clan-warn {
+  margin: 0;
+  color: #8a281f;
+  font-weight: 700;
+  font-size: 3cqw;
+}
+.clan-ok {
+  margin: 0;
+  color: #1f6b2a;
+  font-weight: 700;
+  font-size: 3cqw;
+}
+.lb-hero {
+  display: flex;
+  gap: 2cqw;
+  align-items: center;
+  text-align: left;
+}
+.lb-hero img {
+  width: 12cqw;
+  height: 12cqw;
+  object-fit: contain;
+}
+.lb-hero b {
+  display: block;
+  font-family: var(--font-title);
+  font-size: 4cqw;
+}
+.lb-hero span {
+  font-size: 2.8cqw;
+  color: #6b655a;
+}
+.lb-you {
+  margin: 0;
+  font-size: 3cqw;
+  color: #3a3428;
+}
+.lb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6cqw;
+}
+.lb-head,
+.lb-row {
+  display: grid;
+  grid-template-columns: 8cqw 1fr 14cqw 12cqw;
+  gap: 1cqw;
+  align-items: center;
+  text-align: left;
+  font-size: 2.7cqw;
+}
+.lb-head {
+  padding: 0.6cqw 1.2cqw;
+  color: #6b655a;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.lb-row {
+  padding: 1.4cqw 1.2cqw;
+  background: rgba(255, 255, 255, 0.22);
+  border: 0.25cqw solid rgba(60, 54, 44, 0.28);
+  border-radius: 1cqw;
+}
+.lb-row.mine {
+  background: linear-gradient(180deg, rgba(244, 230, 196, 0.85), rgba(226, 207, 160, 0.75));
+  border-color: #a87828;
+}
+.lb-rank {
+  font-family: var(--font-num);
+  font-weight: 700;
+  color: #6a4a18;
+}
+.lb-name em {
+  font-style: normal;
+  font-size: 2.4cqw;
+  color: #1f6b2a;
+  font-weight: 800;
+}
+.lb-meta {
+  color: #5d574d;
+}
+.lb-score {
+  text-align: right;
+  font-family: var(--font-num);
+  color: #2a2420;
+}
 .town-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

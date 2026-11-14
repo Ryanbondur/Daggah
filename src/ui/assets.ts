@@ -9,8 +9,9 @@ export const itemIcon = (item: Pick<Item, 'icon' | 'slot'>): string =>
 
 export const skillIcon = (id: SkillId): string => asset(`icons/skills/${id}.webp`);
 
-export const navIcon = (name: 'camp' | 'skill' | 'adventure' | 'town' | 'crystal' | 'key'): string =>
-  asset(`icons/nav/${name}.webp`);
+export const navIcon = (
+  name: 'camp' | 'skill' | 'adventure' | 'town' | 'clan' | 'crystal' | 'key',
+): string => (name === 'clan' ? asset('ui/clan-hall.webp') : asset(`icons/nav/${name}.webp`));
 
 export const heroSprite = (heroClass: HeroClass): string =>
   asset(`sprites/hero-${heroClass.toLowerCase()}.webp`);

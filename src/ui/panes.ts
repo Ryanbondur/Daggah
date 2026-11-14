@@ -12,10 +12,11 @@ import {
   skillsForPlaystyle,
 } from '../data/skills';
 import type { PlaystyleId, SkillId } from '../data/types';
-import { CLAN_CREATE_COST, TOKEN_DAY_CAP } from '../game/clan';
+import { CLAN_CREATE_COST, TOKEN_DAY_CAP, TOKEN_LOSS, TOKEN_WIN, buildClanLeaderboard } from '../game/clan';
+import { HERO_CLASSES } from '../data/types';
 import { KEY_CAP, STAGES_PER_ACT } from '../game/state';
 import { asset, navIcon, skillIcon } from './assets';
-import type { UIContext } from './context';
+import type { ClanPane, UIContext } from './context';
 import { fmt } from './context';
 import { escapeHtml } from './escape';
 import { slotHtml } from './items';
@@ -209,14 +210,136 @@ export function renderAdventure(ctx: UIContext): string {
   </div>`;
 }
 
-export function renderTown(ctx: UIContext): string {
+function clanSubTabs(active: ClanPane): string {
+  const tabs: { id: ClanPane; label: string }[] = [
+    { id: 'hall', label: 'Hall' },
+    { id: 'board', label: 'Leaderboard' },
+    { id: 'town', label: 'Town' },
+  ];
+  return `<div class="clan-subs" role="tablist">${tabs
+    .map(
+      (t) =>
+        `<button type="button" class="clan-sub ${t.id === active ? 'on' : ''}" data-action="clan-pane" data-pane="${t.id}" role="tab" aria-selected="${t.id === active}">${t.label}</button>`,
+    )
+    .join('')}</div>`;
+}
+
+function renderClanHallPane(ctx: UIContext): string {
   const g = ctx.game;
-  g.refreshClanTokenDay();
+  const clan = g.clan;
+  if (!clan) {
+    return `<div class="clan-panel">
+      <p class="ai-banner">Solo playtest: create or join a clan, fill AI teammates, then queue 4v4. Live multiplayer is not online yet.</p>
+      <div class="clan-forms">
+        <section class="clan-form">
+          <h3>Create a clan</h3>
+          <p>Found your banner for <b>${CLAN_CREATE_COST}</b> crystals. You become leader.</p>
+          <label class="field">Clan name<input id="clan-name" maxlength="24" placeholder="Nightscar Wolves" autocomplete="off" /></label>
+          <button type="button" class="btn red" data-action="clan-create">Create (−${CLAN_CREATE_COST} crystals)</button>
+        </section>
+        <section class="clan-form">
+          <h3>Join a clan</h3>
+          <p>Enter a code to join a local mock hall.</p>
+          <label class="field">Join code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" autocomplete="off" /></label>
+          <button type="button" class="btn gold" data-action="clan-join">Join with code</button>
+        </section>
+      </div>
+      <button type="button" class="btn stone clan-practice-cta" data-action="clan-practice">Queue practice 4v4 (AI)</button>
+    </div>`;
+  }
+
+  const missing = g.clanMissingClasses();
+  const rows = clan.members
+    .map((m) => {
+      const badge = m.isPlayer ? '<span class="ai-pill you">YOU</span>' : '<span class="ai-pill">AI</span>';
+      return `<div class="clan-member"><span>${badge} ${escapeHtml(m.name)} <small>${escapeHtml(m.role)}</small></span><b>${m.heroClass} · ${fmt(m.cp)} CP</b></div>`;
+    })
+    .join('');
+  const classCheck = HERO_CLASSES.map((c) => {
+    const ok = clan.members.some((m) => m.heroClass === c);
+    return `<span class="class-pip ${ok ? 'on' : ''}" title="${c}">${c[0]}</span>`;
+  }).join('');
+  const ready = g.clanRosterReady();
+
+  return `<div class="clan-panel">
+    <div class="clan-banner clan-banner-pane">
+      <img src="${asset('ui/clan-hall.webp')}" alt="" />
+      <div>
+        <b>${escapeHtml(clan.name)}</b>
+        <span>Code <em class="clan-code">${escapeHtml(clan.code)}</em> · ${clan.members.length} members</span>
+        <div class="class-pips">${classCheck}</div>
+      </div>
+    </div>
+    <p class="ai-banner">AI teammates &amp; rivals until live multiplayer. Your class stays human.</p>
+    <div class="clan-roster">${rows}</div>
+    ${
+      missing.length
+        ? `<p class="clan-warn">Missing ${missing.join(', ')}. Fill AI roster for 4v4.</p>`
+        : `<p class="clan-ok">Roster ready — one of each class.</p>`
+    }
+    <div class="clan-actions-row">
+      <button type="button" class="btn stone" data-action="clan-recruit">Fill AI roster</button>
+      <button type="button" class="btn red ${ready ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
+      <button type="button" class="btn tan" data-action="clan-leave">Leave clan</button>
+    </div>
+    <p class="tagline">Win +${TOKEN_WIN} / Loss +${TOKEN_LOSS} tokens (cap ${TOKEN_DAY_CAP}/day). Gear + skills are yours; allies/rivals are AI.</p>
+  </div>`;
+}
+
+function renderClanBoardPane(ctx: UIContext): string {
+  const g = ctx.game;
+  const clan = g.clan;
+  const board = buildClanLeaderboard(
+    g.save.season.seasonId,
+    clan
+      ? {
+          name: clan.name,
+          wins: g.save.clanWins,
+          losses: g.save.clanLosses,
+          tokens: g.save.clanTokens,
+          members: clan.members.length,
+        }
+      : null,
+  );
+  const you = board.find((e) => e.isPlayer);
+  const rows = board
+    .slice(0, 10)
+    .map((e) => {
+      const mine = e.isPlayer ? ' mine' : '';
+      return `<div class="lb-row${mine}" data-rank="${e.rank}">
+        <span class="lb-rank">#${e.rank}</span>
+        <span class="lb-name">${escapeHtml(e.name)}${e.isPlayer ? ' <em>you</em>' : ''}</span>
+        <span class="lb-meta">${e.wins}W · ${e.members}</span>
+        <b class="lb-score">${fmt(e.score)}</b>
+      </div>`;
+    })
+    .join('');
+  const standings = you
+    ? `<p class="lb-you">Your clan ranks <b>#${you.rank}</b> with <b>${fmt(you.score)}</b> season score.</p>`
+    : `<p class="lb-you">Create or join a clan to appear on the board.</p>`;
+
+  return `<div class="clan-panel">
+    <div class="lb-hero">
+      <img src="${asset('ui/season-board.webp')}" alt="" />
+      <div>
+        <b>Clan Leaderboard</b>
+        <span>Season ${g.save.season.seasonId} · local stub rivals</span>
+      </div>
+    </div>
+    ${standings}
+    <div class="lb-list">
+      <div class="lb-head"><span>#</span><span>Clan</span><span>Record</span><span>Score</span></div>
+      ${rows}
+    </div>
+    <p class="tagline">Score = wins×100 + tokens + members×8 − losses×12. Live rankings arrive with multiplayer.</p>
+  </div>`;
+}
+
+function renderClanTownPane(ctx: UIContext): string {
+  const g = ctx.game;
   const day = g.seasonDay;
   const remain = fmtSeasonRemain(g.seasonRemainingMs);
-  const clan = g.clan;
   const tokens = g.save.clanTokens;
-  const earned = g.save.clanTokensEarnedToday;
   const quests = QUESTS.map((q, i) => {
     const state = i < g.save.questIndex ? 'on' : i === g.save.questIndex ? '' : 'off';
     return `<div class="row ${state}"><span>${i < g.save.questIndex ? '[x] ' : '[ ] '}${escapeHtml(q.text)}</span></div>`;
@@ -224,46 +347,60 @@ export function renderTown(ctx: UIContext): string {
   const dq = g.dailyQuest;
   const dprog = g.dailyProgress();
   const dailyRow = `<div class="row ${g.save.daily.claimed ? 'on' : g.dailyReady() ? '' : 'off'}"><span>${g.save.daily.claimed ? '[x] ' : '[ ] '}${escapeHtml(dq.text)} (${dprog}/${dq.goal})</span></div>`;
-  const clanHint = clan
-    ? `${escapeHtml(clan.name)} · ${clan.members.length} (AI OK) · ${g.clanRosterReady() ? 'Roster ready' : 'Fill AI roster'}`
-    : `Create (${CLAN_CREATE_COST} crystals) or practice 4v4 vs AI`;
-  return `<div class="pane-inner scroll">
-    <div class="tab-title">Town <small>Season ${g.save.season.seasonId}  -  Day ${day}/30 · ${remain}</small></div>
-    <div class="res-bar">
-      <span class="res"><img src="${asset('ui/clan-token.webp')}" alt="" />${fmt(tokens)} <small>${earned}/${TOKEN_DAY_CAP} today</small></span>
-      <span class="res"><img src="${navIcon('crystal')}" alt="" />${fmt(g.save.crystals)}</span>
-      <span class="res">${g.save.clanWins}W / ${g.save.clanLosses}L</span>
-    </div>
+
+  return `<div class="clan-panel">
     <div class="town-grid">
       <div class="town-card"><img src="${asset('icons/gear-a/weapon.webp')}" alt="" /><b>Blacksmith</b><span>Dust to Gear Level upgrades.</span><span class="soon">Coming soon</span></div>
       <div class="town-card"><img src="${navIcon('crystal')}" alt="" /><b>Quartermaster</b><span>Spend crystals on keys and bag space.</span><span class="soon">Coming soon</span></div>
-      <button class="town-card clickable" data-action="clan-hall">
-        <img src="${asset('ui/clan-hall.webp')}" alt="" />
-        <b>Clan Hall</b>
-        <span>4v4 auto-battles with AI fillers until live MP.</span>
-        <span class="live">${clanHint}</span>
-      </button>
-      <button class="town-card clickable" data-action="season-board">
+      <button type="button" class="town-card clickable" data-action="season-board">
         <img src="${asset('ui/season-board.webp')}" alt="" />
         <b>Season Board</b>
         <span>30-day timer, local milestones, reset.</span>
         <span class="live">Day ${day}/30 · ${remain}</span>
       </button>
-      <button class="town-card clickable" data-action="clan-armorer">
+      <button type="button" class="town-card clickable" data-action="clan-armorer">
         <img src="${asset('icons/gear-k/weapon.webp')}" alt="" />
         <b>Clan Armorer</b>
         <span>Spend Clan Tokens on Clanforged gear.</span>
         <span class="live">${fmt(tokens)} tokens</span>
       </button>
     </div>
-    <h3 style="margin:1cqw 0 0;font-family:var(--font-title);font-size:3.6cqw">Daily</h3>
+    <h3 class="pane-h">Daily</h3>
     <div class="sheet-lite">${dailyRow}</div>
-    <h3 style="margin:1cqw 0 0;font-family:var(--font-title);font-size:3.6cqw">Campaign quests</h3>
+    <h3 class="pane-h">Campaign quests</h3>
     <div class="sheet-lite">${quests}</div>
-    <button class="chip" data-action="settings" style="align-self:flex-start">Settings</button>
-    <div class="tagline">Class locked for the season: ${g.save.heroClass}. Reset season (or save) to re-pick. Clan 4v4 uses your equipped gear and skill bar.</div>
+    <button type="button" class="chip" data-action="settings" style="align-self:flex-start">Settings</button>
+    <div class="tagline">Class locked for the season: ${g.save.heroClass}. Reset season to re-pick.</div>
   </div>`;
 }
+
+/** Clan tab — Hall / Leaderboard / Town services. */
+export function renderClan(ctx: UIContext): string {
+  const g = ctx.game;
+  g.refreshClanTokenDay();
+  const day = g.seasonDay;
+  const remain = fmtSeasonRemain(g.seasonRemainingMs);
+  const tokens = g.save.clanTokens;
+  const earned = g.save.clanTokensEarnedToday;
+  const pane =
+    ctx.clanPane === 'board'
+      ? renderClanBoardPane(ctx)
+      : ctx.clanPane === 'town'
+        ? renderClanTownPane(ctx)
+        : renderClanHallPane(ctx);
+
+  return `<div class="pane-inner scroll clan-tab">
+    <div class="tab-title">Clan <small>Season ${g.save.season.seasonId} · Day ${day}/30 · ${remain}</small></div>
+    <div class="res-bar">
+      <span class="res"><img src="${asset('ui/clan-token.webp')}" alt="" />${fmt(tokens)} <small>${earned}/${TOKEN_DAY_CAP} today</small></span>
+      <span class="res"><img src="${navIcon('crystal')}" alt="" />${fmt(g.save.crystals)}</span>
+      <span class="res">${g.save.clanWins}W / ${g.save.clanLosses}L</span>
+    </div>
+    ${clanSubTabs(ctx.clanPane)}
+    ${pane}
+  </div>`;
+}
+
 
 export function actName(id: number): string {
   return getAct(id).name;
