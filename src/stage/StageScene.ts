@@ -220,34 +220,47 @@ export class StageScene extends Phaser.Scene {
     const groundY = GROUND * H;
     this.hero.setVisible(false);
     this.heroBar.clear();
-    this.tag.setVisible(false);
     for (const c of this.chips) c.img.setVisible(false);
 
-    const propW = Math.min(W * 0.78, H * 1.1);
+    const propW = Math.min(W * 0.82, H * 1.15);
     this.campProps.setVisible(true);
-    this.campProps.setDisplaySize(propW, propW * (277 / 520));
-    this.campProps.setPosition(W * 0.7, groundY + H * 0.01);
+    this.campProps.setDisplaySize(propW, propW * (224 / 520));
+    this.campProps.setPosition(W * 0.68, groundY + H * 0.01);
 
-    const fireX = this.campProps.x - propW * 0.5 + propW * 0.2;
-    const fireY = this.campProps.y - propW * 0.12;
+    const fireX = this.campProps.x - propW * 0.5 + propW * 0.18;
+    const fireY = this.campProps.y - propW * 0.08;
     this.fireGlow.setVisible(true);
     this.fireGlow.setPosition(fireX, fireY);
-    this.fireGlow.setRadius(H * 0.1 * (1 + 0.1 * Math.sin(this.clock * 9)));
-    this.fireGlow.setAlpha(0.28 + 0.1 * Math.sin(this.clock * 13));
+    this.fireGlow.setRadius(H * 0.11 * (1 + 0.1 * Math.sin(this.clock * 9)));
+    this.fireGlow.setAlpha(0.32 + 0.12 * Math.sin(this.clock * 13));
     this.embers.setPosition(fireX, fireY - H * 0.03).setVisible(true);
     this.embers.emitting = true;
 
-    const sh = H * 0.32;
+    const sh = H * 0.34;
     this.heroSleep.setVisible(true);
-    this.heroSleep.setDisplaySize(sh * (360 / 354), sh);
-    const hx = W * 0.26;
+    this.heroSleep.setDisplaySize(sh * (203 / 360), sh);
+    const hx = W * 0.28;
     this.heroSleep.setPosition(hx, groundY + H * 0.008);
     this.heroSleep.y += Math.sin(this.clock * 1.6) * 0.8;
 
     const pulse = 0.7 + 0.3 * Math.sin(this.clock * 1.6);
     this.bubble.setVisible(true);
-    this.bubble.setPosition(hx + sh * 0.2, groundY - sh * 0.38);
-    this.bubble.setRadius(H * 0.03 * pulse + H * 0.012);
+    this.bubble.setPosition(hx + sh * 0.18, groundY - sh * 0.42);
+    this.bubble.setRadius(H * 0.028 * pulse + H * 0.01);
+    this.tag.setVisible(true);
+    this.tag.setText('Zzz');
+    this.tag.setStyle({
+      fontFamily: '"Lilita One", Impact, sans-serif',
+      fontStyle: 'normal',
+      fontSize: `${Math.round(H * 0.055)}px`,
+      color: '#cfe9ff',
+      backgroundColor: 'transparent',
+      stroke: '#1a3048',
+      strokeThickness: Math.max(2, Math.round(H * 0.01)),
+      padding: { x: 0, y: 0 },
+    });
+    this.tag.setPosition(hx - sh * 0.05, groundY - sh * 0.72 + Math.sin(this.clock * 2.2) * H * 0.008);
+    this.tag.setAlpha(0.85 + 0.15 * Math.sin(this.clock * 2.2));
   }
 
   private renderBattle(b: NonNullable<Game['battle']>, W: number, H: number, dt: number): void {
@@ -265,18 +278,18 @@ export class StageScene extends Phaser.Scene {
     if (b.state === 'walk') this.bgScroll += walkPx * dt * this.game_.speed;
 
     const showCamp = b.nodeIndex <= 1 && (b.state === 'rest' || (b.state === 'walk' && b.nodeIndex === 1 && b.run.nodes[0]?.type === 'camp'));
-    const propW = Math.min(W * 0.78, H * 1.1);
+    const propW = Math.min(W * 0.82, H * 1.15);
     if (showCamp) {
       const slide = b.state === 'walk' ? b.stateT * walkPx * this.game_.speed : 0;
-      const px = W * 0.7 - slide;
+      const px = W * 0.68 - slide;
       this.campProps.setVisible(true);
-      this.campProps.setDisplaySize(propW, propW * (277 / 520));
+      this.campProps.setDisplaySize(propW, propW * (224 / 520));
       this.campProps.setPosition(px, groundY + H * 0.01);
-      const fireX = px - propW * 0.5 + propW * 0.2;
-      const fireY = this.campProps.y - propW * 0.12;
+      const fireX = px - propW * 0.5 + propW * 0.18;
+      const fireY = this.campProps.y - propW * 0.08;
       this.fireGlow.setVisible(true).setPosition(fireX, fireY);
-      this.fireGlow.setRadius(H * 0.1 * (1 + 0.1 * Math.sin(this.clock * 9)));
-      this.fireGlow.setAlpha(0.28 + 0.1 * Math.sin(this.clock * 13));
+      this.fireGlow.setRadius(H * 0.11 * (1 + 0.1 * Math.sin(this.clock * 9)));
+      this.fireGlow.setAlpha(0.32 + 0.12 * Math.sin(this.clock * 13));
       this.embers.setPosition(fireX, fireY - H * 0.03).setVisible(true);
       this.embers.emitting = true;
     } else {
@@ -338,7 +351,18 @@ export class StageScene extends Phaser.Scene {
       this.heroBar.lineBetween(x - w / 2 + (w * i) / 4, y, x - w / 2 + (w * i) / 4, y + h);
     }
     this.tag.setVisible(true);
-    this.tag.setFontSize(Math.max(9, H * 0.04));
+    this.tag.setText('1P');
+    this.tag.setStyle({
+      fontFamily: 'Inter, sans-serif',
+      fontStyle: '800',
+      fontSize: `${Math.max(9, Math.round(H * 0.04))}px`,
+      color: '#ffffff',
+      backgroundColor: '#2a6fe0',
+      stroke: '#000000',
+      strokeThickness: 0,
+      padding: { x: 5, y: 2 },
+    });
+    this.tag.setAlpha(1);
     this.tag.setPosition(x, y - H * 0.012);
   }
 
@@ -381,16 +405,22 @@ export class StageScene extends Phaser.Scene {
     const cy = hy - hH * 0.42;
     const g = this.fx;
     if (b.buffs.spinT > 0) {
-      const rx = W * 0.2;
-      const ry = H * 0.1;
-      const t = this.clock * 16;
-      for (let k = 0; k < 3; k++) {
-        const base = t + (k * Math.PI * 2) / 3;
-        for (let s = 0; s < 14; s++) {
-          const a0 = base - s * 0.1;
-          const a1 = base - (s + 1) * 0.1;
-          const alpha = (1 - s / 14) * 0.95;
-          g.lineStyle(H * 0.034 * (1 - s / 22), s < 3 ? 0xffe39a : 0xff7a1a, alpha);
+      const rx = W * 0.24;
+      const ry = H * 0.12;
+      const t = this.clock * 18;
+      // Warm underglow matching ref Bladestorm ring
+      g.fillStyle(0xff9a2e, 0.18);
+      g.fillEllipse(hx, cy, rx * 2.05, ry * 2.05);
+      g.fillStyle(0xffe39a, 0.1);
+      g.fillEllipse(hx, cy, rx * 1.35, ry * 1.35);
+      for (let k = 0; k < 4; k++) {
+        const base = t + (k * Math.PI * 2) / 4;
+        for (let s = 0; s < 18; s++) {
+          const a0 = base - s * 0.12;
+          const a1 = base - (s + 1) * 0.12;
+          const alpha = (1 - s / 18) * 0.98;
+          const w = H * (0.042 - s * 0.0014);
+          g.lineStyle(Math.max(1.5, w), s < 4 ? 0xfff0b8 : s < 10 ? 0xffb03a : 0xff6a12, alpha);
           g.lineBetween(
             hx + Math.cos(a0) * rx,
             cy + Math.sin(a0) * ry,
@@ -399,8 +429,6 @@ export class StageScene extends Phaser.Scene {
           );
         }
       }
-      g.fillStyle(0xff9a2e, 0.14);
-      g.fillEllipse(hx, cy, rx * 2, ry * 2);
     }
     if (b.buffs.shield > 0) {
       g.fillStyle(0x66b6ff, 0.16);
@@ -517,11 +545,11 @@ export class StageScene extends Phaser.Scene {
         const p = this.enemyPos(ev.enemyId, W, H);
         const big = ev.crit || !!ev.skill;
         this.floatText(p.x + (Math.random() - 0.5) * W * 0.05, p.y - H * 0.02, String(ev.dmg), {
-          color: ev.crit ? '#ffd23a' : '#ff9a1f',
-          size: H * (ev.crit ? 0.1 : big ? 0.085 : 0.07),
+          color: ev.crit ? '#ffe14a' : '#ff9a1f',
+          size: H * (ev.crit ? 0.11 : big ? 0.095 : 0.078),
           rise: H * 0.16,
-          life: 800,
-          stroke: '#4a1700',
+          life: 820,
+          stroke: '#3a1200',
         });
         if (ev.crit || (ev.skill && !ev.aoe)) this.cameras.main.shake(70, 0.0025);
         break;
@@ -537,12 +565,12 @@ export class StageScene extends Phaser.Scene {
         break;
       case 'skill': {
         const ult = ev.ultimate;
-        const t = this.floatText(heroX + W * 0.06, heroTop - H * 0.02, ev.name, {
-          color: '#fff6d8',
-          size: H * (ult ? 0.13 : 0.065),
-          rise: H * 0.05,
-          life: ult ? 1300 : 900,
-          stroke: '#3a1a08',
+        const t = this.floatText(heroX + W * 0.04, heroTop - H * 0.04, ev.name, {
+          color: ult ? '#ffe9a8' : '#e8c48a',
+          size: H * (ult ? 0.12 : 0.075),
+          rise: H * 0.04,
+          life: ult ? 1400 : 1000,
+          stroke: '#2a1408',
           family: '"Playfair Display", serif',
           weight: '900',
           pop: true,
