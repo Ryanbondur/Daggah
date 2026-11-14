@@ -296,13 +296,18 @@ button {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 0.2cqw;
+  gap: 0.35cqw;
   font-size: 2.5cqw;
-  line-height: 1.25;
+  line-height: 1.2;
   color: #bdb6a3;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 45%);
-  mask-image: linear-gradient(to bottom, transparent, #000 45%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%);
+  mask-image: linear-gradient(to bottom, transparent, #000 35%);
   pointer-events: none;
+}
+.chat-log > div {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .chat-log b {
   color: #f0b45a;
@@ -1976,6 +1981,19 @@ button {
   font-weight: 700;
   font-size: 3cqw;
 }
+/* Stack clan actions — inline .btn (flex:1) was squeezing Join + Practice side-by-side. */
+.clan-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4cqw;
+  margin: 0.6cqw 0 1.2cqw;
+}
+.clan-actions .btn {
+  flex: none;
+  width: 100%;
+  font-size: 3.6cqw;
+  padding: 2cqw 1.4cqw;
+}
 .ai-banner {
   margin: 0 0 1.4cqw;
   padding: 1.2cqw 1.6cqw;
@@ -2074,14 +2092,26 @@ button {
 }
 .pvp-f {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 0.8cqw;
   font-size: 2.6cqw;
   padding: 0.4cqw 0;
   border-bottom: 0.25cqw dotted rgba(90, 80, 60, 0.35);
+  align-items: baseline;
+}
+.pvp-f span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pvp-f b {
   color: #6a3a12;
+}
+.pvp-f i {
+  font-style: normal;
+  white-space: nowrap;
+  font-size: 2.4cqw;
 }
 .tiers .row {
   font-size: 3cqw;
@@ -2229,6 +2259,9 @@ button {
   font-family: var(--font-title);
   font-size: 2.8cqw;
   color: #ffe9a8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .replay-chip span {
   color: #c8bda8;

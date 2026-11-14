@@ -117,6 +117,8 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
     },
     openModal(html, opts = {}) {
       if (modalEl) closeModalInternal(false);
+      // Level-up banners sit under the dim and read as garbled overlays on compare/sheets.
+      frame.querySelectorAll('.levelup').forEach((el) => el.remove());
       const dim = document.createElement('div');
       dim.className = `dim ${opts.className ?? ''}`;
       dim.innerHTML = html;
@@ -281,7 +283,8 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
   }
 
   function renderChat(): void {
-    const lines = game.chat.slice(-5);
+    // HUD band only fits ~2 lines at 390×844; more stacks into unreadable overlap.
+    const lines = game.chat.slice(-2);
     $('#chat-log').innerHTML = lines.map((l) => `<div><b>System:</b> ${escapeHtml(l)}</div>`).join('');
   }
 
@@ -306,6 +309,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
         break;
       }
       case 'levelUp': {
+        if (modalEl) break;
         const el = document.createElement('div');
         el.className = 'levelup';
         const skills = e.newSkills.map((id) => SKILL_BY_ID[id].name);
