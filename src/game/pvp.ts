@@ -35,6 +35,15 @@ export interface PvpEvent {
   t: 'hit' | 'skill' | 'kill' | 'end';
   text: string;
   time: number;
+  /** Structured fields for the post-match replay strip. */
+  actor?: string;
+  actorClass?: HeroClass;
+  team?: 'ally' | 'enemy';
+  skillId?: SkillId;
+  skillName?: string;
+  target?: string;
+  dmg?: number;
+  crit?: boolean;
 }
 
 export interface PvpResult {
@@ -79,9 +88,9 @@ function fighterFromMember(
     m.isPlayer && liveGear
       ? liveGear
       : m.gear ?? buildAiMember(rng, m.heroClass, level, 'member', team === 'enemy' ? 'endgame' : 'scaled').gear!;
-  const totals = computeHero(level, gear, m.heroClass);
-  const stats = scaleStats(totals.stats, totals.effects.pvpCpPct);
   const loadout = (m.isPlayer ? m.loadout : m.loadout.length ? m.loadout : DEFAULT_LOADOUT[m.heroClass]).slice(0, 4);
+  const totals = computeHero(level, gear, m.heroClass, loadout);
+  const stats = scaleStats(totals.stats, totals.effects.pvpCpPct);
   const primary = m.primary && loadout.includes(m.primary) ? m.primary : defaultPrimary(loadout);
   const maxEn = maxEnergy(level);
   const side = team === 'ally' ? 0.2 : 0.8;
@@ -237,12 +246,28 @@ export function simulatePvp(
           t: 'skill',
           text: `${f.name} ${SKILL_BY_ID[cast].name} → ${target.name} ${dmg}${crit ? '!' : ''}`,
           time,
+          actor: f.name,
+          actorClass: f.heroClass,
+          team: f.team,
+          skillId: cast,
+          skillName: SKILL_BY_ID[cast].name,
+          target: target.name,
+          dmg,
+          crit,
         });
         if (target.hp <= 0) {
           target.dead = true;
           if (f.team === 'ally') allyKills += 1;
           else enemyKills += 1;
-          log.push({ t: 'kill', text: `${target.name} falls (${f.team === 'ally' ? 'ally' : 'enemy'} kill)`, time });
+          log.push({
+            t: 'kill',
+            text: `${target.name} falls (${f.team === 'ally' ? 'ally' : 'enemy'} kill)`,
+            time,
+            actor: f.name,
+            actorClass: f.heroClass,
+            team: f.team,
+            target: target.name,
+          });
           if (f.effects.onKillHealPct > 0) {
             f.hp = Math.min(f.maxHp, f.hp + f.maxHp * (f.effects.onKillHealPct / 100));
           }
@@ -257,12 +282,26 @@ export function simulatePvp(
           t: 'hit',
           text: `${f.name} hits ${target.name} for ${dmg}${crit ? ' crit' : ''}`,
           time,
+          actor: f.name,
+          actorClass: f.heroClass,
+          team: f.team,
+          target: target.name,
+          dmg,
+          crit,
         });
         if (target.hp <= 0) {
           target.dead = true;
           if (f.team === 'ally') allyKills += 1;
           else enemyKills += 1;
-          log.push({ t: 'kill', text: `${target.name} falls`, time });
+          log.push({
+            t: 'kill',
+            text: `${target.name} falls`,
+            time,
+            actor: f.name,
+            actorClass: f.heroClass,
+            team: f.team,
+            target: target.name,
+          });
         }
       }
     }
@@ -308,7 +347,7 @@ export function simulatePvp(
     enemyKills,
     duration: Math.round(time * 10) / 10,
     timedOut,
-    log: log.slice(-40),
+    log: log.filter((e) => e.t !== 'hit').slice(-48),
     allyHpLeft: Math.round(allyHpLeft),
     enemyHpLeft: Math.round(enemyHpLeft),
     allyTeam: snap('ally'),

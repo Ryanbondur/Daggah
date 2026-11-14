@@ -20,10 +20,25 @@ import {
   salvageValue,
   starterGear,
 } from '../data/gear';
-import { QUESTS } from '../data/quests';
+import { QUESTS, dailyCounterKey, dailyQuestForDay } from '../data/quests';
 import type { QuestDef } from '../data/quests';
-import { BAR_SIZE, DEFAULT_LOADOUT, PLAYSTYLES, SKILL_BY_ID, isUnlocked, skillsForClass } from '../data/skills';
-import type { HeroClass, Item, SkillId, SlotId, StatKey } from '../data/types';
+import { SEASON_MILESTONES } from '../data/season';
+import {
+  BAR_SIZE,
+  DEFAULT_LOADOUT,
+  PLAYSTYLES,
+  SKILL_BY_ID,
+  isUnlocked,
+  playstyleCommitted,
+  skillsForClass,
+} from '../data/skills';
+import {
+  TUTORIAL_STEPS,
+  currentTutorialStep,
+  tutorialActive,
+  type TutorialStep,
+} from '../data/tutorial';
+import type { HeroClass, Item, PlaystyleId, SkillId, SlotId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
 import type { ClanData } from './clan';
@@ -41,6 +56,8 @@ import {
   normalizeClanMember,
   pickQueueRoster,
   rosterReady,
+  sanitizeClanCode,
+  sanitizeClanName,
   seasonDay,
   seasonRemainingMs,
 } from './clan';
@@ -133,6 +150,8 @@ export class Game {
     this.rng = rng;
     this.save = loadSave(storage);
     this.refreshKeys();
+    this.refreshDaily();
+    this.noteSeasonLogin();
     if (!availableSpeeds(this.save.level).includes(this.save.settings.speed)) {
       this.save.settings.speed = 1;
     }
@@ -169,7 +188,7 @@ export class Game {
   // ---- derived ------------------------------------------------------------
 
   get totals() {
-    return computeHero(this.save.level, this.save.gear, this.save.heroClass);
+    return computeHero(this.save.level, this.save.gear, this.save.heroClass, this.save.loadout);
   }
 
   get cp(): number {
@@ -374,9 +393,11 @@ export class Game {
     if (first) {
       this.save.stagesCleared += 1;
       this.save.crystals += 20;
+      this.bumpDaily('stages');
       this.toast(`Stage ${act}-${stage} cleared  +20 crystals`, 'good');
       actCleared = this.save.stagesCleared % STAGES_PER_ACT === 0;
     } else {
+      this.bumpDaily('stages');
       this.toast(`Stage ${act}-${stage} cleared`, 'good');
     }
     this.save.currentStage = first ? Math.min(this.save.stagesCleared, PLAYABLE_STAGES - 1) : idx;
@@ -412,6 +433,8 @@ export class Game {
     rec.cleared = true;
     rec.clears += 1;
     this.save.dungeons[ctx.dungeon.id] = rec;
+    this.bumpDaily('dungeons');
+    this.advanceTutorial('dungeon-key');
     this.dungeonCtx = null;
     this.endRun();
     this.say(`${ctx.dungeon.name} cleared!`);
@@ -529,6 +552,7 @@ export class Game {
   }
 
   startBattle(): void {
+    this.advanceTutorial('auto-attack');
     if (!this.save.classPicked) {
       this.toast('Pick a class first', 'info');
       return;
@@ -614,6 +638,7 @@ export class Game {
     this.mode = 'dungeon';
     this.lives = MAX_LIVES;
     this.acc = 0;
+    this.advanceTutorial('dungeon-key');
     this.say(`Entering ${d.name}.`);
     this.emit({ t: 'run' });
     this.changed();
@@ -693,7 +718,7 @@ export class Game {
 
   isUpgrade(item: Item): boolean {
     return (
-      cpDelta(this.save.level, this.save.gear, item, this.save.heroClass) > 0 &&
+      cpDelta(this.save.level, this.save.gear, item, this.save.heroClass, this.save.loadout) > 0 &&
       item.gearLevel <= this.save.level
     );
   }
@@ -725,7 +750,7 @@ export class Game {
     return {
       current,
       candidate: item,
-      cpDelta: cpDelta(this.save.level, this.save.gear, item, this.save.heroClass),
+      cpDelta: cpDelta(this.save.level, this.save.gear, item, this.save.heroClass, this.save.loadout),
       statDeltas,
       levelOk: item.gearLevel <= this.save.level,
     };
@@ -741,11 +766,13 @@ export class Game {
     this.save.dust += v.dust;
     this.save.crystals += v.crystals;
     this.save.salvageCount += 1;
+    this.bumpDaily('salvage');
   }
 
   salvage(item: Item): void {
     this.removeFromQueues(item);
     this.applySalvage(item);
+    this.advanceTutorial('first-drop');
     this.toast(`Salvaged: +${salvageValue(item).dust} dust${salvageValue(item).crystals ? `, +${salvageValue(item).crystals} crystals` : ''}`, 'info');
     this.changed();
   }
@@ -767,6 +794,7 @@ export class Game {
         this.save.bag.push(old);
       }
     }
+    this.advanceTutorial('first-drop');
     this.refreshBattleHero(false);
     this.changed();
     return true;
@@ -825,6 +853,10 @@ export class Game {
       if (lo.length >= BAR_SIZE) return 'Skill bar is full. Unequip a skill first.';
       lo.push(id);
     }
+    if (lo.length >= BAR_SIZE) {
+      this.bumpDaily('fullLoadout');
+      this.advanceTutorial('equip-skills');
+    }
     this.changed();
     return null;
   }
@@ -840,6 +872,23 @@ export class Game {
 
   // ---- quests -------------------------------------------------------------
 
+  private questInput() {
+    const dungeonClearsById: Record<string, number> = {};
+    let dungeonClears = 0;
+    for (const [id, d] of Object.entries(this.save.dungeons)) {
+      dungeonClearsById[id] = d.clears;
+      dungeonClears += d.clears;
+    }
+    return {
+      salvageCount: this.save.salvageCount,
+      stagesCleared: this.save.stagesCleared,
+      level: this.save.level,
+      dungeonClears,
+      clanWins: this.save.clanWins,
+      dungeonClearsById,
+    };
+  }
+
   get quest(): QuestDef | null {
     return QUESTS[this.save.questIndex] ?? null;
   }
@@ -847,16 +896,7 @@ export class Game {
   questProgress(): number {
     const q = this.quest;
     if (!q) return 0;
-    const dungeonClears = Object.values(this.save.dungeons).reduce((n, d) => n + d.clears, 0);
-    return Math.min(
-      q.goal,
-      q.progress({
-        salvageCount: this.save.salvageCount,
-        stagesCleared: this.save.stagesCleared,
-        level: this.save.level,
-        dungeonClears,
-      }),
-    );
+    return Math.min(q.goal, q.progress(this.questInput()));
   }
 
   questReady(): boolean {
@@ -880,6 +920,140 @@ export class Game {
     this.say(`Quest complete: ${q.text}`);
     this.changed();
     return true;
+  }
+
+  refreshDaily(now = Date.now()): void {
+    const key = dayKey(now);
+    if (this.save.daily.dayKey === key) return;
+    const day = seasonDay(this.save.season, now);
+    const q = dailyQuestForDay(day - 1);
+    this.save.daily = {
+      dayKey: key,
+      questId: q.id,
+      stages: 0,
+      dungeons: 0,
+      salvage: 0,
+      clan: 0,
+      fullLoadout: this.save.loadout.length >= BAR_SIZE ? 1 : 0,
+      claimed: false,
+    };
+  }
+
+  noteSeasonLogin(now = Date.now()): void {
+    const key = dayKey(now);
+    if (!this.save.seasonLoginDays.includes(key)) {
+      this.save.seasonLoginDays.push(key);
+      this.persist();
+    }
+  }
+
+  get dailyQuest(): QuestDef {
+    this.refreshDaily();
+    return dailyQuestForDay(Math.max(0, this.seasonDay - 1));
+  }
+
+  dailyProgress(): number {
+    this.refreshDaily();
+    const q = this.dailyQuest;
+    const key = dailyCounterKey(q.id);
+    const v = this.save.daily[key];
+    return Math.min(q.goal, typeof v === 'number' ? v : 0);
+  }
+
+  dailyReady(): boolean {
+    return !this.save.daily.claimed && this.dailyProgress() >= this.dailyQuest.goal;
+  }
+
+  claimDaily(): boolean {
+    this.refreshDaily();
+    const q = this.dailyQuest;
+    if (this.save.daily.claimed || this.dailyProgress() < q.goal) return false;
+    this.save.crystals += q.reward.crystals ?? 0;
+    this.save.dust += q.reward.dust ?? 0;
+    this.save.keys += q.reward.keys ?? 0;
+    this.save.daily.claimed = true;
+    this.toast(`Daily complete: ${q.text}`, 'good');
+    this.changed();
+    return true;
+  }
+
+  private bumpDaily(key: 'stages' | 'dungeons' | 'salvage' | 'clan' | 'fullLoadout'): void {
+    this.refreshDaily();
+    this.save.daily[key] += 1;
+  }
+
+  // ---- tutorial -----------------------------------------------------------
+
+  get tutorialStep(): TutorialStep | null {
+    return currentTutorialStep(this.save.tutorial);
+  }
+
+  get tutorialIsActive(): boolean {
+    return tutorialActive(this.save.tutorial);
+  }
+
+  canSkipTutorial(): boolean {
+    return this.save.tutorial.everCompleted;
+  }
+
+  skipTutorial(): void {
+    if (!this.canSkipTutorial()) return;
+    this.save.tutorial.skipped = true;
+    this.save.tutorial.step = TUTORIAL_STEPS.length;
+    this.changed();
+  }
+
+  advanceTutorial(stepId: string): void {
+    const cur = this.tutorialStep;
+    if (!cur || cur.id !== stepId) return;
+    this.save.tutorial.step += 1;
+    if (this.save.tutorial.step >= TUTORIAL_STEPS.length) {
+      this.save.tutorial.everCompleted = true;
+      this.toast('Tutorial complete', 'good');
+      this.say('Tutorial complete. Season Board tracks mid-act goals.');
+    }
+    this.changed();
+  }
+
+  // ---- season milestones --------------------------------------------------
+
+  seasonProgressInput() {
+    const dungeonClears = Object.values(this.save.dungeons).reduce((n, d) => n + d.clears, 0);
+    return {
+      seasonDay: this.seasonDay,
+      stagesCleared: this.save.stagesCleared,
+      clanWins: this.save.clanWins,
+      dungeonClears,
+      loginDays: this.save.seasonLoginDays.length,
+    };
+  }
+
+  claimSeasonMilestone(id: string): string | null {
+    const def = SEASON_MILESTONES.find((m) => m.id === id);
+    if (!def) return 'Unknown milestone.';
+    if (this.save.seasonClaimed.includes(id)) return 'Already claimed.';
+    const prog = def.progress(this.seasonProgressInput());
+    if (prog < def.goal) return `Progress ${prog}/${def.goal}.`;
+    this.save.seasonClaimed.push(id);
+    this.save.crystals += def.reward.crystals ?? 0;
+    this.save.dust += def.reward.dust ?? 0;
+    this.toast(`Season: ${def.text}`, 'good');
+    this.changed();
+    return null;
+  }
+
+  /** True when equipped set bonuses are gated by a committed playstyle. */
+  playstyleSetActive(style: PlaystyleId): boolean {
+    return playstyleCommitted(this.save.loadout, style);
+  }
+
+  recommendPlaystyleSet(): PlaystyleId | null {
+    const styles = Object.keys(PLAYSTYLES) as PlaystyleId[];
+    for (const s of styles) {
+      if (PLAYSTYLES[s].heroClass !== this.save.heroClass) continue;
+      if (playstyleCommitted(this.save.loadout, s)) return s;
+    }
+    return null;
   }
 
   // ---- clan / season / PvP -----------------------------------------------
@@ -921,7 +1095,7 @@ export class Game {
     if (!this.save.classPicked) return 'Pick a class first.';
     if (this.save.crystals < CLAN_CREATE_COST) return `Need ${CLAN_CREATE_COST} crystals to found a clan.`;
     this.save.crystals -= CLAN_CREATE_COST;
-    this.save.clan = createClan(this.rng, name, {
+    this.save.clan = createClan(this.rng, sanitizeClanName(name), {
       heroClass: this.save.heroClass,
       level: this.save.level,
       cp: this.cp,
@@ -938,7 +1112,7 @@ export class Game {
     if (this.save.clan) return 'Already in a clan.';
     if (!this.save.classPicked) return 'Pick a class first.';
     if (!code.trim()) return 'Enter a clan code.';
-    this.save.clan = joinClanByCode(this.rng, code, {
+    this.save.clan = joinClanByCode(this.rng, sanitizeClanCode(code), {
       heroClass: this.save.heroClass,
       level: this.save.level,
       cp: this.cp,
@@ -1031,6 +1205,7 @@ export class Game {
     this.save.clanTokens += awarded;
     if (result.won) this.save.clanWins += 1;
     else this.save.clanLosses += 1;
+    this.bumpDaily('clan');
     const capNote =
       awarded < gain ? ` (day cap ${TOKEN_DAY_CAP}; +${awarded})` : ` (+${awarded} tokens)`;
     this.say(`Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${capNote}${result.practiceAi ? ' (AI practice)' : ''}.`);
@@ -1064,7 +1239,11 @@ export class Game {
     const clan = this.save.clan;
     const seasonId = this.save.season.seasonId + 1;
     const keepTokens = 0; // GDD: clan tokens reset
+    const everTut = this.save.tutorial.everCompleted;
     this.save = defaultSave();
+    this.save.tutorial.everCompleted = everTut;
+    this.save.tutorial.step = everTut ? TUTORIAL_STEPS.length : 0;
+    this.save.tutorial.skipped = false;
     this.save.clan = clan
       ? {
           ...clan,

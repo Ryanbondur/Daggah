@@ -1,9 +1,11 @@
 import type { Gear } from '../data/gear';
 import { RARITIES, SETS, formatStat, setCounts, statsOrdered } from '../data/gear';
-import type { Item, StatKey } from '../data/types';
+import { playstyleCommitted } from '../data/skills';
+import type { Item, SkillId, StatKey } from '../data/types';
 import { STAT_LABEL } from '../data/types';
 import { ICON } from './svg';
 import { itemIcon } from './assets';
+import { escapeHtml } from './escape';
 
 export function slotHtml(
   item: Item | undefined,
@@ -25,7 +27,7 @@ export function slotHtml(
   const data = opts.action
     ? ` data-action="${opts.action}" data-id="${item.id}" data-slot="${opts.slot ?? item.slot}"`
     : '';
-  return `<button class="${cls}" style="${area}"${data} aria-label="${item.name}">
+  return `<button class="${cls}" style="${area}"${data} aria-label="${escapeHtml(item.name)}">
     <img src="${itemIcon(item)}" alt="" draggable="false" />
     <span class="lv">Lv.${item.gearLevel}</span>
   </button>`;
@@ -62,7 +64,12 @@ export function statRows(
     .join('');
 }
 
-export function setInfoHtml(item: Item, gear: Gear, assumeEquipped: boolean): string {
+export function setInfoHtml(
+  item: Item,
+  gear: Gear,
+  assumeEquipped: boolean,
+  loadout?: SkillId[],
+): string {
   if (!item.setId) return '';
   const def = SETS[item.setId];
   const counts = setCounts(gear);
@@ -71,10 +78,17 @@ export function setInfoHtml(item: Item, gear: Gear, assumeEquipped: boolean): st
     const cur = gear[item.slot];
     have = have - (cur?.setId === item.setId ? 1 : 0) + 1;
   }
+  const styleOk = !def.favorsPlaystyle || playstyleCommitted(loadout, def.favorsPlaystyle);
   const lines = def.bonuses
-    .map((b) => `<div class="${have >= b.pieces ? 'on' : ''}">(${b.pieces}) ${b.text}</div>`)
+    .map((b) => {
+      const active = have >= b.pieces && (b.pieces <= 2 || styleOk);
+      return `<div class="${active ? 'on' : ''}">(${b.pieces}) ${escapeHtml(b.text)}</div>`;
+    })
     .join('');
-  return `<div class="setinfo"><div class="sn">${def.name} (${Math.min(have, 6)}/6)</div>${lines}</div>`;
+  const favor = def.favorsPlaystyle
+    ? `<div class="sf ${styleOk ? 'on' : ''}">${escapeHtml(def.favors)}</div>`
+    : '';
+  return `<div class="setinfo"><div class="sn">${escapeHtml(def.name)} (${Math.min(have, 6)}/6)</div>${favor}${lines}</div>`;
 }
 
 export function cardHtml(
@@ -88,6 +102,7 @@ export function cardHtml(
     reqLevel?: number;
     heroLevel?: number;
     footer?: string;
+    loadout?: SkillId[];
   },
 ): string {
   if (!item) {
@@ -108,7 +123,7 @@ export function cardHtml(
   return `<div class="card">
     <div class="hd">
       <div>
-        <div class="nm">${item.name}</div>
+        <div class="nm">${escapeHtml(item.name)}</div>
         <div class="meta"><div class="rar" data-rarity="${item.rarity}">${rarityLabel(item)}</div>
         <div>${slotName(item)}</div><div class="gl">Gear Level ${item.gearLevel}</div></div>
       </div>
@@ -118,7 +133,7 @@ export function cardHtml(
     ${band}
     ${statRows(item, o.other, o.other ? 'compare' : 'plain')}
     ${req}
-    ${setInfoHtml(item, o.gear, !!o.assumeEquipped)}
+    ${setInfoHtml(item, o.gear, !!o.assumeEquipped, o.loadout)}
     ${o.footer ?? ''}
   </div>`;
 }

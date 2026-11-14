@@ -21,7 +21,9 @@ import {
   showResult,
   showSeasonBoard,
   showSettings,
+  showTutorialCoach,
 } from './modals';
+import { escapeHtml } from './escape';
 import { renderAdventure, renderCamp, renderSkill, renderTown } from './panes';
 import { ICON } from './svg';
 import { heroSprite } from './assets';
@@ -274,7 +276,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
 
   function renderChat(): void {
     const lines = game.chat.slice(-5);
-    $('#chat-log').innerHTML = lines.map((l) => `<div><b>System:</b> ${l}</div>`).join('');
+    $('#chat-log').innerHTML = lines.map((l) => `<div><b>System:</b> ${escapeHtml(l)}</div>`).join('');
   }
 
   // ---- events -------------------------------------------------------------
@@ -365,6 +367,15 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
       case 'quest':
         if (!game.claimQuest()) game.toast(`${game.quest?.text ?? ''} (${game.questProgress()}/${game.quest?.goal ?? 0})`, 'info');
         break;
+      case 'daily-quest':
+        if (!game.claimDaily()) {
+          const dq = game.dailyQuest;
+          game.toast(`${dq.text} (${game.dailyProgress()}/${dq.goal})`, 'info');
+        }
+        break;
+      case 'tutorial':
+        showTutorialCoach(ctx);
+        break;
       case 'style':
         ctx.skillStyle = d.id as PlaystyleId;
         ctx.render();
@@ -441,6 +452,11 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
   renderChat();
   renderNow();
   if (!game.save.classPicked) showClassPick(ctx);
+  else if (game.tutorialIsActive) {
+    setTimeout(() => {
+      if (!ctx.modalOpen) showTutorialCoach(ctx);
+    }, 400);
+  }
   requestAnimationFrame(frameLoop);
 
   return { phaserParent: $('#phaser') };

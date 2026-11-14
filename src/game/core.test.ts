@@ -99,6 +99,7 @@ describe('gear', () => {
   it('applies Act 7-8 set bonuses (Nightfang, Gloomveil, Echoplate)', () => {
     const gear = starterGear('Rogue');
     const rng = mulberry32(33);
+    const shadowdance = ['shadowstep', 'smoke-bomb', 'flurry', 'cloak-of-shadows'] as const;
     gear.weapon = rollItem(rng, { gearLevel: 13, rarity: 'rare', slot: 'weapon', setId: 'nightfang' });
     gear.chest = rollItem(rng, { gearLevel: 13, rarity: 'rare', slot: 'chest', setId: 'nightfang' });
     expect(computeHero(13, gear, 'Rogue').effects.critDmgPct).toBeGreaterThanOrEqual(10);
@@ -106,13 +107,33 @@ describe('gear', () => {
     gear.helmet = rollItem(rng, { gearLevel: 13, rarity: 'rare', slot: 'helmet', setId: 'gloomveil' });
     gear.gloves = rollItem(rng, { gearLevel: 13, rarity: 'epic', slot: 'gloves', setId: 'gloomveil' });
     gear.boots = rollItem(rng, { gearLevel: 13, rarity: 'epic', slot: 'boots', setId: 'gloomveil' });
-    const gloom = computeHero(13, gear, 'Rogue').effects;
+    const gloom = computeHero(13, gear, 'Rogue', [...shadowdance]).effects;
     expect(gloom.hastePct).toBeGreaterThanOrEqual(8);
     expect(gloom.shadowstepCharges).toBeGreaterThanOrEqual(1);
     gear.shoulders = rollItem(rng, { gearLevel: 15, rarity: 'epic', slot: 'shoulders', setId: 'echoplate' });
     gear.legs = rollItem(rng, { gearLevel: 15, rarity: 'epic', slot: 'legs', setId: 'echoplate' });
     const echo = computeHero(15, gear, 'Rogue').effects;
     expect(echo.atkPct).toBeGreaterThanOrEqual(7);
+  });
+
+  it('gates playstyle set 4/6 bonuses on committed loadout', () => {
+    const gear = starterGear('Warrior');
+    const rng = mulberry32(9);
+    for (const slot of ['weapon', 'chest', 'belt', 'helmet'] as const) {
+      gear[slot] = rollItem(rng, { gearLevel: 7, rarity: 'rare', slot, setId: 'cavern-cleaver' });
+    }
+    const mixed = computeHero(7, gear, 'Warrior', ['cleave', 'shield-bash']).effects;
+    expect(mixed.aoePct).toBeGreaterThanOrEqual(8);
+    expect(mixed.skillCdMinus.whirlwind ?? 0).toBe(0);
+    expect(mixed.atkPct).toBe(0);
+    const blade = computeHero(7, gear, 'Warrior', ['cleave', 'whirlwind', 'bladestorm', 'war-banner']).effects;
+    expect(blade.aoePct).toBeGreaterThanOrEqual(12);
+    expect(blade.atkPct).toBeGreaterThanOrEqual(18);
+    expect(blade.skillCdMinus.whirlwind).toBe(3);
+    // Same Cleaver pieces: committed Bladestorm bar beats mixed bar on CP.
+    const matchedCp = computeHero(7, gear, 'Warrior', ['cleave', 'whirlwind', 'bladestorm', 'war-banner']).cp;
+    const mixedCp = computeHero(7, gear, 'Warrior', ['cleave', 'shield-bash']).cp;
+    expect(matchedCp).toBeGreaterThan(mixedCp);
   });
 
   it('applies Act 9-10 set bonuses (Voidwoven, Nightscar Regalia)', () => {

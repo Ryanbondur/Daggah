@@ -422,6 +422,42 @@ export function skillsForPlaystyle(p: PlaystyleId): SkillDef[] {
   return SKILLS.filter((s) => s.playstyle === p);
 }
 
+/** How many equipped skills belong to `style`. */
+export function loadoutStyleCount(loadout: SkillId[] | undefined, style: PlaystyleId): number {
+  if (!loadout?.length) return 0;
+  return loadout.filter((id) => SKILL_BY_ID[id]?.playstyle === style).length;
+}
+
+/**
+ * Playstyle identity is "on" when ≥3 of 4 bar slots match the style.
+ * Mixed bars keep 2-piece crumbs only (see set effects).
+ */
+export function playstyleCommitted(loadout: SkillId[] | undefined, style: PlaystyleId): boolean {
+  return loadoutStyleCount(loadout, style) >= 3;
+}
+
+/** Dominant playstyle on the bar, or null if tied/empty. */
+export function dominantPlaystyle(loadout: SkillId[] | undefined): PlaystyleId | null {
+  if (!loadout?.length) return null;
+  const counts = new Map<PlaystyleId, number>();
+  for (const id of loadout) {
+    const p = SKILL_BY_ID[id]?.playstyle;
+    if (!p) continue;
+    counts.set(p, (counts.get(p) ?? 0) + 1);
+  }
+  let best: PlaystyleId | null = null;
+  let n = 0;
+  for (const [p, c] of counts) {
+    if (c > n) {
+      best = p;
+      n = c;
+    } else if (c === n) {
+      best = null;
+    }
+  }
+  return n >= 2 ? best : null;
+}
+
 export function skillsForClass(heroClass: HeroClass): SkillDef[] {
   return SKILLS.filter((s) => PLAYSTYLES[s.playstyle].heroClass === heroClass);
 }
