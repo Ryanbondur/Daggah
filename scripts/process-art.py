@@ -69,6 +69,19 @@ def single(name: str, out: str, max_side: int) -> None:
     save(fit(trim(key_magenta(img)), max_side), OUT / out)
 
 
+def save_bg(name: str) -> None:
+    img = Image.open(SRC / f"{name}.jpg").convert("RGB")
+    dest = OUT / "bg" / f"{name}.jpg"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    # Keep a manageable download size while preserving width for tiling.
+    w, h = img.size
+    if w > 1600:
+        scale = 1600 / w
+        img = img.resize((1600, round(h * scale)), Image.LANCZOS)
+    img.save(dest, "JPEG", quality=88)
+    print("wrote", dest.relative_to(ROOT), img.size)
+
+
 def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate: int = 14) -> None:
     img = key_magenta(Image.open(SRC / f"{name}.jpg"))
     alpha = np.asarray(img)[..., 3] > 40
@@ -84,7 +97,9 @@ def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate:
         cx = (sl[1].start + sl[1].stop) / 2
         boxes.append((cy, cx, sl, i + 1))
     if len(boxes) != len(names):
-        raise SystemExit(f"{name}: expected {len(names)} blobs, found {len(boxes)}")
+        print(f"warn {name}: expected {len(names)} blobs, found {len(boxes)} — using grid crop")
+        grid_crop(img, outdir, names, max_side)
+        return
     boxes.sort(key=lambda b: b[0])
     cols = len(names) // (2 if len(names) in (6, 8) else 3) if len(names) != 12 else 4
     rows = [boxes[i : i + cols] for i in range(0, len(boxes), cols)]
@@ -101,34 +116,70 @@ def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate:
         save(fit(trim(tile), max_side), OUT / outdir / f"{nm}.webp")
 
 
+def grid_crop(img: Image.Image, outdir: str, names: list[str], max_side: int) -> None:
+    """Fallback: evenly divide the content bbox into a grid matching names length."""
+    cols = 4 if len(names) == 12 else (4 if len(names) == 8 else 3)
+    rows = int(np.ceil(len(names) / cols))
+    a = np.asarray(img)[..., 3]
+    ys, xs = np.where(a > 20)
+    if len(xs) == 0:
+        raise SystemExit(f"empty sheet for {outdir}")
+    x0, x1 = xs.min(), xs.max() + 1
+    y0, y1 = ys.min(), ys.max() + 1
+    cell_w = (x1 - x0) / cols
+    cell_h = (y1 - y0) / rows
+    for i, nm in enumerate(names):
+        r, c = divmod(i, cols)
+        left = int(x0 + c * cell_w)
+        top = int(y0 + r * cell_h)
+        right = int(x0 + (c + 1) * cell_w)
+        bottom = int(y0 + (r + 1) * cell_h)
+        tile = trim(img.crop((left, top, right, bottom)))
+        save(fit(tile, max_side), OUT / outdir / f"{nm}.webp")
+
+
 GEAR_SLOTS = [
     "weapon", "chest", "helmet", "shoulders",
     "belt", "gloves", "bracers", "legs",
     "boots", "amulet", "medal", "ring",
 ]
-SKILLS = ["cleave", "whirlwind", "bladestorm", "war-banner",
-          "shield-bash", "iron-skin", "rally", "executioners-guard"]
+SKILLS_WARRIOR = ["cleave", "whirlwind", "bladestorm", "war-banner",
+                  "shield-bash", "iron-skin", "rally", "executioners-guard"]
+SKILLS_MAGE = ["firebolt", "flame-wave", "meteor", "combustion",
+               "ice-lance", "frost-nova", "glacial-armor", "absolute-zero"]
+SKILLS_RANGER = ["piercing-shot", "arrow-rain", "multishot", "storm-of-quills",
+                 "aimed-shot", "hunters-mark", "explosive-trap", "kill-shot"]
+SKILLS_ROGUE = ["backstab", "garrote", "ambush", "death-mark",
+                "shadowstep", "smoke-bomb", "flurry", "cloak-of-shadows"]
 NAV = ["camp", "skill", "adventure", "town", "crystal", "key"]
 
 
 def main() -> None:
-    for bg in ("bg-deep-cavern", "bg-ember-hollow"):
-        img = Image.open(SRC / f"{bg}.jpg").convert("RGB")
-        dest = OUT / "bg" / f"{bg}.jpg"
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        img.save(dest, "JPEG", quality=88)
-        print("wrote", dest.relative_to(ROOT), img.size)
+    for bg in ("bg-deep-cavern", "bg-ember-hollow", "bg-bone-gallery", "bg-frostvein"):
+        save_bg(bg)
 
-    single("hero-warrior", "sprites/hero-warrior.webp", 360)
+    for hero in ("warrior", "mage", "ranger", "rogue"):
+        single(f"hero-{hero}", f"sprites/hero-{hero}.webp", 360)
     single("hero-sleeping", "sprites/hero-sleeping.webp", 360)
     single("camp-tent-fire", "sprites/camp-tent-fire.webp", 520)
-    for e in ("enemy-goat-demon", "enemy-skeleton", "enemy-ember-imp", "enemy-cinder-brute",
-              "enemy-horned-overseer", "boss-hollow-king", "boss-deep-warden"):
+
+    enemies = [
+        "enemy-goat-demon", "enemy-skeleton", "enemy-ember-imp", "enemy-cinder-brute",
+        "enemy-horned-overseer", "boss-hollow-king", "boss-deep-warden",
+        "enemy-bone-soldier", "enemy-bone-archer", "enemy-ossuary-captain", "boss-ossuary-lord",
+        "enemy-frost-wisp", "enemy-ice-hound", "enemy-rime-brute", "boss-rime-queen",
+    ]
+    for e in enemies:
         single(e, f"sprites/{e}.webp", 380)
 
     slice_sheet("icons-gear-a", "icons/gear-a", GEAR_SLOTS, 160)
     slice_sheet("icons-gear-b", "icons/gear-b", GEAR_SLOTS, 160)
-    slice_sheet("icons-skills-warrior", "icons/skills", SKILLS, 160, dilate=6)
+    slice_sheet("icons-gear-c", "icons/gear-c", GEAR_SLOTS, 160)
+    slice_sheet("icons-gear-d", "icons/gear-d", GEAR_SLOTS, 160)
+    slice_sheet("icons-skills-warrior", "icons/skills", SKILLS_WARRIOR, 160, dilate=6)
+    slice_sheet("icons-skills-mage", "icons/skills", SKILLS_MAGE, 160, dilate=6)
+    slice_sheet("icons-skills-ranger", "icons/skills", SKILLS_RANGER, 160, dilate=6)
+    slice_sheet("icons-skills-rogue", "icons/skills", SKILLS_ROGUE, 160, dilate=6)
     slice_sheet("icons-nav", "icons/nav", NAV, 160)
 
     single("ui-gargoyle", "ui/gargoyle.webp", 420)

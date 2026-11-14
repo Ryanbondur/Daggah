@@ -11,17 +11,19 @@ import {
 } from '../data/acts';
 import type { DropSource } from '../data/gear';
 import {
+  ALL_SET_IDS,
   RARITIES,
   cpDelta,
   computeHero,
   rollItem,
   rollRarity,
   salvageValue,
+  starterGear,
 } from '../data/gear';
 import { QUESTS } from '../data/quests';
 import type { QuestDef } from '../data/quests';
-import { BAR_SIZE, SKILL_BY_ID, isUnlocked } from '../data/skills';
-import type { Item, SkillId, StatKey } from '../data/types';
+import { BAR_SIZE, DEFAULT_LOADOUT, PLAYSTYLES, SKILL_BY_ID, isUnlocked, skillsForClass } from '../data/skills';
+import type { HeroClass, Item, SkillId, StatKey } from '../data/types';
 import { STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
 import type { BattleEvent, HeroInput, RunDef } from './combat';
@@ -135,7 +137,7 @@ export class Game {
   // ---- derived ------------------------------------------------------------
 
   get totals() {
-    return computeHero(this.save.level, this.save.gear);
+    return computeHero(this.save.level, this.save.gear, this.save.heroClass);
   }
 
   get cp(): number {
@@ -158,11 +160,26 @@ export class Game {
     const t = this.totals;
     return {
       level: this.save.level,
+      heroClass: this.save.heroClass,
       stats: t.stats,
       effects: t.effects,
       loadout: this.save.loadout.filter((id) => isUnlocked(id, this.save.level)),
       primary: this.save.primary,
     };
+  }
+
+  /** Season / new-save class pick. Locked afterward until reset. */
+  pickClass(heroClass: HeroClass): boolean {
+    if (this.save.classPicked) return false;
+    this.save.heroClass = heroClass;
+    this.save.classPicked = true;
+    this.save.gear = starterGear(heroClass);
+    this.save.loadout = [...DEFAULT_LOADOUT[heroClass]];
+    this.save.seenSkills = [...DEFAULT_LOADOUT[heroClass]];
+    this.save.primary = null;
+    this.say(`${heroClass} chosen. Class is locked for this season.`);
+    this.changed();
+    return true;
   }
 
   /** Nodes shown on the progress track. */
@@ -397,9 +414,9 @@ export class Game {
     this.save.level = res.level;
     this.save.xp = res.xp;
     if (res.levelsGained > 0) {
-      const newSkills = (Object.keys(SKILL_BY_ID) as SkillId[]).filter(
-        (id) => SKILL_BY_ID[id].unlockLevel > before && SKILL_BY_ID[id].unlockLevel <= res.level,
-      );
+      const newSkills = skillsForClass(this.save.heroClass)
+        .map((s) => s.id)
+        .filter((id) => SKILL_BY_ID[id].unlockLevel > before && SKILL_BY_ID[id].unlockLevel <= res.level);
       this.refreshBattleHero(true);
       this.say(`Level up! You are now Lv.${res.level}.`);
       this.emit({ t: 'levelUp', level: res.level, newSkills });
@@ -481,6 +498,10 @@ export class Game {
   }
 
   startBattle(): void {
+    if (!this.save.classPicked) {
+      this.toast('Pick a class first', 'info');
+      return;
+    }
     if (this.battle && this.mode !== 'camp') return;
     this.startStage();
     this.say(`Entering ${this.title}.`);
@@ -634,7 +655,10 @@ export class Game {
   }
 
   isUpgrade(item: Item): boolean {
-    return cpDelta(this.save.level, this.save.gear, item) > 0 && item.gearLevel <= this.save.level;
+    return (
+      cpDelta(this.save.level, this.save.gear, item, this.save.heroClass) > 0 &&
+      item.gearLevel <= this.save.level
+    );
   }
 
   /** Put drops into the pickup queue (or auto-salvage non-upgrades when enabled). */
@@ -664,7 +688,7 @@ export class Game {
     return {
       current,
       candidate: item,
-      cpDelta: cpDelta(this.save.level, this.save.gear, item),
+      cpDelta: cpDelta(this.save.level, this.save.gear, item, this.save.heroClass),
       statDeltas,
       levelOk: item.gearLevel <= this.save.level,
     };
@@ -734,21 +758,26 @@ export class Game {
   // ---- skills -------------------------------------------------------------
 
   get newSkillsAvailable(): boolean {
-    return (Object.keys(SKILL_BY_ID) as SkillId[]).some(
-      (id) => isUnlocked(id, this.save.level) && !this.save.seenSkills.includes(id),
+    return skillsForClass(this.save.heroClass).some(
+      (s) => isUnlocked(s.id, this.save.level) && !this.save.seenSkills.includes(s.id),
     );
   }
 
   markSkillsSeen(): void {
-    const all = (Object.keys(SKILL_BY_ID) as SkillId[]).filter((id) => isUnlocked(id, this.save.level));
+    const all = skillsForClass(this.save.heroClass)
+      .map((s) => s.id)
+      .filter((id) => isUnlocked(id, this.save.level));
     if (all.some((id) => !this.save.seenSkills.includes(id))) {
-      this.save.seenSkills = all;
+      this.save.seenSkills = [...new Set([...this.save.seenSkills, ...all])];
       this.changed();
     }
   }
 
   toggleSkill(id: SkillId): string | null {
     if (this.mode !== 'camp') return 'Retreat to camp to change your skill bar.';
+    if (PLAYSTYLES[SKILL_BY_ID[id].playstyle].heroClass !== this.save.heroClass) {
+      return 'That skill belongs to another class.';
+    }
     if (!isUnlocked(id, this.save.level)) return `Unlocks at Lv.${SKILL_BY_ID[id].unlockLevel}`;
     const lo = this.save.loadout;
     const idx = lo.indexOf(id);
@@ -855,14 +884,23 @@ export class Game {
     this.changed();
   }
 
+  /** Unlock through Act N (5 stages each). */
+  devUnlockThroughAct(actId: number): void {
+    const cleared = Math.min(PLAYABLE_STAGES, actId * STAGES_PER_ACT);
+    this.save.stagesCleared = cleared;
+    this.save.currentStage = Math.max(0, cleared - 1);
+    this.save.nodeProgress = 0;
+    this.changed();
+  }
+
   devRollLoot(count = 5): void {
     const items: Item[] = [];
     for (let i = 0; i < count; i++) {
       items.push(
         rollItem(this.rng, {
-          gearLevel: Math.max(1, Math.min(this.save.level, this.rng.int(1, 4))),
+          gearLevel: Math.max(1, Math.min(this.save.level, this.rng.int(1, 8))),
           rarity: rollRarity(this.rng, 'dungeon-floor'),
-          setId: this.rng.pick(['ember-raider', 'cavern-cleaver', 'cavern-bulwark'] as const),
+          setId: this.rng.pick(ALL_SET_IDS),
         }),
       );
     }

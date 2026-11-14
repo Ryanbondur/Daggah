@@ -1,13 +1,15 @@
 import { SETS, computeHero, setCounts } from '../data/gear';
-import type { SetId, StatKey } from '../data/types';
-import { STAT_LABEL } from '../data/types';
-import { availableSpeeds, xpToNext } from '../data/xp';
+import type { HeroClass, SetId, StatKey } from '../data/types';
+import { HERO_CLASSES, STAT_LABEL } from '../data/types';
+import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
 import type { RunResult } from '../game/game';
 import { BAG_CAP } from '../game/state';
 import { formatStat } from '../data/gear';
+import { CLASS_PLAYSTYLES } from '../data/skills';
 import type { UIContext } from './context';
 import { fmt } from './context';
 import { CHECK_SVG, cardHtml, slotHtml } from './items';
+import { heroSprite } from './assets';
 
 const STAT_ORDER: StatKey[] = [
   'atk',
@@ -19,6 +21,36 @@ const STAT_ORDER: StatKey[] = [
   'haste',
   'energyRegen',
 ];
+
+export function showClassPick(ctx: UIContext): void {
+  const cards = HERO_CLASSES.map((c: HeroClass) => {
+    const styles = CLASS_PLAYSTYLES[c].join(' / ');
+    return `<button class="class-card" data-action="pick-class" data-id="${c}">
+      <img src="${heroSprite(c)}" alt="" draggable="false" />
+      <b>${c}</b>
+      <span>${CLASS_BLURB[c]}</span>
+      <small>${styles}</small>
+    </button>`;
+  }).join('');
+  const el = ctx.openModal(
+    `<div class="sheet class-pick">
+      <h2>Choose Your Class</h2>
+      <p>Locked for this season. Reset save to pick again.</p>
+      <div class="class-grid">${cards}</div>
+    </div>`,
+    { className: 'class-pick-dim' },
+  );
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action="pick-class"]') as HTMLElement | null;
+    if (!t) return;
+    const id = t.dataset.id as HeroClass;
+    if (ctx.game.pickClass(id)) {
+      ctx.skillStyle = CLASS_PLAYSTYLES[id][0];
+      ctx.closeModal();
+      ctx.render();
+    }
+  });
+}
 
 export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 'bag'): void {
   const g = ctx.game;
@@ -132,7 +164,7 @@ export function showBag(ctx: UIContext): void {
 
 export function showHero(ctx: UIContext): void {
   const g = ctx.game;
-  const t = computeHero(g.save.level, g.save.gear);
+  const t = computeHero(g.save.level, g.save.gear, g.save.heroClass);
   const rows = STAT_ORDER.map(
     (k) => `<div class="row"><span>${STAT_LABEL[k]}</span><b>${formatStat(k, Math.round(t.stats[k] * 10) / 10)}</b></div>`,
   ).join('');
@@ -149,7 +181,7 @@ export function showHero(ctx: UIContext): void {
     .join('');
   ctx.openModal(
     `<div class="sheet">
-      <h2>Warrior - Lv.${g.save.level}</h2>
+      <h2>${g.save.heroClass} - Lv.${g.save.level}</h2>
       <div class="body">
         <div class="row"><span>Combat Power</span><b>${fmt(t.cp)}</b></div>
         ${rows}
@@ -191,7 +223,7 @@ export function showSettings(ctx: UIContext): void {
         <div class="chip-row">
           <button class="chip" data-action="dev-xp">+500 XP</button>
           <button class="chip" data-action="dev-lvl">+1 Level</button>
-          <button class="chip" data-action="dev-acts">Clear Acts 1-2</button>
+          <button class="chip" data-action="dev-acts">Clear Acts 1-4</button>
           <button class="chip" data-action="dev-res">+Keys +Crystals</button>
           <button class="chip" data-action="dev-loot">Roll 5 drops</button>
         </div>
@@ -233,7 +265,7 @@ export function showSettings(ctx: UIContext): void {
         g.devGrantXp(Math.max(1, (g.save.level < 20 ? xpNeeded(g.save.level) - g.save.xp : 0)));
         break;
       case 'dev-acts':
-        g.devUnlockActs();
+        g.devUnlockThroughAct(4);
         break;
       case 'dev-res':
         g.devGrantResources();
@@ -249,6 +281,8 @@ export function showSettings(ctx: UIContext): void {
         } else {
           g.resetSave();
           ctx.closeModal();
+          ctx.skillStyle = 'bladestorm';
+          ctx.showClassPick();
         }
         break;
       default:

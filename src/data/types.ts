@@ -56,6 +56,10 @@ export function emptyStats(): Stats {
   };
 }
 
+export type HeroClass = 'Warrior' | 'Mage' | 'Ranger' | 'Rogue';
+
+export const HERO_CLASSES: HeroClass[] = ['Warrior', 'Mage', 'Ranger', 'Rogue'];
+
 export type SlotId =
   | 'weapon'
   | 'chest'
@@ -72,9 +76,15 @@ export type SlotId =
 
 export type RarityId = 'common' | 'rare' | 'epic' | 'legendary';
 
-export type SetId = 'ember-raider' | 'cavern-cleaver' | 'cavern-bulwark';
+export type SetId =
+  | 'ember-raider'
+  | 'cavern-cleaver'
+  | 'cavern-bulwark'
+  | 'gravemarch'
+  | 'ashen-codex'
+  | 'rime-circlet';
 
-export type IconPack = 'a' | 'b';
+export type IconPack = 'a' | 'b' | 'c' | 'd';
 
 export interface Item {
   id: string;
@@ -88,6 +98,7 @@ export interface Item {
 }
 
 export type SkillId =
+  // Warrior
   | 'cleave'
   | 'whirlwind'
   | 'bladestorm'
@@ -95,6 +106,41 @@ export type SkillId =
   | 'shield-bash'
   | 'iron-skin'
   | 'rally'
-  | 'executioners-guard';
+  | 'executioners-guard'
+  // Mage
+  | 'firebolt'
+  | 'flame-wave'
+  | 'meteor'
+  | 'combustion'
+  | 'ice-lance'
+  | 'frost-nova'
+  | 'glacial-armor'
+  | 'absolute-zero'
+  // Ranger
+  | 'piercing-shot'
+  | 'arrow-rain'
+  | 'multishot'
+  | 'storm-of-quills'
+  | 'aimed-shot'
+  | 'hunters-mark'
+  | 'explosive-trap'
+  | 'kill-shot'
+  // Rogue
+  | 'backstab'
+  | 'garrote'
+  | 'ambush'
+  | 'death-mark'
+  | 'shadowstep'
+  | 'smoke-bomb'
+  | 'flurry'
+  | 'cloak-of-shadows';
 
-export type PlaystyleId = 'bladestorm' | 'ironclad';
+export type PlaystyleId =
+  | 'bladestorm'
+  | 'ironclad'
+  | 'inferno'
+  | 'frostbind'
+  | 'volley'
+  | 'marksmanship'
+  | 'assassination'
+  | 'shadowdance';

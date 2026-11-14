@@ -1,6 +1,6 @@
 # Daggah
 
-Dark-fantasy, portrait (9:16) browser auto-combat RPG. This is the first vertical slice: one class (Warrior), Acts 1-2, gear, skills, dungeons and local save.
+Dark-fantasy, portrait (9:16) browser auto-combat RPG. Current slice: four classes (Warrior, Mage, Ranger, Rogue), Acts 1–4, gear sets, skills, dungeons and local save.
 
 Stack: Vite + TypeScript + Phaser 3. Phaser renders the stage (camp and battle); DOM/CSS renders the HUD, panes and modals.
 
@@ -12,59 +12,55 @@ npm run dev        # http://localhost:5173 (open in a phone-sized window or devt
 npm run build      # typecheck + production build into dist/
 npm run preview    # serve the production build
 npm test           # unit tests + headless balance simulation
-npm run art        # re-slice generated art from art-src/ into public/assets/ (needs python3 + Pillow)
+npm run art        # re-slice generated art from art-src/ into public/assets/ (needs python3 + Pillow/numpy/scipy)
 ```
 
-## What is in the slice
+## What is in this slice
 
-- **Camp**: 12-slot gear pane (weapon, chest, helmet, shoulders, belt, gloves, bracers, legs, boots, amulet, medal, ring), HP and Energy orbs, level/XP track, speed toggle, onboarding quest strip, bag, hero stats and settings.
-- **Battle**: heroes auto-attack west to east through a chain of stage nodes (normal, elite, mini-boss, boss). Energy skills fire automatically from the equipped bar; the center **Battle** button starts a run and, during a fight, force-casts your primary skill.
-- **Skill**: Warrior with two playstyles, **Bladestorm** (AoE cleave, Cleave stacks into Whirlwind and Bladestorm) and **Ironclad** (guard, Shield Bash, Iron Skin, Rally, War Banner, Executioner's Guard). 8 skills, 4 bar slots, one primary (star). Unlock levels follow the GDD (Bladestorm is Lv7).
-- **Adventure**: Act 1 (Ember Hollow) and Act 2 (Deep Cavern), 5 stages each with replay. Each act has a dungeon (Hollow Crypt, Cavern Vault) that costs a key, drops set gear and can be swept after the first clear. Keys regenerate over time.
-- **Gear compare**: every drop opens a compare modal with per-stat deltas and a CP delta. **Replace**, **Salvage**, or tap outside to keep it in the bag. "Auto-salvage replaced gear" and "auto-salvage non-upgrades" live in Settings.
-- **Town**: stub with "coming soon" cards, the onboarding quest list and Settings.
-- **Progression**: XP table and Warrior stats from the GDD, Lv1-20, 1.5x speed at Lv5, 2x at Lv10.
-- **Save**: localStorage key `daggah.save.v1` (class, level, XP, gear, bag, currencies, act/dungeon progress, loadout, settings). Autosaves on change and every 5 seconds.
+- **Class pick**: on a new save (or after Reset), choose Warrior / Mage / Ranger / Rogue. Class is locked for the season; reset to pick again.
+- **Camp**: 12-slot gear pane, HP and Energy orbs, level/XP track, speed toggle, onboarding quest strip, bag, hero stats and settings.
+- **Battle**: auto-combat west→east through stage nodes. Skills fire from the equipped 4-bar; center **Battle** starts a run and force-casts Primary mid-fight.
+- **Skill**: each class has 2 playstyles × 4 skills (8 total). Equip freely within class out of combat.
+- **Adventure**: Acts 1–4 (Ember Hollow, Deep Cavern, Bone Gallery, Frostvein), 5 stages each. Dungeons: Hollow Crypt, Cavern Vault, Ossuary, Rime Vault. Keys regenerate over time; sweep after first clear.
+- **Sets**: Ember Raider, Cavern Cleaver/Bulwark, Gravemarch, Ashen Codex, Rime Circlet (2/4/6-piece bonuses).
+- **Gear compare**: CP + per-stat deltas; Replace / Salvage / bag keep. Auto-salvage options in Settings.
+- **Town**: stub cards + onboarding quests + Settings.
+- **Save**: `daggah.save.v2` (migrates readable Warrior v1 saves). Autosaves on change and every 5s.
 
-Out of scope here: other classes, Acts 3-10, Nightscar, clans/4v4, seasons server.
+Out of scope: Acts 5–10, Nightscar, clans/4v4, seasons server.
 
 ## Controls
 
-- Tap the bottom nav to switch Camp, Skill, Adventure and Town.
-- Center **Battle**: start a run from the current stage, then tap to force-cast the primary skill.
-- Top-right HUD button: start or retreat. Speed button cycles unlocked speeds.
-- Settings (Camp quest strip or Town) has playtest tools: +500 XP, +1 Level, Clear Acts 1-2, +Keys +Crystals, Roll 5 drops, Reset save.
+- Bottom nav: Camp · Skill · Battle · Adventure · Town.
+- Center **Battle**: start current stage, then force-cast Primary.
+- Top-right HUD swords: start or retreat. Speed cycles unlocked multipliers.
+- Settings playtest tools: +500 XP, +1 Level, Clear Acts 1–4, +Keys +Crystals, Roll 5 drops, Reset save (reopens class pick).
 
 ## Project layout
 
 ```
-src/data/    types, XP table, skills, gear/rarity/sets/CP, acts and enemies, quests
-src/game/    pure combat engine (fixed step, seeded RNG), Game controller, save, tests
-src/stage/   Phaser StageScene (parallax, camp props, sprites, FX, damage text)
-src/ui/      DOM panes, modals, HUD, inline SVG icons
-scripts/     process-art.py (chroma-key + slice generated sheets)
-art-src/     raw generated art; public/assets/ holds the processed sprites and UI
+src/data/    types, XP, skills (all classes), gear/sets/CP, acts 1-4 + enemies, quests
+src/game/    combat engine, Game controller, save, tests
+src/stage/   Phaser StageScene
+src/ui/      DOM panes, modals (incl. class pick), HUD
+scripts/     process-art.py
+art-src/     raw generated art → public/assets/
 ```
 
-The combat engine has no Phaser or DOM dependency, so `src/game/sim.test.ts` runs a whole auto-played campaign headlessly and asserts the 10 playable stages are clearable at a sane pace.
+`src/game/sim.test.ts` auto-plays a Warrior through all 20 stages and smoke-clears Act 1 on Mage/Ranger/Rogue.
 
 ## Design assumptions
 
-- CP uses the GDD formula, so its numbers are smaller than the reference screenshots' "+167" scale.
-- Quest 1 reward is 300 crystals (matches the reference).
-- "Battle" has no separate pane: it is the center button plus the live stage view.
-- Dev/playtest tools are in Settings rather than behind a flag, to make review quick.
-- Art was generated against the reference images, chroma-keyed and sliced by `scripts/process-art.py`.
+- CP uses the GDD formula (smaller than the reference "+167" scale).
+- Quest 1 pays 300 crystals.
+- Mid/late enemy growth softens after Act 2 so Acts 3–4 stay clearable with dungeon farming.
+- Art is best-effort dark-fantasy cartoon (Sonnet 5.5 unavailable this run); chroma-keyed via `npm run art`.
 
 ## Playtest checklist
 
-1. Fresh load: Camp shows 12 common Lv.1 slots, sleeping hero by the fire, quest "Salvage 5 pcs of Gear".
-2. Press **Battle**: clear Stage 1-1, watch loot compare modals. Replace, Salvage and tap-outside all behave.
-3. Settings > +1 Level a few times to Lv7, open Skill, switch playstyle, equip Bladestorm and watch the swirl FX.
-4. Adventure: clear Act 1 and Act 2 stages, enter and sweep a dungeon, review the result modal.
-5. Salvage 5 items and claim the first quest.
-6. Reload the page: progress, gear and settings persist. Reset save returns to a fresh start.
-
-## Next PR
-
-Mage / Ranger / Rogue class data and skills, Acts 3-4 content and sets, then Nightscar and meta systems.
+1. Fresh load → class pick → pick each class once (reset between) and confirm hero sprite + default loadout.
+2. Warrior: Battle 1-1, loot compare, salvage 5, claim quest.
+3. Skill pane: switch both playstyles, equip 4 skills, set Primary star.
+4. Adventure: push into Act 3 Bone Gallery and Act 4 Frostvein; enter Ossuary / Rime Vault.
+5. Settings → Clear Acts 1–4, farm a dungeon, Review Gear.
+6. Reload: progress persists. Reset: class pick returns.

@@ -93,9 +93,97 @@ export const ENEMIES: Record<string, EnemyDef> = {
     atkInterval: 2.5,
     speed: 0.2,
   },
+  'bone-soldier': {
+    id: 'bone-soldier',
+    name: 'Bone Soldier',
+    sprite: 'enemy-bone-soldier',
+    role: 'trash',
+    size: 0.21,
+    hpMul: 1.05,
+    atkMul: 1.05,
+    atkInterval: 1.65,
+    speed: 0.27,
+  },
+  'bone-archer': {
+    id: 'bone-archer',
+    name: 'Bone Archer',
+    sprite: 'enemy-bone-archer',
+    role: 'trash',
+    size: 0.2,
+    hpMul: 0.85,
+    atkMul: 1.1,
+    atkInterval: 1.8,
+    speed: 0.26,
+  },
+  'ossuary-captain': {
+    id: 'ossuary-captain',
+    name: 'Ossuary Captain',
+    sprite: 'enemy-ossuary-captain',
+    role: 'elite',
+    size: 0.33,
+    hpMul: 1,
+    atkMul: 1.05,
+    atkInterval: 2.0,
+    speed: 0.21,
+  },
+  'ossuary-lord': {
+    id: 'ossuary-lord',
+    name: 'Ossuary Lord',
+    sprite: 'boss-ossuary-lord',
+    role: 'boss',
+    size: 0.48,
+    hpMul: 1,
+    atkMul: 1,
+    atkInterval: 2.4,
+    speed: 0.19,
+  },
+  'frost-wisp': {
+    id: 'frost-wisp',
+    name: 'Frost Wisp',
+    sprite: 'enemy-frost-wisp',
+    role: 'trash',
+    size: 0.17,
+    hpMul: 0.8,
+    atkMul: 1.1,
+    atkInterval: 1.4,
+    speed: 0.36,
+  },
+  'ice-hound': {
+    id: 'ice-hound',
+    name: 'Ice Hound',
+    sprite: 'enemy-ice-hound',
+    role: 'trash',
+    size: 0.2,
+    hpMul: 1,
+    atkMul: 1.05,
+    atkInterval: 1.55,
+    speed: 0.32,
+  },
+  'rime-brute': {
+    id: 'rime-brute',
+    name: 'Rime Brute',
+    sprite: 'enemy-rime-brute',
+    role: 'elite',
+    size: 0.34,
+    hpMul: 1,
+    atkMul: 1.1,
+    atkInterval: 2.15,
+    speed: 0.2,
+  },
+  'rime-queen': {
+    id: 'rime-queen',
+    name: 'Rime Queen',
+    sprite: 'boss-rime-queen',
+    role: 'boss',
+    size: 0.47,
+    hpMul: 1,
+    atkMul: 1.05,
+    atkInterval: 2.35,
+    speed: 0.19,
+  },
 };
 
-export type BackgroundId = 'ember' | 'cavern';
+export type BackgroundId = 'ember' | 'cavern' | 'bone' | 'frost';
 
 export interface DungeonDef {
   id: string;
@@ -161,12 +249,50 @@ export const ACTS: ActDef[] = [
       floors: 10,
     },
   },
+  {
+    id: 3,
+    name: 'Bone Gallery',
+    theme: 'Catacombs, skeletons',
+    bg: 'bone',
+    stages: 5,
+    recLevel: [4, 6],
+    trash: ['bone-soldier', 'bone-archer', 'cave-skeleton'],
+    elite: 'ossuary-captain',
+    boss: 'ossuary-lord',
+    playable: true,
+    dungeon: {
+      id: 'ossuary',
+      name: 'Ossuary',
+      actId: 3,
+      glBand: [4, 6],
+      sets: ['gravemarch'],
+      floors: 10,
+    },
+  },
+  {
+    id: 4,
+    name: 'Frostvein',
+    theme: 'Ice-veined tunnels',
+    bg: 'frost',
+    stages: 5,
+    recLevel: [6, 8],
+    trash: ['frost-wisp', 'ice-hound'],
+    elite: 'rime-brute',
+    boss: 'rime-queen',
+    playable: true,
+    dungeon: {
+      id: 'rime-vault',
+      name: 'Rime Vault',
+      actId: 4,
+      glBand: [6, 8],
+      sets: ['ashen-codex', 'rime-circlet'],
+      floors: 10,
+    },
+  },
 ];
 
-/** Acts 3-10 are designed (GDD §5.1) but locked in this slice. */
+/** Acts 5-10 are designed (GDD §5.1) but locked in this slice. */
 export const LOCKED_ACTS: { id: number; name: string; theme: string }[] = [
-  { id: 3, name: 'Bone Gallery', theme: 'Catacombs, skeletons' },
-  { id: 4, name: 'Frostvein', theme: 'Ice-veined tunnels' },
   { id: 5, name: 'Witchmire', theme: 'Fungal marsh caverns' },
   { id: 6, name: 'Cinderreach', theme: 'Magma galleries' },
   { id: 7, name: 'Ashen Spire', theme: 'Volcanic ascent' },
@@ -191,7 +317,7 @@ export type NodeType = 'camp' | 'trash' | 'elite' | 'boss' | 'miniboss';
 /** GDD §5.2: six nodes per stage. */
 export const STAGE_NODES: NodeType[] = ['camp', 'trash', 'trash', 'elite', 'trash', 'boss'];
 
-/** Global difficulty tier for a stage: Act 1 = 0-4, Act 2 = 5-9. */
+/** Global difficulty tier for a stage: Act 1 = 0-4, Act 2 = 5-9, ... */
 export function stageTier(actId: number, stage: number): number {
   return (actId - 1) * 5 + (stage - 1);
 }
@@ -215,15 +341,18 @@ export interface EnemyScale {
 
 /** Enemy stats for a given tier and role. Tuned against hero progression in game/sim.test.ts. */
 export function enemyScale(tier: number, role: EnemyRole): EnemyScale {
-  const hp = 55 * Math.pow(1.22, tier);
-  const atk = 9 * Math.pow(1.15, tier);
-  const def = 2 + tier * 2.2;
-  const xp = 1.8 * Math.pow(1.2, tier);
+  // Soften the curve after Act 2 so Acts 3-4 stay clearable with set farming.
+  const growth = tier <= 9 ? 1.22 : 1.175;
+  const atkGrowth = tier <= 9 ? 1.15 : 1.12;
+  const hp = 55 * Math.pow(growth, tier);
+  const atk = 9 * Math.pow(atkGrowth, tier);
+  const def = 2 + tier * 2.0;
+  const xp = 2.0 * Math.pow(1.2, tier);
   const mul =
     role === 'trash'
       ? { hp: 1, atk: 1, xp: 1 }
       : role === 'elite'
-        ? { hp: 3.4, atk: 1.5, xp: 4 }
-        : { hp: 9, atk: 1.9, xp: 10 };
-  return { hp: hp * mul.hp, atk: atk * mul.atk, def: def * (role === 'trash' ? 1 : 1.4), xp: xp * mul.xp };
+        ? { hp: 3.2, atk: 1.45, xp: 4 }
+        : { hp: 8.2, atk: 1.8, xp: 10 };
+  return { hp: hp * mul.hp, atk: atk * mul.atk, def: def * (role === 'trash' ? 1 : 1.35), xp: xp * mul.xp };
 }

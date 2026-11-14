@@ -2,7 +2,7 @@ import type { BackgroundId, EnemyDef, EnemyRole, NodeType } from '../data/acts';
 import { ENEMIES, enemyScale } from '../data/acts';
 import type { SetEffects } from '../data/gear';
 import { SKILL_BY_ID, defaultPrimary } from '../data/skills';
-import type { SkillId, Stats } from '../data/types';
+import type { HeroClass, SkillId, Stats } from '../data/types';
 import { maxEnergy } from '../data/xp';
 import type { Rng } from './rng';
 
@@ -11,6 +11,7 @@ export const STEP = 0.05;
 
 export interface HeroInput {
   level: number;
+  heroClass: HeroClass;
   stats: Stats;
   effects: SetEffects;
   loadout: SkillId[];
@@ -67,6 +68,15 @@ export interface Enemy {
   atkT: number;
   stunT: number;
   shredT: number;
+  slowT: number;
+  slowMul: number;
+  rootT: number;
+  burn: number;
+  burnT: number;
+  bleedT: number;
+  bleedDps: number;
+  markT: number;
+  vulnT: number;
   hitFlash: number;
   attackAnim: number;
   dead: boolean;
@@ -80,14 +90,29 @@ interface Buffs {
   bannerT: number;
   shield: number;
   shieldT: number;
+  glacial: boolean;
   rallyT: number;
   rallyRate: number;
   guardT: number;
   spinT: number;
   spinTick: number;
   spinMul: number;
+  spinSkill: SkillId | null;
   cleaveStacks: number;
   cleaveT: number;
+  meteorT: number;
+  meteorMul: number;
+  trapT: number;
+  trapMul: number;
+  hasteT: number;
+  hasteBonus: number;
+  immuneT: number;
+  smokeT: number;
+  stealthT: number;
+  ambushReady: boolean;
+  firstSwing: boolean;
+  critBonus: number;
+  critBonusT: number;
 }
 
 function freshBuffs(): Buffs {
@@ -95,14 +120,29 @@ function freshBuffs(): Buffs {
     bannerT: 0,
     shield: 0,
     shieldT: 0,
+    glacial: false,
     rallyT: 0,
     rallyRate: 0,
     guardT: 0,
     spinT: 0,
     spinTick: 0,
     spinMul: 1,
+    spinSkill: null,
     cleaveStacks: 0,
     cleaveT: 0,
+    meteorT: 0,
+    meteorMul: 1,
+    trapT: 0,
+    trapMul: 1,
+    hasteT: 0,
+    hasteBonus: 0,
+    immuneT: 0,
+    smokeT: 0,
+    stealthT: 0,
+    ambushReady: false,
+    firstSwing: true,
+    critBonus: 0,
+    critBonusT: 0,
   };
 }
 
@@ -157,6 +197,11 @@ export class Battle {
     const p = this.heroInput.primary;
     if (p && this.heroInput.loadout.includes(p)) return p;
     return defaultPrimary(this.heroInput.loadout);
+  }
+
+  get reach(): number {
+    const c = this.heroInput.heroClass;
+    return c === 'Mage' || c === 'Ranger' ? 0.55 : 0.4;
   }
 
   skillCost(id: SkillId): number {
@@ -244,9 +289,23 @@ export class Battle {
   private tickBuffs(dt: number): void {
     const b = this.buffs;
     b.bannerT = Math.max(0, b.bannerT - dt);
+    b.immuneT = Math.max(0, b.immuneT - dt);
+    b.smokeT = Math.max(0, b.smokeT - dt);
+    b.stealthT = Math.max(0, b.stealthT - dt);
+    if (b.critBonusT > 0) {
+      b.critBonusT -= dt;
+      if (b.critBonusT <= 0) b.critBonus = 0;
+    }
+    if (b.hasteT > 0) {
+      b.hasteT -= dt;
+      if (b.hasteT <= 0) b.hasteBonus = 0;
+    }
     if (b.shieldT > 0) {
       b.shieldT -= dt;
-      if (b.shieldT <= 0) b.shield = 0;
+      if (b.shieldT <= 0) {
+        b.shield = 0;
+        b.glacial = false;
+      }
     }
     b.guardT = Math.max(0, b.guardT - dt);
     if (b.cleaveT > 0) {
@@ -258,6 +317,35 @@ export class Battle {
       b.rallyT -= dt;
       const heal = b.rallyRate * slice;
       this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + heal);
+    }
+    if (b.meteorT > 0) {
+      b.meteorT -= dt;
+      if (b.meteorT <= 0) {
+        this.heroAoe(2.8 * b.meteorMul, 'meteor');
+      }
+    }
+    if (b.trapT > 0) {
+      b.trapT -= dt;
+      if (b.trapT <= 0) {
+        for (const e of this.alive) {
+          this.hitEnemy(e, 2.2 * b.trapMul, { skill: 'explosive-trap', aoe: true, sp: true });
+          if (!e.dead) this.applySlow(e, 3, 0.7);
+        }
+      }
+    }
+    for (const e of this.alive) {
+      if (e.burnT > 0 && e.burn > 0) {
+        const tick = this.heroInput.stats.atk * 0.12 * e.burn * (1 + this.heroInput.effects.burnPct / 100) * dt;
+        e.hp -= tick;
+        e.burnT -= dt;
+        if (e.burnT <= 0) e.burn = 0;
+        if (e.hp <= 0) this.killEnemy(e);
+      }
+      if (e.bleedT > 0) {
+        e.hp -= e.bleedDps * dt;
+        e.bleedT -= dt;
+        if (e.hp <= 0) this.killEnemy(e);
+      }
     }
     for (const id of Object.keys(this.cds) as SkillId[]) {
       this.cds[id] = Math.max(0, (this.cds[id] ?? 0) - dt);
@@ -296,6 +384,7 @@ export class Battle {
     this.setState('fight');
     this.autoT = Math.min(this.autoT, 0.5);
     this.aiT = 0.1;
+    this.buffs.firstSwing = true;
     if (node.type === 'boss') this.events.push({ t: 'shout', text: ENEMIES[run.boss].name });
   }
 
@@ -315,6 +404,15 @@ export class Battle {
       atkT: def.atkInterval * this.rng.range(0.6, 1),
       stunT: 0,
       shredT: 0,
+      slowT: 0,
+      slowMul: 1,
+      rootT: 0,
+      burn: 0,
+      burnT: 0,
+      bleedT: 0,
+      bleedDps: 0,
+      markT: 0,
+      vulnT: 0,
       hitFlash: 0,
       attackAnim: 0,
       dead: false,
@@ -356,6 +454,18 @@ export class Battle {
     return best;
   }
 
+  private applySlow(e: Enemy, dur: number, mul: number): void {
+    const potency = 1 + this.heroInput.effects.slowPct / 100;
+    const slowed = Math.max(0.35, 1 - (1 - mul) * potency);
+    e.slowT = Math.max(e.slowT, dur);
+    e.slowMul = Math.min(e.slowMul, slowed);
+  }
+
+  private applyBurn(e: Enemy, stacks = 1): void {
+    e.burn = Math.min(5, e.burn + stacks);
+    e.burnT = 4;
+  }
+
   private updateEnemies(dt: number): void {
     const alive = this.enemies.filter((e) => !e.dead).sort((a, b) => a.x - b.x);
     let offset = 0;
@@ -363,14 +473,20 @@ export class Battle {
       const gap = e.def.role === 'boss' ? 0.12 : e.def.role === 'elite' ? 0.085 : 0.062;
       const targetX = HERO_X + 0.13 + offset + gap * 0.5;
       offset += gap;
+      e.rootT = Math.max(0, e.rootT - dt);
+      e.slowT = Math.max(0, e.slowT - dt);
+      if (e.slowT <= 0) e.slowMul = 1;
+      e.markT = Math.max(0, e.markT - dt);
+      e.vulnT = Math.max(0, e.vulnT - dt);
+      const frozen = e.stunT > 0 || e.rootT > 0;
       if (e.stunT > 0) {
         e.stunT -= dt;
-      } else if (e.x > targetX) {
-        e.x = Math.max(targetX, e.x - e.def.speed * dt);
+      } else if (!frozen && e.x > targetX) {
+        e.x = Math.max(targetX, e.x - e.def.speed * e.slowMul * dt);
       }
       e.shredT = Math.max(0, e.shredT - dt);
       e.engaged = e.x <= targetX + 0.02;
-      if (e.stunT <= 0 && e.engaged) {
+      if (!frozen && e.engaged) {
         e.atkT -= dt;
         if (e.atkT <= 0) {
           e.atkT = e.def.atkInterval * this.rng.range(0.9, 1.1);
@@ -383,6 +499,11 @@ export class Battle {
   private enemyAttack(e: Enemy): void {
     e.attackAnim = 0.25;
     const b = this.buffs;
+    if (b.immuneT > 0) return;
+    if (b.smokeT > 0 && this.rng.chance(0.4)) {
+      this.events.push({ t: 'blocked', enemyId: e.id });
+      return;
+    }
     if (b.guardT > 0) {
       b.guardT = 0;
       this.events.push({ t: 'blocked', enemyId: e.id });
@@ -403,7 +524,11 @@ export class Battle {
       const soak = Math.min(b.shield, dmg);
       b.shield -= soak;
       dmg -= soak;
-      if (b.shield <= 0) b.shieldT = 0;
+      if (b.glacial) this.applySlow(e, 2, 0.6);
+      if (b.shield <= 0) {
+        b.shieldT = 0;
+        b.glacial = false;
+      }
     }
     this.hero.hp -= dmg;
     this.heroHitFlash = 0.15;
@@ -423,7 +548,8 @@ export class Battle {
       b.spinTick -= dt;
       if (b.spinTick <= 0) {
         b.spinTick += 0.4;
-        this.heroAoe(0.9 * b.spinMul, 'bladestorm');
+        const skill = b.spinSkill ?? 'bladestorm';
+        this.heroAoe(0.9 * b.spinMul, skill);
       }
       return;
     }
@@ -441,7 +567,7 @@ export class Battle {
     this.autoT -= dt;
     if (this.autoT <= 0 && this.lockT <= 0) {
       const front = this.frontEnemy();
-      if (front && front.x <= HERO_X + 0.4) {
+      if (front && front.x <= HERO_X + this.reach) {
         this.autoAttack(front);
       }
     }
@@ -449,7 +575,9 @@ export class Battle {
 
   private autoInterval(): number {
     const haste =
-      this.heroInput.stats.haste / 100 + (this.buffs.bannerT > 0 ? 0.15 : 0);
+      this.heroInput.stats.haste / 100 +
+      (this.buffs.bannerT > 0 ? 0.15 : 0) +
+      this.buffs.hasteBonus;
     return 1.2 / (1 + haste);
   }
 
@@ -457,8 +585,18 @@ export class Battle {
     this.autoT = this.autoInterval();
     this.heroSwingAnim = 0.22;
     this.events.push({ t: 'swing' });
-    this.hitEnemy(front, 1.0, {});
-    if (this.heroInput.loadout.includes('cleave')) {
+    const load = this.heroInput.loadout;
+    let mult = 1;
+    let forceCrit = false;
+    if (load.includes('backstab') && (this.buffs.firstSwing || this.buffs.stealthT > 0 || this.buffs.ambushReady)) {
+      mult = 1.6;
+      forceCrit = true;
+      this.buffs.ambushReady = false;
+      this.buffs.stealthT = 0;
+    }
+    this.buffs.firstSwing = false;
+    this.hitEnemy(front, mult, { forceCrit });
+    if (load.includes('cleave')) {
       const others = this.alive
         .filter((e) => e !== front)
         .sort((a, b) => a.x - b.x)
@@ -467,13 +605,25 @@ export class Battle {
       this.buffs.cleaveStacks = Math.min(5, this.buffs.cleaveStacks + 1);
       this.buffs.cleaveT = 6;
     }
+    if (load.includes('firebolt')) this.applyBurn(front, 1);
+    if (load.includes('piercing-shot')) {
+      const rest = this.alive.filter((e) => e !== front).sort((a, b) => a.x - b.x);
+      for (const o of rest) this.hitEnemy(o, 0.7, { aoe: true });
+    }
     this.gainEnergy(3, true);
   }
 
   private hitEnemy(
     e: Enemy,
     mult: number,
-    opts: { skill?: SkillId; aoe?: boolean; sp?: boolean; noEnergy?: boolean },
+    opts: {
+      skill?: SkillId;
+      aoe?: boolean;
+      sp?: boolean;
+      noEnergy?: boolean;
+      forceCrit?: boolean;
+      critBonus?: number;
+    },
   ): number {
     if (e.dead) return 0;
     const inp = this.heroInput;
@@ -482,7 +632,14 @@ export class Battle {
     if (opts.aoe) dmg *= 1 + inp.effects.aoePct / 100;
     if (opts.sp) dmg *= 1 + inp.stats.skillPower / 100;
     if (e.shredT > 0) dmg *= 1.2;
-    const crit = this.rng.chance(inp.stats.critRate / 100);
+    if (e.markT > 0) dmg *= 1.2;
+    if (e.vulnT > 0) dmg *= 1.25;
+    if (e.burn > 0 && (opts.skill === 'flame-wave' || opts.skill === 'meteor')) {
+      dmg *= 1 + 0.04 * e.burn;
+    }
+    const critChance =
+      inp.stats.critRate / 100 + (opts.critBonus ?? 0) + this.buffs.critBonus;
+    const crit = opts.forceCrit || this.rng.chance(critChance);
     if (crit) dmg *= 1.5 + inp.stats.critDmg / 100;
     dmg *= 100 / (100 + e.defense * 1.5);
     const final = Math.max(1, Math.round(dmg));
@@ -509,6 +666,12 @@ export class Battle {
     const xp = Math.max(1, Math.round(e.xp));
     const gold = Math.max(1, Math.round(xp * 0.8));
     this.events.push({ t: 'kill', enemyId: e.id, role: e.def.role, xp, gold, defId: e.def.id });
+    const healPct = this.heroInput.effects.onKillHealPct;
+    if (healPct > 0) {
+      const amount = Math.round(this.hero.maxHp * (healPct / 100));
+      this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + amount);
+      this.events.push({ t: 'heal', amount });
+    }
   }
 
   private heroAoe(mult: number, skill: SkillId): void {
@@ -545,18 +708,41 @@ export class Battle {
     const hpPct = this.hero.hp / this.hero.maxHp;
     const b = this.buffs;
     const front = this.frontEnemy();
-    const inReach = !!front && front.x <= HERO_X + 0.4;
+    const inReach = !!front && front.x <= HERO_X + this.reach;
+    const execThresh = this.heroInput.effects.executeThreshold;
+    const lowTarget = alive.find((e) => e.hp / e.maxHp <= execThresh);
 
     const primary = this.primaryId;
     if (primary && this.canCast(primary) && inReach && (n >= 3 || hasBoss)) return primary;
 
     const order: SkillId[] = [
       'rally',
+      'cloak-of-shadows',
       'executioners-guard',
       'iron-skin',
+      'glacial-armor',
+      'shadowstep',
       'war-banner',
+      'hunters-mark',
+      'kill-shot',
+      'death-mark',
+      'absolute-zero',
+      'meteor',
+      'storm-of-quills',
       'bladestorm',
+      'combustion',
+      'ambush',
       'whirlwind',
+      'flame-wave',
+      'arrow-rain',
+      'multishot',
+      'frost-nova',
+      'explosive-trap',
+      'flurry',
+      'garrote',
+      'smoke-bomb',
+      'aimed-shot',
+      'ice-lance',
       'shield-bash',
     ];
     for (const id of order) {
@@ -565,23 +751,62 @@ export class Battle {
         case 'rally':
           if (hpPct < 0.55) return id;
           break;
+        case 'cloak-of-shadows':
+          if (hpPct < 0.4 && b.immuneT <= 0) return id;
+          break;
         case 'executioners-guard':
           if ((hasElite || hpPct < 0.6) && b.guardT <= 0 && inReach) return id;
           break;
         case 'iron-skin':
+        case 'glacial-armor':
           if (b.shield <= 0 && inReach && (n >= 2 || hasElite)) return id;
+          break;
+        case 'shadowstep':
+          if (b.immuneT <= 0 && inReach) return id;
           break;
         case 'war-banner':
           if (b.bannerT <= 0 && inReach && (n >= 3 || hasBoss)) return id;
           break;
+        case 'hunters-mark':
+          if (front && front.markT <= 0 && inReach) return id;
+          break;
+        case 'kill-shot':
+          if (lowTarget && inReach) return id;
+          break;
+        case 'death-mark':
+          if (inReach && (lowTarget || hasBoss || hasElite)) return id;
+          break;
+        case 'absolute-zero':
+        case 'meteor':
+        case 'storm-of-quills':
         case 'bladestorm':
           if (inReach && (n >= 2 || hasBoss)) return id;
           break;
+        case 'combustion':
+          if (inReach && alive.some((e) => e.burn >= 2)) return id;
+          break;
+        case 'ambush':
+          if (inReach && (hasElite || n >= 2)) return id;
+          break;
         case 'whirlwind':
+        case 'flame-wave':
+        case 'arrow-rain':
+        case 'multishot':
+        case 'frost-nova':
           if (inReach && n >= 2) return id;
           break;
+        case 'explosive-trap':
+          if (inReach && n >= 2) return id;
+          break;
+        case 'flurry':
+        case 'garrote':
+        case 'aimed-shot':
+        case 'ice-lance':
         case 'shield-bash':
-          if (inReach && front && front.stunT <= 0 && (hasElite || n >= 2)) return id;
+          if (inReach && front && (hasElite || n >= 2 || front.stunT <= 0)) return id;
+          break;
+        case 'smoke-bomb':
+          if (b.smokeT <= 0 && inReach && (n >= 3 || hpPct < 0.6)) return id;
           break;
         default:
           break;
@@ -598,6 +823,7 @@ export class Battle {
     this.heroSwingAnim = 0.3;
     this.events.push({ t: 'skill', id, name: def.name, ultimate: !!def.ultimate });
     const b = this.buffs;
+    const front = this.frontEnemy();
     switch (id) {
       case 'whirlwind': {
         const stacks = b.cleaveStacks;
@@ -610,6 +836,7 @@ export class Battle {
         b.spinT = 2.4;
         b.spinTick = 0;
         b.spinMul = 1 + 0.06 * b.cleaveStacks;
+        b.spinSkill = 'bladestorm';
         b.cleaveStacks = 0;
         break;
       }
@@ -617,7 +844,6 @@ export class Battle {
         b.bannerT = 8;
         break;
       case 'shield-bash': {
-        const front = this.frontEnemy();
         if (front) {
           this.hitEnemy(front, 1.3, { skill: id, sp: true });
           front.stunT = front.def.role === 'trash' ? 1.5 : 0.8;
@@ -631,20 +857,158 @@ export class Battle {
           this.hero.maxHp * 0.3 * (1 + this.heroInput.effects.absorbPct / 100),
         );
         b.shieldT = 8;
+        b.glacial = false;
         break;
       }
       case 'rally': {
         b.rallyT = 4;
         b.rallyRate = (this.hero.maxHp * 0.3 * (1 + this.heroInput.effects.healPct / 100)) / 4;
-        this.events.push({
-          t: 'heal',
-          amount: Math.round(b.rallyRate * 4),
-        });
+        this.events.push({ t: 'heal', amount: Math.round(b.rallyRate * 4) });
         break;
       }
       case 'executioners-guard':
         b.guardT = 5;
         break;
+      case 'flame-wave': {
+        for (const e of this.alive) {
+          this.hitEnemy(e, 1.5, { skill: id, aoe: true, sp: true });
+          if (!e.dead) this.applyBurn(e, 1);
+        }
+        break;
+      }
+      case 'meteor': {
+        let burnBonus = 0;
+        for (const e of this.alive) burnBonus = Math.max(burnBonus, e.burn);
+        b.meteorT = 0.6;
+        b.meteorMul = 1 + 0.05 * burnBonus;
+        break;
+      }
+      case 'combustion': {
+        const mul = 1 + this.heroInput.effects.combustPct / 100;
+        for (const e of [...this.alive]) {
+          if (e.burn <= 0) continue;
+          this.hitEnemy(e, 0.7 * e.burn * mul, { skill: id, sp: true });
+          e.burn = 0;
+          e.burnT = 0;
+        }
+        break;
+      }
+      case 'ice-lance': {
+        if (front) {
+          this.hitEnemy(front, 1.7, { skill: id, sp: true });
+          this.applySlow(front, 4, 0.6);
+        }
+        break;
+      }
+      case 'frost-nova': {
+        for (const e of this.alive) {
+          this.hitEnemy(e, 1.1, { skill: id, aoe: true, sp: true });
+          if (!e.dead) e.rootT = Math.max(e.rootT, 2);
+        }
+        break;
+      }
+      case 'glacial-armor': {
+        b.shield = Math.round(this.hero.maxHp * 0.25);
+        b.shieldT = 8;
+        b.glacial = true;
+        break;
+      }
+      case 'absolute-zero': {
+        const freeze = 2.5 + this.heroInput.effects.freezeBonus;
+        for (const e of this.alive) {
+          e.stunT = Math.max(e.stunT, freeze);
+          e.vulnT = Math.max(e.vulnT, 6);
+          this.events.push({ t: 'stun', enemyId: e.id });
+        }
+        break;
+      }
+      case 'arrow-rain':
+        this.heroAoe(1.4, id);
+        break;
+      case 'multishot': {
+        const targets = this.alive.sort((a, c) => a.x - c.x).slice(0, 4);
+        for (const e of targets) this.hitEnemy(e, 1.3, { skill: id, aoe: true, sp: true });
+        break;
+      }
+      case 'storm-of-quills': {
+        b.spinT = 2.0;
+        b.spinTick = 0;
+        b.spinMul = 0.8 / 0.9;
+        b.spinSkill = 'storm-of-quills';
+        break;
+      }
+      case 'aimed-shot': {
+        if (front) {
+          const bonus = front.markT > 0 ? 0.15 : 0;
+          this.hitEnemy(front, 2.0 * (1 + bonus), { skill: id, sp: true, critBonus: 0.25 });
+        }
+        break;
+      }
+      case 'hunters-mark': {
+        if (front) front.markT = 8;
+        break;
+      }
+      case 'explosive-trap':
+        b.trapT = 0.8;
+        b.trapMul = 1;
+        break;
+      case 'kill-shot': {
+        const target =
+          this.alive.find((e) => e.hp / e.maxHp <= this.heroInput.effects.executeThreshold) ??
+          front;
+        if (target) this.hitEnemy(target, 3.5, { skill: id, sp: true, forceCrit: true });
+        break;
+      }
+      case 'garrote': {
+        if (front) {
+          this.hitEnemy(front, 0.8, { skill: id, sp: true });
+          front.bleedT = 6;
+          front.bleedDps = this.heroInput.stats.atk * 0.4;
+        }
+        break;
+      }
+      case 'ambush': {
+        b.stealthT = 1.5;
+        b.immuneT = Math.max(b.immuneT, 0.4);
+        b.ambushReady = true;
+        b.critBonus = 0.4;
+        b.critBonusT = 1.5;
+        if (front) this.hitEnemy(front, 2.2, { skill: id, sp: true, critBonus: 0.4 });
+        break;
+      }
+      case 'death-mark': {
+        if (front) {
+          let mul = 3.0;
+          if (front.hp / front.maxHp < 0.35) mul *= 1.5;
+          if (front.bleedT > 0) {
+            mul += 0.8;
+            front.bleedT = 0;
+          }
+          this.hitEnemy(front, mul, { skill: id, sp: true });
+        }
+        break;
+      }
+      case 'shadowstep':
+        b.immuneT = Math.max(b.immuneT, 0.6);
+        b.hasteT = 3;
+        b.hasteBonus = 0.3;
+        break;
+      case 'smoke-bomb':
+        b.smokeT = 4;
+        break;
+      case 'flurry': {
+        if (front) {
+          for (let i = 0; i < 4; i++) this.hitEnemy(front, 0.7, { skill: id, sp: true });
+        }
+        break;
+      }
+      case 'cloak-of-shadows': {
+        b.immuneT = Math.max(b.immuneT, 2);
+        const heal = Math.round(this.hero.maxHp * 0.1);
+        this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + heal);
+        this.events.push({ t: 'heal', amount: heal });
+        break;
+      }
       default:
         break;
     }

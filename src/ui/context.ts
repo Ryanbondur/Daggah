@@ -1,3 +1,4 @@
+import type { PlaystyleId } from '../data/types';
 import type { Game } from '../game/game';
 
 export type Tab = 'camp' | 'skill' | 'adventure' | 'town';
@@ -5,7 +6,7 @@ export type Tab = 'camp' | 'skill' | 'adventure' | 'town';
 export interface UIContext {
   game: Game;
   tab: Tab;
-  skillStyle: 'bladestorm' | 'ironclad';
+  skillStyle: PlaystyleId;
   setTab(tab: Tab): void;
   render(): void;
   openModal(html: string, opts?: ModalOpts): HTMLElement;
@@ -17,6 +18,7 @@ export interface UIContext {
   showSettings(): void;
   showChat(): void;
   showItemInfo(slot: string): void;
+  showClassPick(): void;
   flashSlot(slot: string): void;
 }
 

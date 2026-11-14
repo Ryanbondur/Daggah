@@ -4,7 +4,8 @@ import type { SkillId } from '../data/types';
 import type { BattleEvent, Enemy } from '../game/combat';
 import { HERO_X } from '../game/combat';
 import type { Game } from '../game/game';
-import { ENEMY_SPRITES, SKILL_IDS, asset, skillIcon } from '../ui/assets';
+import { ENEMY_SPRITES, SKILL_IDS, asset, heroSprite, skillIcon } from '../ui/assets';
+import type { HeroClass } from '../data/types';
 
 const GROUND = 0.86;
 const BG_GROUND_LINE = 0.765;
@@ -43,6 +44,7 @@ export class StageScene extends Phaser.Scene {
   private lastRunKey = '';
   private unsub: (() => void) | null = null;
   private clock = 0;
+  private heroKey = 'hero-warrior';
 
   constructor(game: Game) {
     super('stage');
@@ -52,7 +54,11 @@ export class StageScene extends Phaser.Scene {
   preload(): void {
     this.load.image('bg-cavern', asset('bg/bg-deep-cavern.jpg'));
     this.load.image('bg-ember', asset('bg/bg-ember-hollow.jpg'));
-    this.load.image('hero', asset('sprites/hero-warrior.webp'));
+    this.load.image('bg-bone', asset('bg/bg-bone-gallery.jpg'));
+    this.load.image('bg-frost', asset('bg/bg-frostvein.jpg'));
+    for (const c of ['Warrior', 'Mage', 'Ranger', 'Rogue'] as HeroClass[]) {
+      this.load.image(`hero-${c.toLowerCase()}`, heroSprite(c));
+    }
     this.load.image('hero-sleep', asset('sprites/hero-sleeping.webp'));
     this.load.image('camp', asset('sprites/camp-tent-fire.webp'));
     for (const key of ENEMY_SPRITES) this.load.image(key, asset(`sprites/${key}.webp`));
@@ -63,6 +69,9 @@ export class StageScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor('#0b0b12');
     this.makeWideBg('bg-cavern', 'cavern');
     this.makeWideBg('bg-ember', 'ember');
+    this.makeWideBg('bg-bone', 'bone');
+    this.makeWideBg('bg-frost', 'frost');
+    this.heroKey = `hero-${this.game_.save.heroClass.toLowerCase()}`;
 
     const g = this.make.graphics({ x: 0, y: 0 }, false);
     g.fillStyle(0xffffff, 1);
@@ -75,7 +84,7 @@ export class StageScene extends Phaser.Scene {
     this.heroSleep = this.add.image(0, 0, 'hero-sleep').setOrigin(0.5, 1).setDepth(6);
     this.bubble = this.add.circle(0, 0, 10, 0xcfe9ff, 0.55).setDepth(7);
     this.bubble.setStrokeStyle(2, 0xffffff, 0.7);
-    this.hero = this.add.image(0, 0, 'hero').setOrigin(0.5, 1).setDepth(6);
+    this.hero = this.add.image(0, 0, this.heroKey).setOrigin(0.5, 1).setDepth(6);
     this.fx = this.add.graphics().setDepth(10);
     this.heroBar = this.add.graphics().setDepth(11);
     this.tag = this.add
@@ -234,6 +243,11 @@ export class StageScene extends Phaser.Scene {
     this.heroSleep.setVisible(false);
     this.bubble.setVisible(false);
     this.hero.setVisible(true);
+    const want = `hero-${this.game_.save.heroClass.toLowerCase()}`;
+    if (want !== this.heroKey && this.textures.exists(want)) {
+      this.heroKey = want;
+      this.hero.setTexture(want);
+    }
 
     const walkPx = H * 0.5;
     if (b.state === 'walk') this.bgScroll += walkPx * dt * this.game_.speed;
@@ -319,10 +333,13 @@ export class StageScene extends Phaser.Scene {
   private drawBuffs(b: NonNullable<Game['battle']>, x: number, topY: number, H: number): void {
     const active: SkillId[] = [];
     if (b.buffs.bannerT > 0) active.push('war-banner');
-    if (b.buffs.shield > 0) active.push('iron-skin');
+    if (b.buffs.shield > 0) active.push(b.buffs.glacial ? 'glacial-armor' : 'iron-skin');
     if (b.buffs.guardT > 0) active.push('executioners-guard');
     if (b.buffs.rallyT > 0) active.push('rally');
     if (b.buffs.cleaveStacks > 0) active.push('cleave');
+    if (b.buffs.smokeT > 0) active.push('smoke-bomb');
+    if (b.buffs.immuneT > 0) active.push('cloak-of-shadows');
+    if (b.buffs.stealthT > 0) active.push('ambush');
     const size = H * 0.055;
     const need = new Set(active);
     for (const c of this.chips) {
