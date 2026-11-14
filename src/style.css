@@ -1560,6 +1560,13 @@ button {
   display: grid;
   place-items: center;
   overflow: visible;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.sb-slot.focus {
+  box-shadow: 0 0 0 0.55cqw #c4a35a, 0 0 0 1.1cqw #3a2e18, inset 0 0 1.6cqw rgba(0, 0, 0, 0.7);
 }
 .sb-slot img {
   width: 100%;
@@ -1687,6 +1694,13 @@ button {
   font-weight: 700;
   color: #6b4aa0;
 }
+.skill-card .sn small.pas {
+  color: #5a6e3a;
+}
+.skill-card.passive {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(90, 110, 58, 0.45);
+}
 .skill-card .sd {
   font-size: 2.7cqw;
   line-height: 1.28;
@@ -1713,6 +1727,10 @@ button {
 }
 .skill-card .eq.on {
   background: linear-gradient(#cf4a4c, #a02a30);
+}
+.skill-card .eq.swap {
+  background: linear-gradient(#6a7a45, #3f4a28);
+  color: #f4f0e0;
 }
 .note {
   font-size: 2.8cqw;

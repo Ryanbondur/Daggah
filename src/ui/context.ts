@@ -7,6 +7,8 @@ export interface UIContext {
   game: Game;
   tab: Tab;
   skillStyle: PlaystyleId;
+  /** Skill bar slot index selected for swap (Skill tab). */
+  skillBarFocus: number | null;
   setTab(tab: Tab): void;
   render(): void;
   openModal(html: string, opts?: ModalOpts): HTMLElement;

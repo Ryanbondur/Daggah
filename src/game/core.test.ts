@@ -229,3 +229,54 @@ describe('game gear flow', () => {
     expect(game.pickClass('Ranger')).toBe(true);
   });
 });
+
+describe('skill loadout passives', () => {
+  function leveledWarrior(level: number): Game {
+    const store = memoryStorage();
+    const game = new Game(store, mulberry32(3));
+    game.pickClass('Warrior');
+    game.save.level = level;
+    // Unlock enough Ironclad + Bladestorm skills for a full bar.
+    return game;
+  }
+
+  it('equips and unequips the class passive like an active', () => {
+    const game = leveledWarrior(1);
+    expect(game.save.loadout).toContain('cleave');
+    expect(game.toggleSkill('cleave')).toBeNull();
+    expect(game.save.loadout).not.toContain('cleave');
+    expect(game.toggleSkill('cleave')).toBeNull();
+    expect(game.save.loadout).toContain('cleave');
+  });
+
+  it('swaps a passive onto a full bar via replaceIndex and persists', () => {
+    const store = memoryStorage();
+    const game = new Game(store, mulberry32(3));
+    game.pickClass('Warrior');
+    game.save.level = 15;
+    // Fill bar with four Ironclad actives (no passive).
+    game.save.loadout = ['shield-bash', 'iron-skin', 'rally', 'executioners-guard'];
+    game.save.primary = 'executioners-guard';
+    expect(game.toggleSkill('cleave')).toMatch(/full/i);
+    expect(game.toggleSkill('cleave', 0)).toBeNull();
+    expect(game.save.loadout).toEqual(['cleave', 'iron-skin', 'rally', 'executioners-guard']);
+    expect(game.save.primary).toBe('executioners-guard');
+    // Round-trip save keeps the swapped passive.
+    const back = loadSave(store);
+    expect(back.loadout).toEqual(['cleave', 'iron-skin', 'rally', 'executioners-guard']);
+  });
+
+  it('clears primary when the replaced slot held Primary', () => {
+    const game = leveledWarrior(15);
+    game.save.loadout = ['shield-bash', 'iron-skin', 'rally', 'executioners-guard'];
+    game.save.primary = 'shield-bash';
+    expect(game.toggleSkill('cleave', 0)).toBeNull();
+    expect(game.save.primary).toBeNull();
+  });
+
+  it('refuses mid-combat swaps', () => {
+    const game = leveledWarrior(1);
+    game.startBattle();
+    expect(game.toggleSkill('cleave')).toMatch(/camp/i);
+  });
+});

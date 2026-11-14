@@ -838,7 +838,11 @@ export class Game {
     }
   }
 
-  toggleSkill(id: SkillId): string | null {
+  /**
+   * Equip / unequip a skill. When the bar is full, pass `replaceIndex` (0..3)
+   * to swap into that slot — needed to re-equip passives without a free slot.
+   */
+  toggleSkill(id: SkillId, replaceIndex?: number): string | null {
     if (this.mode !== 'camp') return 'Retreat to camp to change your skill bar.';
     if (PLAYSTYLES[SKILL_BY_ID[id].playstyle].heroClass !== this.save.heroClass) {
       return 'That skill belongs to another class.';
@@ -849,8 +853,14 @@ export class Game {
     if (idx >= 0) {
       lo.splice(idx, 1);
       if (this.save.primary === id) this.save.primary = null;
+    } else if (lo.length >= BAR_SIZE) {
+      if (replaceIndex === undefined || replaceIndex < 0 || replaceIndex >= lo.length) {
+        return 'Skill bar is full. Tap a bar slot to replace, then Equip.';
+      }
+      const old = lo[replaceIndex]!;
+      lo[replaceIndex] = id;
+      if (this.save.primary === old) this.save.primary = null;
     } else {
-      if (lo.length >= BAR_SIZE) return 'Skill bar is full. Unequip a skill first.';
       lo.push(id);
     }
     if (lo.length >= BAR_SIZE) {
