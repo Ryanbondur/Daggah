@@ -31,7 +31,8 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build
+        # Project Pages needs /Daggah/; vite.config defaults to / for root hosts.
+        run: npx tsc --noEmit && npx vite build --base /Daggah/
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

@@ -6,9 +6,9 @@ Stack: Vite + TypeScript + Phaser 3. Phaser renders the stage (camp and battle);
 
 ## Play (Safari / iPhone)
 
-Public build on GitHub Pages: **https://ryanbondur.github.io/Daggah/**
+Live app: **https://daggah.apps.grok.bot** (Vite `base` defaults to `/`).
 
-Pushes to `main` build and deploy via `.github/workflows/deploy-pages.yml` (`base: /Daggah/`).
+GitHub Pages (optional): **https://ryanbondur.github.io/Daggah/** — workflow builds with `--base /Daggah/`.
 
 ## Run
 
