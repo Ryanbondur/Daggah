@@ -811,7 +811,7 @@ export function showResult(ctx: UIContext, r: RunResult): void {
       case 'res-retry':
         ctx.closeModal();
         ctx.setTab('camp');
-        g.startBattle();
+        void ctx.ensureStage().then(() => g.startBattle());
         break;
       case 'res-review':
         ctx.closeModal();

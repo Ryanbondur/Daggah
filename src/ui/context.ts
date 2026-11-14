@@ -14,6 +14,8 @@ export interface UIContext {
   /** Skill bar slot index selected for swap (Skill tab). */
   skillBarFocus: number | null;
   setTab(tab: Tab): void;
+  /** Ensure Phaser + stage canvas are loaded (lazy; no-op once ready). */
+  ensureStage(): Promise<void>;
   render(): void;
   openModal(html: string, opts?: ModalOpts): HTMLElement;
   closeModal(): void;

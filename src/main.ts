@@ -6,11 +6,10 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import '@fontsource/inter/800.css';
 import '@fontsource/lilita-one/400.css';
-import Phaser from 'phaser';
 import './style.css';
 import { syncCloudSave } from './game/cloudSave';
 import { Game } from './game/game';
-import { StageScene } from './stage/StageScene';
+import { ensurePhaser } from './stage/bootPhaser';
 import { mountUI } from './ui';
 
 async function boot(): Promise<void> {
@@ -38,27 +37,23 @@ async function boot(): Promise<void> {
   ]).catch(() => undefined);
 
   const root = document.getElementById('app')!;
-  const { phaserParent } = mountUI(game, root);
+  let phaserParent: HTMLElement | null = null;
 
-  const scene = new StageScene(game);
-  const phaser = new Phaser.Game({
-    type: Phaser.AUTO,
-    parent: phaserParent,
-    backgroundColor: '#0b0b12',
-    scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
-    scene,
-    banner: false,
-    audio: { noAudio: true },
-    render: { antialias: true, roundPixels: false },
-  });
+  const ensureStage = async (): Promise<void> => {
+    if (!phaserParent) return;
+    const phaser = await ensurePhaser(game, phaserParent);
+    (window as unknown as { __daggah: unknown }).__daggah = { game, phaser };
+  };
+
+  ({ phaserParent } = mountUI(game, root, { ensureStage }));
+
+  (window as unknown as { __daggah: unknown }).__daggah = { game, phaser: null };
 
   window.setInterval(() => game.persist(), 5000);
   window.addEventListener('pagehide', () => game.persist());
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) game.persist();
   });
-
-  (window as unknown as { __daggah: unknown }).__daggah = { game, phaser };
 }
 
 void boot();
