@@ -2,6 +2,7 @@ import { SKILL_BY_ID } from '../data/skills';
 import { defaultPrimary } from '../data/skills';
 import type { NodeType } from '../data/acts';
 import { xpToNext } from '../data/xp';
+import { playSfx, unlockAudio } from '../game/audio';
 import type { Game, RunResult } from '../game/game';
 import { asset, navIcon, skillIcon } from './assets';
 import type { ModalOpts, Tab, UIContext } from './context';
@@ -47,6 +48,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
           <div class="avatar"><img id="hero-avatar" src="${heroSprite(game.save.heroClass)}" alt="" draggable="false" /></div>
           <div class="name">Adventurer I</div>
           <div class="power">${ICON.star}<span id="cp">0</span></div>
+          <div class="cp-rec" id="cp-rec"></div>
         </div>
         <div class="stage-title" id="stage-title"></div>
         <div class="track" id="track"></div>
@@ -203,6 +205,13 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
     const html = m ? `${m[1]} ${m[2]}<br />${m[3]}` : title;
     if (titleEl.innerHTML !== html) titleEl.innerHTML = html;
     $('#cp').textContent = fmt(game.cp);
+    const power = game.stagePowerReadout();
+    const recEl = $('#cp-rec');
+    const recHtml = `vs ${fmt(power.recCp)}${power.underpowered ? ' · farm' : ''}`;
+    if (recEl.textContent !== recHtml) {
+      recEl.textContent = recHtml;
+      recEl.classList.toggle('low', power.underpowered);
+    }
     const av = $('#hero-avatar') as HTMLImageElement | null;
     if (av) {
       const next = heroSprite(game.save.heroClass);
@@ -299,6 +308,13 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
       case 'chat':
         renderChat();
         break;
+      case 'battle': {
+        const ev = e.ev;
+        if (ev.t === 'hit') playSfx(ev.crit ? 'crit' : 'hit', game.muted);
+        else if (ev.t === 'skill') playSfx('skill', game.muted);
+        else if (ev.t === 'heroHit') playSfx('heroHit', game.muted);
+        break;
+      }
       case 'toast': {
         const t = document.createElement('div');
         t.className = `toast ${e.kind}`;
@@ -331,6 +347,8 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
   });
 
   // ---- input --------------------------------------------------------------
+
+  frame.addEventListener('pointerdown', () => unlockAudio(), { once: true });
 
   frame.addEventListener('click', (ev) => {
     const target = ev.target as HTMLElement;

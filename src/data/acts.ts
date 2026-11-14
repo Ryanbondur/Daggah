@@ -1,3 +1,4 @@
+import { estimateStageRecCp } from './gear';
 import type { SetId } from './types';
 
 export type EnemyRole = 'trash' | 'elite' | 'boss';
@@ -713,6 +714,11 @@ export function stageRecLevel(actId: number, stage: number): number {
   const act = getAct(actId);
   const [lo, hi] = act.recLevel;
   return Math.round(lo + ((hi - lo) * (stage - 1)) / Math.max(1, act.stages - 1));
+}
+
+/** Recommended Combat Power for a stage (rare-full kit at rec level). */
+export function stageRecCp(actId: number, stage: number): number {
+  return estimateStageRecCp(stageRecLevel(actId, stage));
 }
 
 export function stageTitle(actId: number, stage: number): string {

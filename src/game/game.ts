@@ -5,6 +5,7 @@ import {
   enemyScale,
   getAct,
   getDungeon,
+  stageRecCp,
   stageRecLevel,
   stageTier,
   stageTitle,
@@ -15,9 +16,12 @@ import {
   RARITIES,
   cpDelta,
   computeHero,
+  rarityAtMost,
+  rarityBelow,
   rollItem,
   rollRarity,
   salvageValue,
+  sellValue,
   starterGear,
 } from '../data/gear';
 import { QUESTS, dailyCounterKey, dailyQuestForDay } from '../data/quests';
@@ -38,7 +42,7 @@ import {
   tutorialActive,
   type TutorialStep,
 } from '../data/tutorial';
-import type { HeroClass, Item, PlaystyleId, SkillId, SlotId, StatKey } from '../data/types';
+import type { HeroClass, Item, PlaystyleId, RarityId, SkillId, SlotId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
 import type { ClanData } from './clan';
@@ -91,6 +95,11 @@ export interface RunResult {
   loot: Item[];
   xp: number;
   note?: string;
+  /** Stage wipe tension: player CP vs recommended stage CP. */
+  yourCp?: number;
+  recCp?: number;
+  /** Clear “farm gear → retry” nudge after wipe. */
+  farmHint?: string;
 }
 
 export type GameEvent =
@@ -361,7 +370,15 @@ export class Game {
         },
       });
     } else {
-      const title = stageTitle(this.currentAct, this.currentStageNo);
+      const act = this.currentAct;
+      const stage = this.currentStageNo;
+      const title = stageTitle(act, stage);
+      const yourCp = this.cp;
+      const recCp = stageRecCp(act, stage);
+      const underpowered = yourCp < recCp;
+      const farmHint = underpowered
+        ? 'Farm gear → retry: your CP is below this stage. Clear the act dungeon for set pieces, then push again.'
+        : 'Farm gear → retry: swap skills or farm the act dungeon for an edge, then push again.';
       this.endRun();
       this.emit({
         t: 'result',
@@ -371,7 +388,10 @@ export class Game {
           success: false,
           loot: [],
           xp: 0,
-          note: 'Out of lives. Stage progress is kept. Upgrade gear, swap skills, or farm a dungeon.',
+          note: 'Out of lives. Stage progress is kept.',
+          yourCp,
+          recCp,
+          farmHint,
         },
       });
     }
@@ -723,11 +743,18 @@ export class Game {
     );
   }
 
-  /** Put drops into the pickup queue (or auto-salvage non-upgrades when enabled). */
+  /** Whether loot should auto-salvage given settings (rarity threshold and/or worse-than-equipped). */
+  shouldAutoSalvage(item: Item, salvageNonUpgrades = this.save.settings.autoSalvageWorse): boolean {
+    const max = this.save.settings.autoSalvageRarityMax;
+    if (max && rarityAtMost(item, max)) return true;
+    return salvageNonUpgrades && !this.isUpgrade(item);
+  }
+
+  /** Put drops into the pickup queue (or auto-salvage by threshold / non-upgrade rules). */
   queueLoot(items: Item[], salvageNonUpgrades = this.save.settings.autoSalvageWorse): void {
     let salvaged = 0;
     for (const item of items) {
-      if (salvageNonUpgrades && !this.isUpgrade(item)) {
+      if (this.shouldAutoSalvage(item, salvageNonUpgrades)) {
         this.applySalvage(item);
         salvaged += 1;
       } else {
@@ -775,6 +802,37 @@ export class Game {
     this.advanceTutorial('first-drop');
     this.toast(`Salvaged: +${salvageValue(item).dust} dust${salvageValue(item).crystals ? `, +${salvageValue(item).crystals} crystals` : ''}`, 'info');
     this.changed();
+  }
+
+  /** Salvage every bag item strictly below the given rarity ceiling. */
+  salvageBagBelow(ceiling: RarityId): number {
+    const targets = this.save.bag.filter((i) => rarityBelow(i, ceiling));
+    for (const item of targets) {
+      this.removeFromQueues(item);
+      this.applySalvage(item);
+    }
+    if (targets.length) {
+      this.advanceTutorial('first-drop');
+      this.toast(`Salvaged ${targets.length} below ${RARITIES[ceiling].label}`, 'info');
+      this.changed();
+    }
+    return targets.length;
+  }
+
+  /** Sell every bag item strictly below the given rarity for gold (no dust/crystals). */
+  sellBagBelow(ceiling: RarityId): { count: number; gold: number } {
+    const targets = this.save.bag.filter((i) => rarityBelow(i, ceiling));
+    let gold = 0;
+    for (const item of targets) {
+      gold += sellValue(item);
+      this.removeFromQueues(item);
+    }
+    if (targets.length) {
+      this.save.gold += gold;
+      this.toast(`Sold ${targets.length} below ${RARITIES[ceiling].label} for ${gold} gold`, 'info');
+      this.changed();
+    }
+    return { count: targets.length, gold };
   }
 
   equip(item: Item, autoSalvageOld: boolean): boolean {
@@ -1303,6 +1361,29 @@ export class Game {
   setAutoSalvageWorse(v: boolean): void {
     this.save.settings.autoSalvageWorse = v;
     this.changed();
+  }
+
+  setAutoSalvageRarityMax(v: RarityId | null): void {
+    this.save.settings.autoSalvageRarityMax = v;
+    this.changed();
+  }
+
+  setMuted(v: boolean): void {
+    this.save.settings.muted = v;
+    this.persist();
+    this.emit({ t: 'change' });
+  }
+
+  get muted(): boolean {
+    return !!this.save.settings.muted;
+  }
+
+  /** CP vs recommended for the currently selected stage (adventure / push tension). */
+  stagePowerReadout(stageIndex = this.save.currentStage): { yourCp: number; recCp: number; underpowered: boolean } {
+    const { act, stage } = stageToActStage(stageIndex);
+    const yourCp = this.cp;
+    const recCp = stageRecCp(act, stage);
+    return { yourCp, recCp, underpowered: yourCp < recCp };
   }
 
   devGrantXp(n: number): void {

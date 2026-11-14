@@ -163,6 +163,8 @@ export function renderAdventure(ctx: UIContext): string {
     <span class="res"><img src="${navIcon('crystal')}" alt="" />${fmt(s.crystals)}</span>
     <span class="res"><i class="dust"></i>${fmt(s.dust)}</span>
   </div>`;
+  const power = g.stagePowerReadout(s.currentStage);
+  const powerCls = power.underpowered ? 'low' : 'ok';
   const acts = ACTS.map((act) => {
     const base = (act.id - 1) * STAGES_PER_ACT;
     const chips = Array.from({ length: STAGES_PER_ACT }, (_, i) => {
@@ -197,6 +199,11 @@ export function renderAdventure(ctx: UIContext): string {
   return `<div class="pane-inner scroll">
     <div class="tab-title">Adventure <small>[Normal]</small></div>
     ${res}
+    <div class="cp-vs-stage ${powerCls}">
+      <span>Your CP <b>${fmt(power.yourCp)}</b></span>
+      <span>Stage rec <b>${fmt(power.recCp)}</b></span>
+      <span class="delta">${power.underpowered ? 'Farm gear' : 'Ready to push'}</span>
+    </div>
     <div class="diff-row"><button class="chip" style="background:#3a3644;color:#ffe9a8">Normal</button><button class="chip" style="opacity:.5">Hard (soon)</button><button class="chip" style="opacity:.5">Torment (soon)</button></div>
     ${acts}
   </div>`;
