@@ -108,6 +108,7 @@ interface Buffs {
   hasteBonus: number;
   immuneT: number;
   smokeT: number;
+  veilT: number;
   stealthT: number;
   ambushReady: boolean;
   firstSwing: boolean;
@@ -140,6 +141,7 @@ function freshBuffs(): Buffs {
     hasteBonus: 0,
     immuneT: 0,
     smokeT: 0,
+    veilT: 0,
     stealthT: 0,
     ambushReady: false,
     firstSwing: true,
@@ -300,6 +302,7 @@ export class Battle {
     b.bannerT = Math.max(0, b.bannerT - dt);
     b.immuneT = Math.max(0, b.immuneT - dt);
     b.smokeT = Math.max(0, b.smokeT - dt);
+    b.veilT = Math.max(0, b.veilT - dt);
     b.stealthT = Math.max(0, b.stealthT - dt);
     b.postUltT = Math.max(0, b.postUltT - dt);
     if (b.critBonusT > 0) {
@@ -523,6 +526,10 @@ export class Battle {
       this.events.push({ t: 'blocked', enemyId: e.id });
       return;
     }
+    if (b.veilT > 0 && this.rng.chance(0.25)) {
+      this.events.push({ t: 'blocked', enemyId: e.id });
+      return;
+    }
     if (b.guardT > 0) {
       b.guardT = 0;
       this.events.push({ t: 'blocked', enemyId: e.id });
@@ -614,7 +621,8 @@ export class Battle {
       this.buffs.stealthT = 0;
     }
     this.buffs.firstSwing = false;
-    this.hitEnemy(front, mult, { forceCrit });
+    const critBonus = load.includes('deadeye') ? 0.15 : 0;
+    this.hitEnemy(front, mult, { forceCrit, critBonus });
     if (load.includes('cleave')) {
       const others = this.alive
         .filter((e) => e !== front)
@@ -625,9 +633,20 @@ export class Battle {
       this.buffs.cleaveT = 6;
     }
     if (load.includes('firebolt')) this.applyBurn(front, 1);
+    if (load.includes('frostbite')) this.applySlow(front, 2.5, 0.75);
     if (load.includes('piercing-shot')) {
       const rest = this.alive.filter((e) => e !== front).sort((a, b) => a.x - b.x);
       for (const o of rest) this.hitEnemy(o, 0.7, { aoe: true });
+    }
+    if (load.includes('bulwark')) {
+      const b = this.buffs;
+      const tick = Math.round(this.hero.maxHp * 0.015);
+      const cap = Math.round(this.hero.maxHp * 0.12);
+      b.shield = Math.min(cap, b.shield + tick);
+      b.shieldT = Math.max(b.shieldT, 3);
+    }
+    if (load.includes('shadow-veil')) {
+      this.buffs.veilT = Math.max(this.buffs.veilT, 1.2);
     }
     this.gainEnergy(3, true);
   }

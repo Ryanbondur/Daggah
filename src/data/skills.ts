@@ -22,7 +22,7 @@ export const PLAYSTYLES: Record<PlaystyleId, { name: string; tagline: string; he
     },
     ironclad: {
       name: 'Ironclad',
-      tagline: 'Sustain and guard. Shred, soak, then counter.',
+      tagline: 'Bulwark soak → Bash shred → Guard counter.',
       heroClass: 'Warrior',
     },
     inferno: {
@@ -32,7 +32,7 @@ export const PLAYSTYLES: Record<PlaystyleId, { name: string; tagline: string; he
     },
     frostbind: {
       name: 'Frostbind',
-      tagline: 'Lance slow → Nova root → Absolute Zero.',
+      tagline: 'Frostbite chill → Lance → Nova → Absolute Zero.',
       heroClass: 'Mage',
     },
     volley: {
@@ -42,7 +42,7 @@ export const PLAYSTYLES: Record<PlaystyleId, { name: string; tagline: string; he
     },
     marksmanship: {
       name: 'Marksmanship',
-      tagline: 'Mark → Aimed → Kill Shot.',
+      tagline: 'Deadeye crits → Mark → Aimed → Kill Shot.',
       heroClass: 'Ranger',
     },
     assassination: {
@@ -52,7 +52,7 @@ export const PLAYSTYLES: Record<PlaystyleId, { name: string; tagline: string; he
     },
     shadowdance: {
       name: 'Shadowdance',
-      tagline: 'Step → Flurry → Cloak panic.',
+      tagline: 'Shadow Veil → Step → Flurry → Cloak panic.',
       heroClass: 'Rogue',
     },
   };
@@ -101,6 +101,17 @@ export const SKILLS: SkillDef[] = [
     energy: 80,
     cd: 14,
     unlockLevel: 12,
+  },
+  {
+    id: 'bulwark',
+    name: 'Bulwark',
+    playstyle: 'ironclad',
+    role: 'Passive guard',
+    desc: 'Auto-attacks grant a small absorb shield (1.5% Max HP, up to 12%). Soft sustain for Ironclad.',
+    energy: 0,
+    cd: 0,
+    unlockLevel: 1,
+    passive: true,
   },
   {
     id: 'shield-bash',
@@ -187,6 +198,17 @@ export const SKILLS: SkillDef[] = [
     unlockLevel: 13,
   },
   {
+    id: 'frostbite',
+    name: 'Frostbite',
+    playstyle: 'frostbind',
+    role: 'Passive chill',
+    desc: 'Auto-attacks chill the front enemy (25% slow for 2.5s). Soft control for Frostbind.',
+    energy: 0,
+    cd: 0,
+    unlockLevel: 1,
+    passive: true,
+  },
+  {
     id: 'ice-lance',
     name: 'Ice Lance',
     playstyle: 'frostbind',
@@ -271,6 +293,17 @@ export const SKILLS: SkillDef[] = [
     ultimate: true,
   },
   {
+    id: 'deadeye',
+    name: 'Deadeye',
+    playstyle: 'marksmanship',
+    role: 'Passive precision',
+    desc: 'Auto-attacks gain +15% Crit Rate. Soft precision for Marksmanship.',
+    energy: 0,
+    cd: 0,
+    unlockLevel: 1,
+    passive: true,
+  },
+  {
     id: 'aimed-shot',
     name: 'Aimed Shot',
     playstyle: 'marksmanship',
@@ -353,6 +386,17 @@ export const SKILLS: SkillDef[] = [
     cd: 22,
     unlockLevel: 14,
     ultimate: true,
+  },
+  {
+    id: 'shadow-veil',
+    name: 'Shadow Veil',
+    playstyle: 'shadowdance',
+    role: 'Passive evade',
+    desc: 'Auto-attacks refresh a short veil (1.2s): 25% chance enemy attacks miss. Soft tempo for Shadowdance.',
+    energy: 0,
+    cd: 0,
+    unlockLevel: 1,
+    passive: true,
   },
   {
     id: 'shadowstep',
@@ -472,4 +516,9 @@ export function defaultPrimary(loadout: SkillId[]): SkillId | null {
   if (actives.length === 0) return null;
   actives.sort((a, b) => b.energy - a.energy);
   return actives[0].id;
+}
+
+/** Class passives (exactly two — one per playstyle). */
+export function passivesForClass(heroClass: HeroClass): SkillDef[] {
+  return skillsForClass(heroClass).filter((s) => s.passive);
 }

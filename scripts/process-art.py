@@ -143,6 +143,8 @@ GEAR_SLOTS = [
     "belt", "gloves", "bracers", "legs",
     "boots", "amulet", "medal", "ring",
 ]
+# Sheet layouts stay 8-up; dual passives bulwark/frostbite/deadeye/shadow-veil
+# ship as tinted derivatives of related icons (see public/assets/icons/skills/).
 SKILLS_WARRIOR = ["cleave", "whirlwind", "bladestorm", "war-banner",
                   "shield-bash", "iron-skin", "rally", "executioners-guard"]
 SKILLS_MAGE = ["firebolt", "flame-wave", "meteor", "combustion",

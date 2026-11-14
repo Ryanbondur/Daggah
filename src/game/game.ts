@@ -899,6 +899,7 @@ export class Game {
   /**
    * Equip / unequip a skill. When the bar is full, pass `replaceIndex` (0..3)
    * to swap into that slot — needed to re-equip passives without a free slot.
+   * Equipping a class passive replaces any other equipped passive (one choice).
    */
   toggleSkill(id: SkillId, replaceIndex?: number): string | null {
     if (this.mode !== 'camp') return 'Retreat to camp to change your skill bar.';
@@ -908,9 +909,25 @@ export class Game {
     if (!isUnlocked(id, this.save.level)) return `Unlocks at Lv.${SKILL_BY_ID[id].unlockLevel}`;
     const lo = this.save.loadout;
     const idx = lo.indexOf(id);
+    const def = SKILL_BY_ID[id];
     if (idx >= 0) {
       lo.splice(idx, 1);
       if (this.save.primary === id) this.save.primary = null;
+    } else if (def.passive) {
+      // One passive at a time: swap over the other class passive when present.
+      const otherIdx = lo.findIndex((x) => SKILL_BY_ID[x]?.passive);
+      if (otherIdx >= 0) {
+        lo[otherIdx] = id;
+      } else if (lo.length >= BAR_SIZE) {
+        if (replaceIndex === undefined || replaceIndex < 0 || replaceIndex >= lo.length) {
+          return 'Skill bar is full. Tap a bar slot to replace, then Equip.';
+        }
+        const old = lo[replaceIndex]!;
+        lo[replaceIndex] = id;
+        if (this.save.primary === old) this.save.primary = null;
+      } else {
+        lo.push(id);
+      }
     } else if (lo.length >= BAR_SIZE) {
       if (replaceIndex === undefined || replaceIndex < 0 || replaceIndex >= lo.length) {
         return 'Skill bar is full. Tap a bar slot to replace, then Equip.';
