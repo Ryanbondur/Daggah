@@ -4,7 +4,7 @@ import { DEFAULT_LOADOUT } from '../data/skills';
 import type { HeroClass, Item, SkillId } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
 import type { ClanData, SeasonData } from './clan';
-import { defaultSeason } from './clan';
+import { defaultSeason, normalizeClanMember } from './clan';
 
 export const SAVE_KEY = 'daggah.save.v3';
 export const SAVE_VERSION = 3;
@@ -123,7 +123,12 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
       typeof parsed.clanTokensDayKey === 'string' ? parsed.clanTokensDayKey : fresh.clanTokensDayKey,
     clanWins: typeof parsed.clanWins === 'number' ? parsed.clanWins : 0,
     clanLosses: typeof parsed.clanLosses === 'number' ? parsed.clanLosses : 0,
-    clan: parsed.clan ?? null,
+    clan: parsed.clan
+      ? {
+          ...parsed.clan,
+          members: (parsed.clan.members ?? []).map((m) => normalizeClanMember(m)),
+        }
+      : null,
     season: parsed.season?.startedAt ? parsed.season : defaultSeason(parsed.createdAt ?? now),
   };
 }

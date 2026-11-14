@@ -35,10 +35,11 @@ import {
   applyTokenCap,
   createClan,
   dayKey,
+  fillAiRoster,
   joinClanByCode,
   missingClasses,
+  normalizeClanMember,
   pickQueueRoster,
-  recruitForRoster,
   rosterReady,
   seasonDay,
   seasonRemainingMs,
@@ -959,17 +960,25 @@ export class Game {
     return null;
   }
 
-  recruitClanRoster(): string | null {
+  /** Fill missing class slots with AI teammates (keeps the human on their class). */
+  fillAiClanRoster(): string | null {
     if (!this.save.clan) return 'Join or create a clan first.';
-    const added = recruitForRoster(this.save.clan, this.rng, this.save.level);
+    this.save.clan.members = this.save.clan.members.map(normalizeClanMember);
+    const added = fillAiRoster(this.save.clan, this.rng, this.save.level, 'scaled');
     if (!added.length) {
       if (rosterReady(this.save.clan.members)) return 'Roster already has one of each class.';
       return 'Clan is full.';
     }
     this.save.clan.members.push(...added);
-    this.toast(`Recruited ${added.length}: ${added.map((m) => m.heroClass).join(', ')}`, 'good');
+    this.toast(`AI fillers: ${added.map((m) => m.heroClass).join(', ')}`, 'good');
+    this.say(`AI roster filled (+${added.length}). Solo playtest until live multiplayer.`);
     this.changed();
     return null;
+  }
+
+  /** @deprecated Prefer fillAiClanRoster — same behavior (mock recruit alias). */
+  recruitClanRoster(): string | null {
+    return this.fillAiClanRoster();
   }
 
   clanRosterReady(): boolean {
@@ -980,10 +989,33 @@ export class Game {
     return this.save.clan ? missingClasses(this.save.clan.members) : [...HERO_CLASSES];
   }
 
+  /**
+   * Playtest helper: ensure a clan exists, fill AI teammates, queue 4v4 vs AI rivals.
+   * Creates a free "Practice Hall" clan when the player is not in one.
+   */
+  queuePractice4v4(): string | null {
+    if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
+    if (!this.save.classPicked) return 'Pick a class first.';
+    if (!this.save.clan) {
+      this.save.clan = createClan(this.rng, 'Practice Hall', {
+        heroClass: this.save.heroClass,
+        level: this.save.level,
+        cp: this.cp,
+        loadout: this.save.loadout,
+        primary: this.save.primary,
+      });
+      this.say(`Practice Hall opened (AI playtest clan). Code ${this.save.clan.code}.`);
+    }
+    const fillErr = this.fillAiClanRoster();
+    if (fillErr && !this.clanRosterReady()) return fillErr;
+    return this.queueClanPvp();
+  }
+
   /** Queue local 4v4 auto-battle. Returns error or null + emits pvp event. */
   queueClanPvp(): string | null {
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
     if (!this.save.clan) return 'Join a clan first.';
+    this.save.clan.members = this.save.clan.members.map(normalizeClanMember);
     this.syncPlayerClanMember();
     const roster = pickQueueRoster(this.save.clan.members, this.save.heroClass);
     if (!roster) return 'Need 4 members with one of each class ready.';
@@ -1001,7 +1033,7 @@ export class Game {
     else this.save.clanLosses += 1;
     const capNote =
       awarded < gain ? ` (day cap ${TOKEN_DAY_CAP}; +${awarded})` : ` (+${awarded} tokens)`;
-    this.say(`Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${capNote}.`);
+    this.say(`Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${capNote}${result.practiceAi ? ' (AI practice)' : ''}.`);
     this.toast(`${result.won ? 'Victory' : 'Defeat'}${capNote}`, result.won ? 'good' : 'bad');
     this.emit({ t: 'pvp', result, tokens: awarded });
     this.changed();
@@ -1037,16 +1069,19 @@ export class Game {
       ? {
           ...clan,
           members: clan.members.map((m) =>
-            m.isPlayer
-              ? {
-                  ...m,
-                  level: 1,
-                  cp: 0,
-                  loadout: [...DEFAULT_LOADOUT[m.heroClass]],
-                  primary: null,
-                  heroClass: m.heroClass,
-                }
-              : m,
+            normalizeClanMember(
+              m.isPlayer
+                ? {
+                    ...m,
+                    level: 1,
+                    cp: 0,
+                    loadout: [...DEFAULT_LOADOUT[m.heroClass]],
+                    primary: null,
+                    heroClass: m.heroClass,
+                    isAi: false,
+                  }
+                : m,
+            ),
           ),
         }
       : null;

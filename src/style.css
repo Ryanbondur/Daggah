@@ -1955,6 +1955,34 @@ button {
   font-weight: 700;
   font-size: 3cqw;
 }
+.ai-banner {
+  margin: 0 0 1.4cqw;
+  padding: 1.2cqw 1.6cqw;
+  font-size: 2.8cqw;
+  line-height: 1.35;
+  color: #3a3428;
+  background: linear-gradient(180deg, #efe2c4, #e2d2ae);
+  border: 0.3cqw solid #8a6a2a;
+  border-radius: 1cqw;
+  text-align: left;
+}
+.ai-pill {
+  display: inline-block;
+  margin-right: 0.4cqw;
+  padding: 0.15cqw 0.7cqw;
+  font-size: 2.2cqw;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #f2ebe0;
+  background: #5a4a2e;
+  border: 0.2cqw solid #2c261c;
+  border-radius: 0.5cqw;
+  vertical-align: middle;
+}
+.ai-pill.you {
+  background: #1f6b2a;
+  border-color: #0f3a16;
+}
 .vendor-list {
   display: flex;
   flex-direction: column;

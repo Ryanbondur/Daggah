@@ -9,6 +9,7 @@ import {
   TOKEN_WIN,
   applyTokenCap,
   createClan,
+  fillAiRoster,
   pickQueueRoster,
   recruitForRoster,
   rosterReady,
@@ -28,7 +29,7 @@ function memoryStorage(): Storage {
 }
 
 describe('clan shell', () => {
-  it('creates a clan for crystal cost and recruits a full class roster', () => {
+  it('creates a clan for crystal cost and fills AI teammates for other classes', () => {
     const game = new Game(memoryStorage(), mulberry32(42));
     game.pickClass('Warrior');
     game.save.crystals = CLAN_CREATE_COST;
@@ -36,10 +37,12 @@ describe('clan shell', () => {
     expect(game.save.crystals).toBe(0);
     expect(game.clan?.name).toBe('Test Wolves');
     expect(game.clanRosterReady()).toBe(false);
-    expect(game.recruitClanRoster()).toBeNull();
+    expect(game.fillAiClanRoster()).toBeNull();
     expect(game.clanRosterReady()).toBe(true);
     const roster = pickQueueRoster(game.clan!.members, 'Warrior');
     expect(roster?.map((m) => m.heroClass).sort()).toEqual(['Mage', 'Ranger', 'Rogue', 'Warrior'].sort());
+    expect(roster?.find((m) => m.isPlayer)?.isAi).toBe(false);
+    expect(roster?.filter((m) => !m.isPlayer).every((m) => m.isAi)).toBe(true);
   });
 
   it('joins by code and can leave', () => {
@@ -47,6 +50,7 @@ describe('clan shell', () => {
     game.pickClass('Mage');
     expect(game.joinClan('AB12CD')).toBeNull();
     expect(game.clan?.code).toBe('AB12CD');
+    expect(game.clan?.members.some((m) => m.isAi && m.name === 'Hall Warden')).toBe(true);
     expect(game.leaveClan()).toBeNull();
     expect(game.clan).toBeNull();
   });
@@ -54,6 +58,15 @@ describe('clan shell', () => {
   it('caps daily clan tokens', () => {
     expect(applyTokenCap(190, TOKEN_WIN)).toEqual({ awarded: 10, earnedToday: 200 });
     expect(applyTokenCap(TOKEN_DAY_CAP, TOKEN_LOSS).awarded).toBe(0);
+  });
+
+  it('keeps recruitClanRoster as an alias for fill AI', () => {
+    const game = new Game(memoryStorage(), mulberry32(19));
+    game.pickClass('Rogue');
+    game.save.crystals = CLAN_CREATE_COST;
+    game.createClan('Alias');
+    expect(game.recruitClanRoster()).toBeNull();
+    expect(game.clanRosterReady()).toBe(true);
   });
 });
 
@@ -67,16 +80,21 @@ describe('4v4 auto-battle', () => {
       loadout: [...DEFAULT_LOADOUT.Warrior],
       primary: null,
     });
-    player.members.push(...recruitForRoster(player, rng, 12));
+    player.members.push(...fillAiRoster(player, rng, 12));
     expect(rosterReady(player.members)).toBe(true);
     const roster = pickQueueRoster(player.members, 'Warrior')!;
     const enemies = buildOpponentRoster(rng, roster, 800);
+    expect(enemies).toHaveLength(4);
+    expect(enemies.every((m) => m.isAi)).toBe(true);
+    expect(enemies.every((m) => m.gear)).toBe(true);
     const playerGear = enemies[0].gear!;
     const result = simulatePvp(roster, enemies, playerGear, 12, rng);
     expect(result.duration).toBeGreaterThan(0);
     expect(result.duration).toBeLessThanOrEqual(90);
     expect(result.allyTeam).toHaveLength(4);
     expect(result.enemyTeam).toHaveLength(4);
+    expect(result.practiceAi).toBe(true);
+    expect(result.enemyTeam.every((f) => f.isAi)).toBe(true);
     expect(typeof result.won).toBe('boolean');
   });
 
@@ -94,6 +112,35 @@ describe('4v4 auto-battle', () => {
     expect(saw).toBe(true);
     expect(game.save.clanTokens).toBeGreaterThanOrEqual(TOKEN_LOSS);
     expect(game.save.clanWins + game.save.clanLosses).toBe(1);
+  });
+
+  it('queuePractice4v4 creates Practice Hall, fills AI, and queues', () => {
+    const game = new Game(memoryStorage(), mulberry32(21));
+    game.pickClass('Mage');
+    expect(game.clan).toBeNull();
+    let saw = false;
+    game.on((e) => {
+      if (e.t === 'pvp') saw = true;
+    });
+    expect(game.queuePractice4v4()).toBeNull();
+    expect(game.clan?.name).toBe('Practice Hall');
+    expect(game.clanRosterReady()).toBe(true);
+    expect(saw).toBe(true);
+    expect(game.save.clanWins + game.save.clanLosses).toBe(1);
+  });
+
+  it('recruitForRoster alias still fills one of each class', () => {
+    const rng = mulberry32(5);
+    const clan = createClan(rng, 'Legacy', {
+      heroClass: 'Warrior',
+      level: 8,
+      cp: 400,
+      loadout: [...DEFAULT_LOADOUT.Warrior],
+      primary: null,
+    });
+    const added = recruitForRoster(clan, rng, 8);
+    expect(added.length).toBe(3);
+    expect(added.every((m) => m.isAi)).toBe(true);
   });
 });
 

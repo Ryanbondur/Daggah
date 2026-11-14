@@ -228,7 +228,10 @@ export function showSettings(ctx: UIContext): void {
           <button class="chip" data-action="dev-acts">Clear Acts 1-10</button>
           <button class="chip" data-action="dev-res">+Keys +Crystals</button>
           <button class="chip" data-action="dev-loot">Roll 5 drops</button>
+          <button class="chip" data-action="dev-fill-ai">Fill AI roster</button>
+          <button class="chip" data-action="dev-practice-4v4">Queue practice 4v4</button>
         </div>
+        <p class="tagline">AI fillers keep solo 4v4 playable until live multiplayer. Practice queue opens a free Practice Hall if needed.</p>
         <h3>Season</h3>
         <p>Local 30-day season stub. Reset keeps clan membership and opens class pick.</p>
         <button class="chip" data-action="season-reset">Reset season (local)</button>
@@ -280,6 +283,21 @@ export function showSettings(ctx: UIContext): void {
         ctx.closeModal();
         g.devRollLoot(5);
         break;
+      case 'dev-fill-ai': {
+        if (!g.clan) {
+          g.toast('Create or join a clan first (or use Queue practice 4v4)', 'info');
+          break;
+        }
+        const err = g.fillAiClanRoster();
+        if (err) g.toast(err, err.includes('already') ? 'info' : 'bad');
+        break;
+      }
+      case 'dev-practice-4v4': {
+        ctx.closeModal();
+        const err = g.queuePractice4v4();
+        if (err) g.toast(err, 'bad');
+        break;
+      }
       case 'season-reset':
         if (!seasonArmed) {
           seasonArmed = true;
@@ -337,32 +355,35 @@ export function showClanHall(ctx: UIContext): void {
   const clan = g.clan;
   let body = '';
   if (!clan) {
-    body = `<p>Found a clan for ${CLAN_CREATE_COST} crystals, or join with a code (local mock).</p>
+    body = `<p class="ai-banner">Solo playtest: create or join, then fill AI teammates for the other three classes. Live multiplayer is not online yet.</p>
+      <p>Found a clan for ${CLAN_CREATE_COST} crystals, or join with a code (local mock).</p>
       <label class="field">Clan name<input id="clan-name" maxlength="24" placeholder="Nightscar Wolves" /></label>
       <button class="btn red" data-action="clan-create">Create Clan (−${CLAN_CREATE_COST})</button>
       <label class="field">Join code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" /></label>
-      <button class="btn gold" data-action="clan-join">Join Clan</button>`;
+      <button class="btn gold" data-action="clan-join">Join Clan</button>
+      <button class="btn stone" data-action="clan-practice">Queue practice 4v4 (AI)</button>`;
   } else {
     const missing = g.clanMissingClasses();
     const rows = clan.members
-      .map(
-        (m) =>
-          `<div class="row"><span>${m.isPlayer ? '★ ' : ''}${m.name} <small>${m.role}</small></span><b>${m.heroClass} · CP ${fmt(m.cp)}</b></div>`,
-      )
+      .map((m) => {
+        const badge = m.isPlayer ? '<span class="ai-pill you">YOU</span>' : '<span class="ai-pill">AI</span>';
+        return `<div class="row"><span>${badge} ${m.name} <small>${m.role}</small></span><b>${m.heroClass} · CP ${fmt(m.cp)}</b></div>`;
+      })
       .join('');
     const classCheck = HERO_CLASSES.map((c) => {
       const ok = clan.members.some((m) => m.heroClass === c);
       return `<span class="class-pip ${ok ? 'on' : ''}">${c[0]}</span>`;
     }).join('');
     body = `<div class="clan-banner"><img src="${asset('ui/clan-hall.webp')}" alt="" /><div><b>${clan.name}</b><span>Code ${clan.code}</span><div class="class-pips">${classCheck}</div></div></div>
+      <p class="ai-banner">AI teammates &amp; rivals until full live multiplayer. Your class stays human.</p>
       <div class="body-scroll">${rows}</div>
-      ${missing.length ? `<p class="warn">Missing: ${missing.join(', ')}. Recruit to fill the 4v4 roster.</p>` : '<p>Roster has one of each class — ready to queue.</p>'}
+      ${missing.length ? `<p class="warn">Missing: ${missing.join(', ')}. Fill AI roster for 4v4.</p>` : '<p>Roster has one of each class — ready to queue (AI practice).</p>'}
       <div class="btns" style="flex-wrap:wrap">
-        <button class="btn stone" data-action="clan-recruit">Recruit roster</button>
+        <button class="btn stone" data-action="clan-recruit">Fill AI roster</button>
         <button class="btn red ${g.clanRosterReady() ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
         <button class="btn tan" data-action="clan-leave">Leave</button>
       </div>
-      <p class="tagline">Win +${TOKEN_WIN} / Loss +${TOKEN_LOSS} tokens (cap ${TOKEN_DAY_CAP}/day). Uses your gear + skills; allies are local mocks.</p>`;
+      <p class="tagline">Win +${TOKEN_WIN} / Loss +${TOKEN_LOSS} tokens (cap ${TOKEN_DAY_CAP}/day). Your gear + skills; allies/rivals are AI.</p>`;
   }
   const el = ctx.openModal(
     `<div class="sheet clan-sheet">
@@ -401,15 +422,21 @@ export function showClanHall(ctx: UIContext): void {
       return;
     }
     if (act === 'clan-recruit') {
-      const err = g.recruitClanRoster();
+      const err = g.fillAiClanRoster();
       if (err) g.toast(err, err.includes('already') ? 'info' : 'bad');
       ctx.closeModal();
       showClanHall(ctx);
       return;
     }
+    if (act === 'clan-practice') {
+      const err = g.queuePractice4v4();
+      if (err) g.toast(err, 'bad');
+      // pvp modal opened via game event
+      return;
+    }
     if (act === 'clan-queue') {
       if (!g.clanRosterReady()) {
-        g.toast('Need one of each class', 'bad');
+        g.toast('Need one of each class — Fill AI roster', 'bad');
         return;
       }
       const err = g.queueClanPvp();
@@ -504,12 +531,10 @@ export function showClanArmorer(ctx: UIContext): void {
 }
 
 export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number): void {
-  const ally = result.allyTeam
-    .map((f) => `<div class="pvp-f"><b>${f.heroClass}</b><span>${f.name}</span><i>${f.hp}/${f.maxHp}</i></div>`)
-    .join('');
-  const enemy = result.enemyTeam
-    .map((f) => `<div class="pvp-f"><b>${f.heroClass}</b><span>${f.name}</span><i>${f.hp}/${f.maxHp}</i></div>`)
-    .join('');
+  const row = (f: { name: string; heroClass: HeroClass; hp: number; maxHp: number; isAi: boolean }) =>
+    `<div class="pvp-f"><b>${f.heroClass}</b><span>${f.isAi ? '<span class="ai-pill">AI</span> ' : '<span class="ai-pill you">YOU</span> '}${f.name}</span><i>${f.hp}/${f.maxHp}</i></div>`;
+  const ally = result.allyTeam.map(row).join('');
+  const enemy = result.enemyTeam.map(row).join('');
   const log = result.log
     .filter((e) => e.t === 'kill' || e.t === 'end' || e.t === 'skill')
     .slice(-8)
@@ -520,10 +545,11 @@ export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number)
       <h2>${result.won ? 'Clan Victory' : 'Clan Defeat'}</h2>
       <div class="body">
         <div class="pvp-arena" style="background-image:url('${asset('bg/bg-clan-arena.jpg')}')"></div>
+        ${result.practiceAi ? '<p class="ai-banner">AI practice match — live multiplayer not online yet.</p>' : ''}
         <div class="row"><span>Score</span><b>${result.allyKills} – ${result.enemyKills}${result.timedOut ? ' (timeout)' : ''}</b></div>
         <div class="row"><span>Duration</span><b>${result.duration}s</b></div>
         <div class="row"><span>Clan Tokens</span><b>+${tokens}</b></div>
-        <div class="pvp-teams"><div><h3>Your clan</h3>${ally}</div><div><h3>Rivals</h3>${enemy}</div></div>
+        <div class="pvp-teams"><div><h3>Your clan</h3>${ally}</div><div><h3>AI rivals</h3>${enemy}</div></div>
         <div class="body-scroll">${log}</div>
       </div>
       <div class="btns"><button class="btn gold" data-action="close">OK</button></div>

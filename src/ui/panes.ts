@@ -184,8 +184,8 @@ export function renderTown(ctx: UIContext): string {
     return `<div class="row ${state}"><span>${i < g.save.questIndex ? '[x] ' : '[ ] '}${q.text}</span></div>`;
   }).join('');
   const clanHint = clan
-    ? `${clan.name} · ${clan.members.length} members · ${g.clanRosterReady() ? 'Roster ready' : 'Need one of each class'}`
-    : `Create (${CLAN_CREATE_COST} crystals) or join by code`;
+    ? `${clan.name} · ${clan.members.length} (AI OK) · ${g.clanRosterReady() ? 'Roster ready' : 'Fill AI roster'}`
+    : `Create (${CLAN_CREATE_COST} crystals) or practice 4v4 vs AI`;
   return `<div class="pane-inner scroll">
     <div class="tab-title">Town <small>Season ${g.save.season.seasonId}  -  Day ${day}/30 · ${remain}</small></div>
     <div class="res-bar">
@@ -199,7 +199,7 @@ export function renderTown(ctx: UIContext): string {
       <button class="town-card clickable" data-action="clan-hall">
         <img src="${asset('ui/clan-hall.webp')}" alt="" />
         <b>Clan Hall</b>
-        <span>4v4 auto-battles. One of each class.</span>
+        <span>4v4 auto-battles with AI fillers until live MP.</span>
         <span class="live">${clanHint}</span>
       </button>
       <button class="town-card clickable" data-action="season-board">
