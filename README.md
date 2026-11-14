@@ -31,7 +31,7 @@ npm run art        # re-slice generated art from art-src/ into public/assets/ (n
 - **Sets**: Ember Raider through Nightscar Regalia, plus vendor-only **Clanforged** (2pc +8% PvP CP, 4pc +10% token gains).
 - **Town**: Clan Hall (create/join, roster, 4v4 queue), Season Board (30-day timer + local reset), Clan Armorer (token shop). Blacksmith / Quartermaster still stubbed.
 - **Clans / 4v4 (client-local)**: create (500 crystals) or join by code; **Fill AI roster** for the other three classes (player stays human); queue when roster has one of each class. Enemy clan is AI with endgame/scaled gear. Auto-battle uses your gear + skills; win 20 / loss 5 tokens (200/day cap). Clear AI badges until live multiplayer.
-- **Save**: `daggah.save.v3` (migrates v2 / Warrior v1). Autosaves on change and every 5s.
+- **Save**: stable `daggah.save` localStorage key (migrates legacy `daggah.save.v1`–`v3`). Autosaves on change and every 5s. **Settings → Export / Import save code** for a shareable `DAG1.…` backup (survives origin changes).
 
 Out of scope: server seasons / matchmaking / true multiplayer clans.
 
@@ -59,4 +59,5 @@ art-src/     raw generated art → public/assets/
 2. Clan Hall → **Fill AI roster** → **Queue 4v4** → result modal shows AI badges and token gain.
 3. Clan Armorer → buy Clanforged piece → compare/equip; 2/4pc bonuses show in hero sheet.
 4. Season Board → day timer; optional local season reset → class pick returns, clan kept.
-5. Reload: clan + tokens persist on `daggah.save.v3`.
+5. Reload: clan + tokens persist on `daggah.save` (same origin).
+6. Settings → Export save code, then Import on a fresh browser to restore progress.

@@ -336,10 +336,19 @@ export function loadSave(storage: Storage | undefined, now = Date.now()): SaveDa
     return fresh;
   }
 
-  // Always rewrite onto the stable key and drop versioned legacy keys.
-  if (found.fromKey !== SAVE_KEY || found.raw !== JSON.stringify(migrated)) {
+  // Migrate legacy versioned keys onto the stable key once.
+  if (found.fromKey !== SAVE_KEY) {
     writeSave(storage, migrated);
-    clearLegacyKeys(storage);
+    return migrated;
+  }
+  // Backfill missing schema fields (e.g. savedAt) without churning every load.
+  try {
+    const peek = JSON.parse(found.raw) as { version?: number; savedAt?: number };
+    if (peek.version !== SAVE_VERSION || typeof peek.savedAt !== 'number') {
+      writeSave(storage, migrated);
+    }
+  } catch {
+    writeSave(storage, migrated);
   }
   return migrated;
 }
