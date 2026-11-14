@@ -85,9 +85,12 @@ export type SetId =
   | 'rime-circlet'
   | 'quillstorm'
   | 'deadeye'
-  | 'cinderstride';
+  | 'cinderstride'
+  | 'nightfang'
+  | 'gloomveil'
+  | 'echoplate';
 
-export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f';
+export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h';
 
 export interface Item {
   id: string;

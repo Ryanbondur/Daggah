@@ -39,6 +39,14 @@ export const ENEMY_SPRITES = [
   'enemy-ash-walker',
   'enemy-cinder-knight',
   'boss-forge-colossus',
+  'enemy-ash-bat',
+  'enemy-slag-imp',
+  'enemy-magma-knight',
+  'boss-spire-tyrant',
+  'enemy-echo-wisp',
+  'enemy-crystal-mite',
+  'enemy-crystal-golem',
+  'boss-resonance-queen',
 ];
 
 export const SKILL_IDS: SkillId[] = [

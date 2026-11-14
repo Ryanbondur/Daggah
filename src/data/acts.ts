@@ -269,9 +269,97 @@ export const ENEMIES: Record<string, EnemyDef> = {
     atkInterval: 2.45,
     speed: 0.17,
   },
+  'ash-bat': {
+    id: 'ash-bat',
+    name: 'Ash Bat',
+    sprite: 'enemy-ash-bat',
+    role: 'trash',
+    size: 0.16,
+    hpMul: 0.8,
+    atkMul: 1.1,
+    atkInterval: 1.35,
+    speed: 0.38,
+  },
+  'slag-imp': {
+    id: 'slag-imp',
+    name: 'Slag Imp',
+    sprite: 'enemy-slag-imp',
+    role: 'trash',
+    size: 0.19,
+    hpMul: 0.95,
+    atkMul: 1.05,
+    atkInterval: 1.55,
+    speed: 0.3,
+  },
+  'magma-knight': {
+    id: 'magma-knight',
+    name: 'Magma Knight',
+    sprite: 'enemy-magma-knight',
+    role: 'elite',
+    size: 0.36,
+    hpMul: 1,
+    atkMul: 1.15,
+    atkInterval: 2.05,
+    speed: 0.19,
+  },
+  'spire-tyrant': {
+    id: 'spire-tyrant',
+    name: 'Spire Tyrant',
+    sprite: 'boss-spire-tyrant',
+    role: 'boss',
+    size: 0.52,
+    hpMul: 1,
+    atkMul: 1.12,
+    atkInterval: 2.4,
+    speed: 0.17,
+  },
+  'echo-wisp': {
+    id: 'echo-wisp',
+    name: 'Echo Wisp',
+    sprite: 'enemy-echo-wisp',
+    role: 'trash',
+    size: 0.16,
+    hpMul: 0.82,
+    atkMul: 1.12,
+    atkInterval: 1.4,
+    speed: 0.36,
+  },
+  'crystal-mite': {
+    id: 'crystal-mite',
+    name: 'Crystal Mite',
+    sprite: 'enemy-crystal-mite',
+    role: 'trash',
+    size: 0.18,
+    hpMul: 1.05,
+    atkMul: 1,
+    atkInterval: 1.7,
+    speed: 0.24,
+  },
+  'crystal-golem': {
+    id: 'crystal-golem',
+    name: 'Crystal Golem',
+    sprite: 'enemy-crystal-golem',
+    role: 'elite',
+    size: 0.38,
+    hpMul: 1.1,
+    atkMul: 1.1,
+    atkInterval: 2.2,
+    speed: 0.18,
+  },
+  'resonance-queen': {
+    id: 'resonance-queen',
+    name: 'Resonance Queen',
+    sprite: 'boss-resonance-queen',
+    role: 'boss',
+    size: 0.5,
+    hpMul: 1,
+    atkMul: 1.1,
+    atkInterval: 2.35,
+    speed: 0.18,
+  },
 };
 
-export type BackgroundId = 'ember' | 'cavern' | 'bone' | 'frost' | 'mire' | 'cinder';
+export type BackgroundId = 'ember' | 'cavern' | 'bone' | 'frost' | 'mire' | 'cinder' | 'spire' | 'echo';
 
 export interface DungeonDef {
   id: string;
@@ -417,12 +505,50 @@ export const ACTS: ActDef[] = [
       floors: 10,
     },
   },
+  {
+    id: 7,
+    name: 'Ashen Spire',
+    theme: 'Volcanic ascent',
+    bg: 'spire',
+    stages: 5,
+    recLevel: [12, 14],
+    trash: ['ash-bat', 'slag-imp'],
+    elite: 'magma-knight',
+    boss: 'spire-tyrant',
+    playable: true,
+    dungeon: {
+      id: 'spire-forge',
+      name: 'Spire Forge',
+      actId: 7,
+      glBand: [12, 14],
+      sets: ['nightfang', 'gloomveil'],
+      floors: 10,
+    },
+  },
+  {
+    id: 8,
+    name: 'Echoing Dark',
+    theme: 'Crystal echo chambers',
+    bg: 'echo',
+    stages: 5,
+    recLevel: [14, 16],
+    trash: ['echo-wisp', 'crystal-mite'],
+    elite: 'crystal-golem',
+    boss: 'resonance-queen',
+    playable: true,
+    dungeon: {
+      id: 'echo-crypt',
+      name: 'Echo Crypt',
+      actId: 8,
+      glBand: [14, 16],
+      sets: ['echoplate'],
+      floors: 10,
+    },
+  },
 ];
 
-/** Acts 7-10 are designed (GDD §5.1) but locked in this slice. */
+/** Acts 9-10 are designed (GDD §5.1) but locked in this slice. */
 export const LOCKED_ACTS: { id: number; name: string; theme: string }[] = [
-  { id: 7, name: 'Ashen Spire', theme: 'Volcanic ascent' },
-  { id: 8, name: 'Echoing Dark', theme: 'Crystal echo chambers' },
   { id: 9, name: 'Voidgate', theme: 'Breach corridors' },
   { id: 10, name: 'Nightscar Depths', theme: 'Final abyss' },
 ];
@@ -467,9 +593,9 @@ export interface EnemyScale {
 
 /** Enemy stats for a given tier and role. Tuned against hero progression in game/sim.test.ts. */
 export function enemyScale(tier: number, role: EnemyRole): EnemyScale {
-  // Soften after Act 2, then again after Act 4 so Acts 5-6 stay clearable with set farming.
-  const growth = tier <= 9 ? 1.22 : tier <= 19 ? 1.175 : 1.14;
-  const atkGrowth = tier <= 9 ? 1.15 : tier <= 19 ? 1.12 : 1.1;
+  // Soften after Act 2, Act 4, then Act 6 so Acts 7-8 stay clearable with set farming.
+  const growth = tier <= 9 ? 1.22 : tier <= 19 ? 1.175 : tier <= 29 ? 1.14 : 1.11;
+  const atkGrowth = tier <= 9 ? 1.15 : tier <= 19 ? 1.12 : tier <= 29 ? 1.1 : 1.08;
   const hp = 55 * Math.pow(growth, tier);
   const atk = 9 * Math.pow(atkGrowth, tier);
   const def = 2 + tier * 2.0;

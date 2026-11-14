@@ -96,9 +96,9 @@ function seededGame(seed: number, heroClass: HeroClass): Game {
 }
 
 describe('combat + progression sim', () => {
-  it('lets an auto-playing Warrior clear Acts 1-6 in a sane amount of time', () => {
+  it('lets an auto-playing Warrior clear Acts 1-8 in a sane amount of time', () => {
     const game = seededGame(1337, 'Warrior');
-    const tl = autoplay(game, 14 * 3600, { stopAtCleared: 30 });
+    const tl = autoplay(game, 20 * 3600, { stopAtCleared: 40 });
     // eslint-disable-next-line no-console
     console.log(
       JSON.stringify(
@@ -116,7 +116,7 @@ describe('combat + progression sim', () => {
         1,
       ),
     );
-    expect(game.save.stagesCleared).toBe(30);
+    expect(game.save.stagesCleared).toBe(40);
   });
 
   it('lets Mage, Ranger, and Rogue clear Act 1', () => {
