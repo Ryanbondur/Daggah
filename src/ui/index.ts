@@ -36,7 +36,11 @@ const NODE_ICON: Record<NodeType, string> = {
   boss: ICON.boss,
 };
 
-export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElement } {
+export function mountUI(
+  game: Game,
+  root: HTMLElement,
+  opts: { ensureStage: () => Promise<void> },
+): { phaserParent: HTMLElement } {
   root.innerHTML = `
   <div id="frame">
     <section id="stage">
@@ -107,8 +111,11 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
       ctx.tab = tab;
       if (tab !== 'skill') ctx.skillBarFocus = null;
       if (tab === 'skill') game.markSkillsSeen();
+      // Adventure often leads to dungeon/stage combat — warm Phaser early.
+      if (tab === 'adventure') void opts.ensureStage();
       ctx.render();
     },
+    ensureStage: () => opts.ensureStage(),
     render() {
       if (renderQueued) return;
       renderQueued = true;
@@ -353,6 +360,17 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
 
   // ---- input --------------------------------------------------------------
 
+  /** Await Phaser boot before combat; toast if the chunk is still downloading. */
+  async function withStage(run: () => void): Promise<void> {
+    const tip = window.setTimeout(() => game.toast('Loading combat…', 'info'), 180);
+    try {
+      await opts.ensureStage();
+    } finally {
+      window.clearTimeout(tip);
+    }
+    run();
+  }
+
   frame.addEventListener('pointerdown', () => unlockAudio(), { once: true });
 
   frame.addEventListener('click', (ev) => {
@@ -371,16 +389,20 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
         if (game.inBattle) {
           if (!game.forceCast()) game.toast('Primary skill not ready', 'info');
         } else {
-          game.startBattle();
-          // Wide tabs cover the HUD; Camp restores HP/EN orbs + retreat.
-          if (ctx.tab !== 'camp') ctx.setTab('camp');
+          void withStage(() => {
+            game.startBattle();
+            // Wide tabs cover the HUD; Camp restores HP/EN orbs + retreat.
+            if (ctx.tab !== 'camp') ctx.setTab('camp');
+          });
         }
         break;
       case 'toggle-battle':
         if (game.inBattle) game.retreat();
         else {
-          game.startBattle();
-          if (ctx.tab !== 'camp') ctx.setTab('camp');
+          void withStage(() => {
+            game.startBattle();
+            if (ctx.tab !== 'camp') ctx.setTab('camp');
+          });
         }
         break;
       case 'chat':
@@ -447,13 +469,17 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
       case 'stage': {
         const i = Number(d.i);
         if (game.selectStage(i)) {
-          if (!game.inBattle) game.startBattle();
-          ctx.setTab('camp');
+          void withStage(() => {
+            if (!game.inBattle) game.startBattle();
+            ctx.setTab('camp');
+          });
         }
         break;
       }
       case 'dungeon-enter':
-        if (game.startDungeon(d.id!)) ctx.setTab('camp');
+        void withStage(() => {
+          if (game.startDungeon(d.id!)) ctx.setTab('camp');
+        });
         break;
       case 'dungeon-sweep':
         game.sweepDungeon(d.id!);
