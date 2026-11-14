@@ -181,9 +181,97 @@ export const ENEMIES: Record<string, EnemyDef> = {
     atkInterval: 2.35,
     speed: 0.19,
   },
+  'spore-tick': {
+    id: 'spore-tick',
+    name: 'Spore Tick',
+    sprite: 'enemy-spore-tick',
+    role: 'trash',
+    size: 0.16,
+    hpMul: 0.85,
+    atkMul: 1.05,
+    atkInterval: 1.45,
+    speed: 0.34,
+  },
+  'mire-slug': {
+    id: 'mire-slug',
+    name: 'Mire Slug',
+    sprite: 'enemy-mire-slug',
+    role: 'trash',
+    size: 0.2,
+    hpMul: 1.1,
+    atkMul: 0.95,
+    atkInterval: 1.9,
+    speed: 0.22,
+  },
+  'witchmire-hag': {
+    id: 'witchmire-hag',
+    name: 'Witchmire Hag',
+    sprite: 'enemy-witchmire-hag',
+    role: 'elite',
+    size: 0.34,
+    hpMul: 1,
+    atkMul: 1.1,
+    atkInterval: 2.05,
+    speed: 0.2,
+  },
+  'bog-hydra': {
+    id: 'bog-hydra',
+    name: 'Bog Hydra',
+    sprite: 'boss-bog-hydra',
+    role: 'boss',
+    size: 0.5,
+    hpMul: 1,
+    atkMul: 1.05,
+    atkInterval: 2.3,
+    speed: 0.18,
+  },
+  'magma-scarab': {
+    id: 'magma-scarab',
+    name: 'Magma Scarab',
+    sprite: 'enemy-magma-scarab',
+    role: 'trash',
+    size: 0.17,
+    hpMul: 0.9,
+    atkMul: 1.1,
+    atkInterval: 1.5,
+    speed: 0.33,
+  },
+  'ash-walker': {
+    id: 'ash-walker',
+    name: 'Ash Walker',
+    sprite: 'enemy-ash-walker',
+    role: 'trash',
+    size: 0.21,
+    hpMul: 1.05,
+    atkMul: 1.05,
+    atkInterval: 1.65,
+    speed: 0.26,
+  },
+  'cinder-knight': {
+    id: 'cinder-knight',
+    name: 'Cinder Knight',
+    sprite: 'enemy-cinder-knight',
+    role: 'elite',
+    size: 0.35,
+    hpMul: 1,
+    atkMul: 1.15,
+    atkInterval: 2.1,
+    speed: 0.2,
+  },
+  'forge-colossus': {
+    id: 'forge-colossus',
+    name: 'Forge Colossus',
+    sprite: 'boss-forge-colossus',
+    role: 'boss',
+    size: 0.52,
+    hpMul: 1,
+    atkMul: 1.1,
+    atkInterval: 2.45,
+    speed: 0.17,
+  },
 };
 
-export type BackgroundId = 'ember' | 'cavern' | 'bone' | 'frost';
+export type BackgroundId = 'ember' | 'cavern' | 'bone' | 'frost' | 'mire' | 'cinder';
 
 export interface DungeonDef {
   id: string;
@@ -289,12 +377,50 @@ export const ACTS: ActDef[] = [
       floors: 10,
     },
   },
+  {
+    id: 5,
+    name: 'Witchmire',
+    theme: 'Fungal marsh caverns',
+    bg: 'mire',
+    stages: 5,
+    recLevel: [8, 10],
+    trash: ['spore-tick', 'mire-slug'],
+    elite: 'witchmire-hag',
+    boss: 'bog-hydra',
+    playable: true,
+    dungeon: {
+      id: 'mire-sanctum',
+      name: 'Mire Sanctum',
+      actId: 5,
+      glBand: [8, 10],
+      sets: ['quillstorm', 'deadeye'],
+      floors: 10,
+    },
+  },
+  {
+    id: 6,
+    name: 'Cinderreach',
+    theme: 'Magma galleries',
+    bg: 'cinder',
+    stages: 5,
+    recLevel: [10, 12],
+    trash: ['magma-scarab', 'ash-walker'],
+    elite: 'cinder-knight',
+    boss: 'forge-colossus',
+    playable: true,
+    dungeon: {
+      id: 'cinder-forge',
+      name: 'Cinder Forge',
+      actId: 6,
+      glBand: [10, 12],
+      sets: ['cinderstride'],
+      floors: 10,
+    },
+  },
 ];
 
-/** Acts 5-10 are designed (GDD §5.1) but locked in this slice. */
+/** Acts 7-10 are designed (GDD §5.1) but locked in this slice. */
 export const LOCKED_ACTS: { id: number; name: string; theme: string }[] = [
-  { id: 5, name: 'Witchmire', theme: 'Fungal marsh caverns' },
-  { id: 6, name: 'Cinderreach', theme: 'Magma galleries' },
   { id: 7, name: 'Ashen Spire', theme: 'Volcanic ascent' },
   { id: 8, name: 'Echoing Dark', theme: 'Crystal echo chambers' },
   { id: 9, name: 'Voidgate', theme: 'Breach corridors' },
@@ -341,9 +467,9 @@ export interface EnemyScale {
 
 /** Enemy stats for a given tier and role. Tuned against hero progression in game/sim.test.ts. */
 export function enemyScale(tier: number, role: EnemyRole): EnemyScale {
-  // Soften the curve after Act 2 so Acts 3-4 stay clearable with set farming.
-  const growth = tier <= 9 ? 1.22 : 1.175;
-  const atkGrowth = tier <= 9 ? 1.15 : 1.12;
+  // Soften after Act 2, then again after Act 4 so Acts 5-6 stay clearable with set farming.
+  const growth = tier <= 9 ? 1.22 : tier <= 19 ? 1.175 : 1.14;
+  const atkGrowth = tier <= 9 ? 1.15 : tier <= 19 ? 1.12 : 1.1;
   const hp = 55 * Math.pow(growth, tier);
   const atk = 9 * Math.pow(atkGrowth, tier);
   const def = 2 + tier * 2.0;

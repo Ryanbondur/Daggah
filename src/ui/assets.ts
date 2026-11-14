@@ -31,6 +31,14 @@ export const ENEMY_SPRITES = [
   'enemy-ice-hound',
   'enemy-rime-brute',
   'boss-rime-queen',
+  'enemy-spore-tick',
+  'enemy-mire-slug',
+  'enemy-witchmire-hag',
+  'boss-bog-hydra',
+  'enemy-magma-scarab',
+  'enemy-ash-walker',
+  'enemy-cinder-knight',
+  'boss-forge-colossus',
 ];
 
 export const SKILL_IDS: SkillId[] = [

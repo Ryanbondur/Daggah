@@ -82,9 +82,12 @@ export type SetId =
   | 'cavern-bulwark'
   | 'gravemarch'
   | 'ashen-codex'
-  | 'rime-circlet';
+  | 'rime-circlet'
+  | 'quillstorm'
+  | 'deadeye'
+  | 'cinderstride';
 
-export type IconPack = 'a' | 'b' | 'c' | 'd';
+export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f';
 
 export interface Item {
   id: string;

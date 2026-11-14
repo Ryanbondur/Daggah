@@ -155,7 +155,14 @@ NAV = ["camp", "skill", "adventure", "town", "crystal", "key"]
 
 
 def main() -> None:
-    for bg in ("bg-deep-cavern", "bg-ember-hollow", "bg-bone-gallery", "bg-frostvein"):
+    for bg in (
+        "bg-deep-cavern",
+        "bg-ember-hollow",
+        "bg-bone-gallery",
+        "bg-frostvein",
+        "bg-witchmire",
+        "bg-cinderreach",
+    ):
         save_bg(bg)
 
     for hero in ("warrior", "mage", "ranger", "rogue"):
@@ -168,6 +175,8 @@ def main() -> None:
         "enemy-horned-overseer", "boss-hollow-king", "boss-deep-warden",
         "enemy-bone-soldier", "enemy-bone-archer", "enemy-ossuary-captain", "boss-ossuary-lord",
         "enemy-frost-wisp", "enemy-ice-hound", "enemy-rime-brute", "boss-rime-queen",
+        "enemy-spore-tick", "enemy-mire-slug", "enemy-witchmire-hag", "boss-bog-hydra",
+        "enemy-magma-scarab", "enemy-ash-walker", "enemy-cinder-knight", "boss-forge-colossus",
     ]
     for e in enemies:
         single(e, f"sprites/{e}.webp", 380)
@@ -176,6 +185,8 @@ def main() -> None:
     slice_sheet("icons-gear-b", "icons/gear-b", GEAR_SLOTS, 160)
     slice_sheet("icons-gear-c", "icons/gear-c", GEAR_SLOTS, 160)
     slice_sheet("icons-gear-d", "icons/gear-d", GEAR_SLOTS, 160)
+    slice_sheet("icons-gear-e", "icons/gear-e", GEAR_SLOTS, 160)
+    slice_sheet("icons-gear-f", "icons/gear-f", GEAR_SLOTS, 160)
     slice_sheet("icons-skills-warrior", "icons/skills", SKILLS_WARRIOR, 160, dilate=6)
     slice_sheet("icons-skills-mage", "icons/skills", SKILLS_MAGE, 160, dilate=6)
     slice_sheet("icons-skills-ranger", "icons/skills", SKILLS_RANGER, 160, dilate=6)

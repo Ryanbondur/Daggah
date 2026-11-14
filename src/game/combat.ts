@@ -211,7 +211,9 @@ export class Battle {
 
   skillCd(id: SkillId): number {
     const minus = this.heroInput.effects.skillCdMinus[id] ?? 0;
-    return Math.max(1, SKILL_BY_ID[id].cd - minus);
+    const base = Math.max(1, SKILL_BY_ID[id].cd - minus);
+    const pct = this.heroInput.effects.globalCdPct;
+    return pct > 0 ? Math.max(1, base * (1 - pct / 100)) : base;
   }
 
   cdFraction(id: SkillId): number {
@@ -631,6 +633,10 @@ export class Battle {
     let dmg = atk * mult * this.rng.range(0.95, 1.05);
     if (opts.aoe) dmg *= 1 + inp.effects.aoePct / 100;
     if (opts.sp) dmg *= 1 + inp.stats.skillPower / 100;
+    if (opts.skill) {
+      const skillBonus = inp.effects.skillDmgPct[opts.skill] ?? 0;
+      if (skillBonus) dmg *= 1 + skillBonus / 100;
+    }
     if (e.shredT > 0) dmg *= 1.2;
     if (e.markT > 0) dmg *= 1.2;
     if (e.vulnT > 0) dmg *= 1.25;
@@ -675,8 +681,10 @@ export class Battle {
   }
 
   private heroAoe(mult: number, skill: SkillId): void {
-    const targets = this.alive;
-    for (const e of targets) this.hitEnemy(e, mult, { skill, aoe: true, sp: true });
+    if (skill === 'arrow-rain' && this.heroInput.effects.arrowRainWidth > 0) {
+      mult *= 1 + this.heroInput.effects.arrowRainWidth / 100;
+    }
+    for (const e of this.alive) this.hitEnemy(e, mult, { skill, aoe: true, sp: true });
     this.gainEnergy(3, false);
   }
 
@@ -945,7 +953,7 @@ export class Battle {
         break;
       }
       case 'hunters-mark': {
-        if (front) front.markT = 8;
+        if (front) front.markT = 8 + this.heroInput.effects.markDurationBonus;
         break;
       }
       case 'explosive-trap':

@@ -274,6 +274,42 @@ export const SETS: Record<SetId, SetDef> = {
       { pieces: 6, text: 'Absolute Zero +1s freeze' },
     ],
   },
+  quillstorm: {
+    id: 'quillstorm',
+    name: 'Quillstorm',
+    act: 5,
+    favors: 'Ranger Volley',
+    icon: 'e',
+    bonuses: [
+      { pieces: 2, text: '+8% AoE' },
+      { pieces: 4, text: 'Arrow Rain width +20%' },
+      { pieces: 6, text: 'Storm of Quills +15% dmg' },
+    ],
+  },
+  deadeye: {
+    id: 'deadeye',
+    name: 'Deadeye',
+    act: 5,
+    favors: 'Ranger Marksmanship',
+    icon: 'e',
+    bonuses: [
+      { pieces: 2, text: '+6% Crit Rate' },
+      { pieces: 4, text: 'Mark duration +3s' },
+      { pieces: 6, text: 'Kill Shot threshold 35%' },
+    ],
+  },
+  cinderstride: {
+    id: 'cinderstride',
+    name: 'Cinderstride',
+    act: 6,
+    favors: 'Any / haste',
+    icon: 'f',
+    bonuses: [
+      { pieces: 2, text: '+6% Haste' },
+      { pieces: 4, text: '+8% Energy Regen' },
+      { pieces: 6, text: 'Skill CDs -5%' },
+    ],
+  },
 };
 
 export interface SetEffects {
@@ -284,6 +320,7 @@ export interface SetEffects {
   aoePct: number;
   skillCdMinus: Partial<Record<SkillId, number>>;
   skillCostPct: Partial<Record<SkillId, number>>;
+  skillDmgPct: Partial<Record<SkillId, number>>;
   absorbPct: number;
   healPct: number;
   burnPct: number;
@@ -292,6 +329,11 @@ export interface SetEffects {
   freezeBonus: number;
   onKillHealPct: number;
   executeThreshold: number;
+  critRatePct: number;
+  markDurationBonus: number;
+  hastePct: number;
+  globalCdPct: number;
+  arrowRainWidth: number;
 }
 
 export function emptySetEffects(): SetEffects {
@@ -303,6 +345,7 @@ export function emptySetEffects(): SetEffects {
     aoePct: 0,
     skillCdMinus: {},
     skillCostPct: {},
+    skillDmgPct: {},
     absorbPct: 0,
     healPct: 0,
     burnPct: 0,
@@ -311,6 +354,11 @@ export function emptySetEffects(): SetEffects {
     freezeBonus: 0,
     onKillHealPct: 0,
     executeThreshold: 0.3,
+    critRatePct: 0,
+    markDurationBonus: 0,
+    hastePct: 0,
+    globalCdPct: 0,
+    arrowRainWidth: 0,
   };
 }
 
@@ -347,6 +395,15 @@ export function computeSetEffects(gear: Gear): SetEffects {
   if (n('rime-circlet') >= 2) fx.slowPct += 8;
   if (n('rime-circlet') >= 4) fx.skillCdMinus['frost-nova'] = 2;
   if (n('rime-circlet') >= 6) fx.freezeBonus += 1;
+  if (n('quillstorm') >= 2) fx.aoePct += 8;
+  if (n('quillstorm') >= 4) fx.arrowRainWidth += 20;
+  if (n('quillstorm') >= 6) fx.skillDmgPct['storm-of-quills'] = 15;
+  if (n('deadeye') >= 2) fx.critRatePct += 6;
+  if (n('deadeye') >= 4) fx.markDurationBonus += 3;
+  if (n('deadeye') >= 6) fx.executeThreshold = Math.max(fx.executeThreshold, 0.35);
+  if (n('cinderstride') >= 2) fx.hastePct += 6;
+  if (n('cinderstride') >= 4) fx.energyRegenPct += 8;
+  if (n('cinderstride') >= 6) fx.globalCdPct += 5;
   return fx;
 }
 
@@ -383,6 +440,8 @@ export function computeHero(level: number, gear: Gear, heroClass: HeroClass = 'W
   stats.atk = Math.round(stats.atk * (1 + effects.atkPct / 100));
   stats.hp = Math.round(stats.hp * (1 + effects.hpPct / 100));
   stats.def = Math.round(stats.def * (1 + effects.defPct / 100));
+  stats.critRate = Math.round((stats.critRate + effects.critRatePct) * 10) / 10;
+  stats.haste = Math.round((stats.haste + effects.hastePct) * 10) / 10;
   stats.energyRegen = Math.round(stats.energyRegen * 10) / 10;
   return { stats, effects, cp: cpFromStats(stats) };
 }
