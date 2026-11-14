@@ -1,4 +1,4 @@
-import type { Item, SkillId } from '../data/types';
+import type { HeroClass, Item, SkillId } from '../data/types';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -12,6 +12,9 @@ export const skillIcon = (id: SkillId): string => asset(`icons/skills/${id}.webp
 export const navIcon = (name: 'camp' | 'skill' | 'adventure' | 'town' | 'crystal' | 'key'): string =>
   asset(`icons/nav/${name}.webp`);
 
+export const heroSprite = (heroClass: HeroClass): string =>
+  asset(`sprites/hero-${heroClass.toLowerCase()}.webp`);
+
 export const ENEMY_SPRITES = [
   'enemy-goat-demon',
   'enemy-skeleton',
@@ -20,6 +23,14 @@ export const ENEMY_SPRITES = [
   'enemy-horned-overseer',
   'boss-hollow-king',
   'boss-deep-warden',
+  'enemy-bone-soldier',
+  'enemy-bone-archer',
+  'enemy-ossuary-captain',
+  'boss-ossuary-lord',
+  'enemy-frost-wisp',
+  'enemy-ice-hound',
+  'enemy-rime-brute',
+  'boss-rime-queen',
 ];
 
 export const SKILL_IDS: SkillId[] = [
@@ -31,4 +42,28 @@ export const SKILL_IDS: SkillId[] = [
   'iron-skin',
   'rally',
   'executioners-guard',
+  'firebolt',
+  'flame-wave',
+  'meteor',
+  'combustion',
+  'ice-lance',
+  'frost-nova',
+  'glacial-armor',
+  'absolute-zero',
+  'piercing-shot',
+  'arrow-rain',
+  'multishot',
+  'storm-of-quills',
+  'aimed-shot',
+  'hunters-mark',
+  'explosive-trap',
+  'kill-shot',
+  'backstab',
+  'garrote',
+  'ambush',
+  'death-mark',
+  'shadowstep',
+  'smoke-bomb',
+  'flurry',
+  'cloak-of-shadows',
 ];

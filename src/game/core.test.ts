@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RARITIES, computeHero, cpDelta, rollItem, salvageValue, starterGear } from '../data/gear';
 import { DEFAULT_LOADOUT, isUnlocked } from '../data/skills';
-import { addXp, availableSpeeds, maxEnergy, xpToNext } from '../data/xp';
+import { addXp, availableSpeeds, heroBaseStats, maxEnergy, xpToNext } from '../data/xp';
 import { Game } from './game';
 import { mulberry32 } from './rng';
 import { SAVE_KEY, defaultSave, loadSave, writeSave } from './state';
@@ -32,15 +32,25 @@ describe('xp and progression', () => {
   });
 
   it('gates skills by level', () => {
-    expect(DEFAULT_LOADOUT.every((id) => isUnlocked(id, 1))).toBe(true);
+    expect(DEFAULT_LOADOUT.Warrior.every((id) => isUnlocked(id, 1))).toBe(true);
     expect(isUnlocked('bladestorm', 6)).toBe(false);
     expect(isUnlocked('bladestorm', 7)).toBe(true);
+    expect(isUnlocked('meteor', 8)).toBe(true);
+    expect(isUnlocked('kill-shot', 15)).toBe(true);
+  });
+
+  it('gives distinct base stats per class', () => {
+    const w = heroBaseStats(1, 'Warrior');
+    const m = heroBaseStats(1, 'Mage');
+    expect(m.atk).toBeGreaterThan(w.atk);
+    expect(m.hp).toBeLessThan(w.hp);
   });
 });
 
 describe('gear', () => {
   it('fills all 12 slots with starter gear', () => {
-    expect(Object.keys(starterGear())).toHaveLength(12);
+    expect(Object.keys(starterGear('Ranger'))).toHaveLength(12);
+    expect(starterGear('Mage').weapon?.name).toContain('Staff');
   });
 
   it('rolls higher stats at higher rarity', () => {
@@ -56,16 +66,19 @@ describe('gear', () => {
     const gear = starterGear();
     const rng = mulberry32(11);
     const item = rollItem(rng, { gearLevel: 4, rarity: 'rare', slot: 'chest' });
-    expect(cpDelta(4, gear, item)).toBeGreaterThan(0);
+    expect(cpDelta(4, gear, item, 'Warrior')).toBeGreaterThan(0);
   });
 
-  it('applies set bonuses at 2 pieces', () => {
+  it('applies set bonuses at 2 pieces including Gravemarch', () => {
     const gear = starterGear();
     const rng = mulberry32(3);
-    const base = computeHero(1, gear).cp;
+    const base = computeHero(1, gear, 'Warrior').cp;
     gear.weapon = rollItem(rng, { gearLevel: 1, rarity: 'common', slot: 'weapon', setId: 'ember-raider' });
     gear.chest = rollItem(rng, { gearLevel: 1, rarity: 'common', slot: 'chest', setId: 'ember-raider' });
-    expect(computeHero(1, gear).cp).toBeGreaterThan(base);
+    expect(computeHero(1, gear, 'Warrior').cp).toBeGreaterThan(base);
+    gear.belt = rollItem(rng, { gearLevel: 5, rarity: 'rare', slot: 'belt', setId: 'gravemarch' });
+    gear.helmet = rollItem(rng, { gearLevel: 5, rarity: 'rare', slot: 'helmet', setId: 'gravemarch' });
+    expect(computeHero(5, gear, 'Warrior').effects.defPct).toBeGreaterThanOrEqual(6);
   });
 });
 
@@ -73,12 +86,15 @@ describe('save', () => {
   it('round-trips through storage', () => {
     const store = memoryStorage();
     const save = defaultSave();
+    save.classPicked = true;
+    save.heroClass = 'Mage';
     save.level = 6;
     save.crystals = 42;
     writeSave(store, save);
     const back = loadSave(store);
     expect(back.level).toBe(6);
     expect(back.crystals).toBe(42);
+    expect(back.heroClass).toBe('Mage');
     expect(Object.keys(back.gear)).toHaveLength(12);
   });
 
@@ -86,12 +102,14 @@ describe('save', () => {
     const store = memoryStorage();
     store.setItem(SAVE_KEY, '{not json');
     expect(loadSave(store).level).toBe(1);
+    expect(loadSave(store).classPicked).toBe(false);
   });
 });
 
 describe('game gear flow', () => {
   it('replace swaps gear and auto-salvages the old piece', () => {
     const game = new Game(memoryStorage(), mulberry32(5));
+    game.pickClass('Warrior');
     const item = rollItem(mulberry32(9), { gearLevel: 1, rarity: 'rare', slot: 'helmet' });
     const info = game.compareFor(item);
     expect(info.current?.slot).toBe('helmet');
@@ -102,14 +120,29 @@ describe('game gear flow', () => {
 
   it('refuses gear above hero level', () => {
     const game = new Game(memoryStorage(), mulberry32(5));
+    game.pickClass('Rogue');
     const item = rollItem(mulberry32(9), { gearLevel: 5, rarity: 'rare', slot: 'helmet' });
     expect(game.equip(item, false)).toBe(false);
   });
 
   it('salvage grants resources', () => {
     const game = new Game(memoryStorage(), mulberry32(5));
+    game.pickClass('Ranger');
     const item = rollItem(mulberry32(9), { gearLevel: 1, rarity: 'epic', slot: 'ring' });
     game.salvage(item);
     expect(game.save.dust).toBeGreaterThan(0);
+  });
+
+  it('locks class after pick and allows new-save re-pick', () => {
+    const store = memoryStorage();
+    const game = new Game(store, mulberry32(1));
+    expect(game.save.classPicked).toBe(false);
+    expect(game.pickClass('Mage')).toBe(true);
+    expect(game.pickClass('Warrior')).toBe(false);
+    expect(game.save.heroClass).toBe('Mage');
+    expect(game.save.loadout).toEqual(DEFAULT_LOADOUT.Mage);
+    game.resetSave();
+    expect(game.save.classPicked).toBe(false);
+    expect(game.pickClass('Ranger')).toBe(true);
   });
 });

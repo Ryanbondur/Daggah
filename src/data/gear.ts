@@ -1,5 +1,6 @@
 import type { Rng } from '../game/rng';
 import type {
+  HeroClass,
   IconPack,
   Item,
   RarityId,
@@ -237,6 +238,42 @@ export const SETS: Record<SetId, SetDef> = {
       { pieces: 6, text: 'Rally heals +15%' },
     ],
   },
+  gravemarch: {
+    id: 'gravemarch',
+    name: 'Gravemarch',
+    act: 3,
+    favors: 'Any / sustain',
+    icon: 'c',
+    bonuses: [
+      { pieces: 2, text: '+6% DEF' },
+      { pieces: 4, text: '+8% HP' },
+      { pieces: 6, text: 'On-kill heal 2% Max HP' },
+    ],
+  },
+  'ashen-codex': {
+    id: 'ashen-codex',
+    name: 'Ashen Codex',
+    act: 4,
+    favors: 'Mage Inferno',
+    icon: 'd',
+    bonuses: [
+      { pieces: 2, text: '+8% burn damage' },
+      { pieces: 4, text: 'Meteor CD -2s' },
+      { pieces: 6, text: 'Combustion +25%' },
+    ],
+  },
+  'rime-circlet': {
+    id: 'rime-circlet',
+    name: 'Rime Circlet',
+    act: 4,
+    favors: 'Mage Frostbind',
+    icon: 'd',
+    bonuses: [
+      { pieces: 2, text: '+8% slow potency' },
+      { pieces: 4, text: 'Nova CD -2s' },
+      { pieces: 6, text: 'Absolute Zero +1s freeze' },
+    ],
+  },
 };
 
 export interface SetEffects {
@@ -249,6 +286,12 @@ export interface SetEffects {
   skillCostPct: Partial<Record<SkillId, number>>;
   absorbPct: number;
   healPct: number;
+  burnPct: number;
+  combustPct: number;
+  slowPct: number;
+  freezeBonus: number;
+  onKillHealPct: number;
+  executeThreshold: number;
 }
 
 export function emptySetEffects(): SetEffects {
@@ -262,6 +305,12 @@ export function emptySetEffects(): SetEffects {
     skillCostPct: {},
     absorbPct: 0,
     healPct: 0,
+    burnPct: 0,
+    combustPct: 0,
+    slowPct: 0,
+    freezeBonus: 0,
+    onKillHealPct: 0,
+    executeThreshold: 0.3,
   };
 }
 
@@ -289,6 +338,15 @@ export function computeSetEffects(gear: Gear): SetEffects {
   if (n('cavern-bulwark') >= 2) fx.defPct += 8;
   if (n('cavern-bulwark') >= 4) fx.absorbPct += 20;
   if (n('cavern-bulwark') >= 6) fx.healPct += 15;
+  if (n('gravemarch') >= 2) fx.defPct += 6;
+  if (n('gravemarch') >= 4) fx.hpPct += 8;
+  if (n('gravemarch') >= 6) fx.onKillHealPct += 2;
+  if (n('ashen-codex') >= 2) fx.burnPct += 8;
+  if (n('ashen-codex') >= 4) fx.skillCdMinus.meteor = 2;
+  if (n('ashen-codex') >= 6) fx.combustPct += 25;
+  if (n('rime-circlet') >= 2) fx.slowPct += 8;
+  if (n('rime-circlet') >= 4) fx.skillCdMinus['frost-nova'] = 2;
+  if (n('rime-circlet') >= 6) fx.freezeBonus += 1;
   return fx;
 }
 
@@ -311,8 +369,8 @@ export function cpFromStats(s: Stats): number {
   );
 }
 
-export function computeHero(level: number, gear: Gear): HeroTotals {
-  const stats = heroBaseStats(level);
+export function computeHero(level: number, gear: Gear, heroClass: HeroClass = 'Warrior'): HeroTotals {
+  const stats = heroBaseStats(level, heroClass);
   for (const slot of SLOTS) {
     const it = gear[slot];
     if (!it) continue;
@@ -329,14 +387,20 @@ export function computeHero(level: number, gear: Gear): HeroTotals {
   return { stats, effects, cp: cpFromStats(stats) };
 }
 
-export function heroCpWith(level: number, gear: Gear, slot: SlotId, item: Item | undefined): number {
+export function heroCpWith(
+  level: number,
+  gear: Gear,
+  slot: SlotId,
+  item: Item | undefined,
+  heroClass: HeroClass = 'Warrior',
+): number {
   const next: Gear = { ...gear, [slot]: item };
-  return computeHero(level, next).cp;
+  return computeHero(level, next, heroClass).cp;
 }
 
 /** CP change if `item` replaced what is in its slot (includes set-bonus changes). */
-export function cpDelta(level: number, gear: Gear, item: Item): number {
-  return heroCpWith(level, gear, item.slot, item) - computeHero(level, gear).cp;
+export function cpDelta(level: number, gear: Gear, item: Item, heroClass: HeroClass = 'Warrior'): number {
+  return heroCpWith(level, gear, item.slot, item, heroClass) - computeHero(level, gear, heroClass).cp;
 }
 
 let itemCounter = 0;
@@ -383,8 +447,14 @@ export function rollItem(rng: Rng, opts: RollOptions): Item {
   };
 }
 
-const STARTER_NAMES: Record<SlotId, string> = {
-  weapon: 'Rusty Axe',
+const STARTER_WEAPON: Record<HeroClass, string> = {
+  Warrior: 'Rusty Axe',
+  Mage: 'Splintered Staff',
+  Ranger: 'Warped Bow',
+  Rogue: 'Notched Daggers',
+};
+
+const STARTER_NAMES: Record<Exclude<SlotId, 'weapon'>, string> = {
   chest: 'Worn Jerkin',
   belt: 'Frayed Belt',
   helmet: 'Dented Helm',
@@ -398,7 +468,7 @@ const STARTER_NAMES: Record<SlotId, string> = {
   ring: 'Useless Ring',
 };
 
-export function starterGear(): Gear {
+export function starterGear(heroClass: HeroClass = 'Warrior'): Gear {
   const gear: Gear = {};
   for (const slot of SLOTS) {
     gear[slot] = {
@@ -406,13 +476,15 @@ export function starterGear(): Gear {
       slot,
       rarity: 'common',
       gearLevel: 1,
-      name: STARTER_NAMES[slot],
+      name: slot === 'weapon' ? STARTER_WEAPON[heroClass] : STARTER_NAMES[slot],
       icon: 'a',
       stats: baseStatsForSlot(slot, 1, 1),
     };
   }
   return gear;
 }
+
+export const ALL_SET_IDS = Object.keys(SETS) as SetId[];
 
 export function salvageValue(item: Item): { dust: number; crystals: number } {
   return RARITIES[item.rarity].salvage;

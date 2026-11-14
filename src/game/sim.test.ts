@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ACTS } from '../data/acts';
+import type { HeroClass } from '../data/types';
 import { Game } from './game';
 import type { RunResult } from './game';
 import { mulberry32 } from './rng';
@@ -56,12 +57,14 @@ function autoplay(game: Game, maxSeconds: number, opts: { stopAtCleared?: number
       game.refreshKeys(Date.now() + tl.seconds * 1000);
       const s = game.save;
       const d = ACTS.map((a) => a.dungeon!).filter((x) => game.dungeonUnlocked(x));
-      const wantFarm = failStreak > 0 && d.length > 0 && (s.keys > 0 || s.crystals >= 50);
+      const canEnter = d.length > 0 && (s.keys > 0 || s.crystals >= 50);
+      const farmForPower = canEnter && s.stagesCleared >= 5 && failStreak === 0 && s.keys >= 2 && tl.dungeonRuns < s.stagesCleared;
+      const wantFarm = canEnter && (failStreak > 0 || farmForPower);
       if (wantFarm) {
         const target = d[d.length - 1];
         game.startDungeon(target.id);
         failStreak = Math.max(0, failStreak - 1);
-      } else if (failStreak > 0 && s.currentStage > 0) {
+      } else if (failStreak > 1 && s.currentStage > 0) {
         game.selectStage(Math.max(0, s.currentStage - 1));
         game.startBattle();
         failStreak = 0;
@@ -86,14 +89,21 @@ function autoplay(game: Game, maxSeconds: number, opts: { stopAtCleared?: number
   return tl;
 }
 
+function seededGame(seed: number, heroClass: HeroClass): Game {
+  const game = new Game(memoryStorage(), mulberry32(seed));
+  game.pickClass(heroClass);
+  return game;
+}
+
 describe('combat + progression sim', () => {
-  it('lets an auto-playing Warrior clear Acts 1-2 in a sane amount of time', () => {
-    const game = new Game(memoryStorage(), mulberry32(1337));
-    const tl = autoplay(game, 3 * 3600, { stopAtCleared: 10 });
+  it('lets an auto-playing Warrior clear Acts 1-4 in a sane amount of time', () => {
+    const game = seededGame(1337, 'Warrior');
+    const tl = autoplay(game, 8 * 3600, { stopAtCleared: 20 });
     // eslint-disable-next-line no-console
     console.log(
       JSON.stringify(
         {
+          class: 'Warrior',
           minutes: Math.round(tl.seconds / 60),
           level: game.save.level,
           cp: game.cp,
@@ -106,6 +116,15 @@ describe('combat + progression sim', () => {
         1,
       ),
     );
-    expect(game.save.stagesCleared).toBe(10);
+    expect(game.save.stagesCleared).toBe(20);
+  });
+
+  it('lets Mage, Ranger, and Rogue clear Act 1', () => {
+    for (const heroClass of ['Mage', 'Ranger', 'Rogue'] as HeroClass[]) {
+      const game = seededGame(42 + heroClass.length * 17, heroClass);
+      const tl = autoplay(game, 90 * 60, { stopAtCleared: 5 });
+      expect(game.save.stagesCleared, heroClass).toBeGreaterThanOrEqual(5);
+      expect(tl.failures, heroClass).toBeLessThan(50);
+    }
   });
 });

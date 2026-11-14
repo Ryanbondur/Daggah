@@ -1,4 +1,4 @@
-import type { PlaystyleId, SkillId } from './types';
+import type { HeroClass, PlaystyleId, SkillId } from './types';
 
 export interface SkillDef {
   id: SkillId;
@@ -13,19 +13,53 @@ export interface SkillDef {
   ultimate?: boolean;
 }
 
-export const PLAYSTYLES: Record<PlaystyleId, { name: string; tagline: string }> = {
-  bladestorm: {
-    name: 'Bladestorm',
-    tagline: 'AoE cleave. Stack Cleave, spin through packs, finish with Bladestorm.',
-  },
-  ironclad: {
-    name: 'Ironclad',
-    tagline: 'Sustain and guard. Shred, soak, then counter.',
-  },
-};
+export const PLAYSTYLES: Record<PlaystyleId, { name: string; tagline: string; heroClass: HeroClass }> =
+  {
+    bladestorm: {
+      name: 'Bladestorm',
+      tagline: 'AoE cleave. Stack Cleave, spin through packs, finish with Bladestorm.',
+      heroClass: 'Warrior',
+    },
+    ironclad: {
+      name: 'Ironclad',
+      tagline: 'Sustain and guard. Shred, soak, then counter.',
+      heroClass: 'Warrior',
+    },
+    inferno: {
+      name: 'Inferno',
+      tagline: 'Burn apply → Wave → Combustion / Meteor.',
+      heroClass: 'Mage',
+    },
+    frostbind: {
+      name: 'Frostbind',
+      tagline: 'Lance slow → Nova root → Absolute Zero.',
+      heroClass: 'Mage',
+    },
+    volley: {
+      name: 'Volley',
+      tagline: 'Pierce → Rain → Multishot weave.',
+      heroClass: 'Ranger',
+    },
+    marksmanship: {
+      name: 'Marksmanship',
+      tagline: 'Mark → Aimed → Kill Shot.',
+      heroClass: 'Ranger',
+    },
+    assassination: {
+      name: 'Assassination',
+      tagline: 'Garrote → Ambush Crit window → Death Mark.',
+      heroClass: 'Rogue',
+    },
+    shadowdance: {
+      name: 'Shadowdance',
+      tagline: 'Step → Flurry → Cloak panic.',
+      heroClass: 'Rogue',
+    },
+  };
 
-/** Warrior skill catalog. GDD §3.4 (names, numbers = balance seeds). */
+/** Full skill catalog. GDD §3.4 (names, numbers = balance seeds). */
 export const SKILLS: SkillDef[] = [
+  // ---- Warrior ------------------------------------------------------------
   {
     id: 'cleave',
     name: 'Cleave',
@@ -109,6 +143,258 @@ export const SKILLS: SkillDef[] = [
     unlockLevel: 15,
     ultimate: true,
   },
+  // ---- Mage ---------------------------------------------------------------
+  {
+    id: 'firebolt',
+    name: 'Firebolt',
+    playstyle: 'inferno',
+    role: 'Passive burn',
+    desc: 'Auto-attacks apply Burn (DoT for 4s, stacking to 5). Burned enemies take +4% damage per stack from Flame Wave and Meteor.',
+    energy: 0,
+    cd: 0,
+    unlockLevel: 1,
+    passive: true,
+  },
+  {
+    id: 'flame-wave',
+    name: 'Flame Wave',
+    playstyle: 'inferno',
+    role: 'Cone AoE',
+    desc: 'Cone of fire for 150% ATK to every enemy in range. Applies 1 Burn stack.',
+    energy: 110,
+    cd: 7,
+    unlockLevel: 3,
+  },
+  {
+    id: 'meteor',
+    name: 'Meteor',
+    playstyle: 'inferno',
+    role: 'Delayed AoE',
+    desc: 'Call a meteor after 0.6s for 280% ATK AoE. Burn stacks add +5% each.',
+    energy: 400,
+    cd: 20,
+    unlockLevel: 8,
+    ultimate: true,
+  },
+  {
+    id: 'combustion',
+    name: 'Combustion',
+    playstyle: 'inferno',
+    role: 'Detonate burns',
+    desc: 'Detonate all Burn stacks for 70% ATK per stack as burst (set bonuses may amplify).',
+    energy: 160,
+    cd: 12,
+    unlockLevel: 13,
+  },
+  {
+    id: 'ice-lance',
+    name: 'Ice Lance',
+    playstyle: 'frostbind',
+    role: 'Slow + ST',
+    desc: 'Pierce the front enemy for 170% ATK and slow it 40% for 4s.',
+    energy: 95,
+    cd: 6,
+    unlockLevel: 1,
+  },
+  {
+    id: 'frost-nova',
+    name: 'Frost Nova',
+    playstyle: 'frostbind',
+    role: 'AoE root',
+    desc: 'Root all enemies for 2s and deal 110% ATK.',
+    energy: 130,
+    cd: 14,
+    unlockLevel: 5,
+  },
+  {
+    id: 'glacial-armor',
+    name: 'Glacial Armor',
+    playstyle: 'frostbind',
+    role: 'Shield + chill',
+    desc: 'Gain a 25% Max HP shield for 8s. Attackers are chilled (slowed) for 2s.',
+    energy: 120,
+    cd: 16,
+    unlockLevel: 10,
+  },
+  {
+    id: 'absolute-zero',
+    name: 'Absolute Zero',
+    playstyle: 'frostbind',
+    role: 'Freeze ultimate',
+    desc: 'Freeze all enemies for 2.5s and mark them Vulnerable (+25% damage taken) for 6s.',
+    energy: 380,
+    cd: 22,
+    unlockLevel: 16,
+    ultimate: true,
+  },
+  // ---- Ranger -------------------------------------------------------------
+  {
+    id: 'piercing-shot',
+    name: 'Piercing Shot',
+    playstyle: 'volley',
+    role: 'Passive pierce',
+    desc: 'Auto-attacks pierce through the pack, hitting every enemy in a line for 70% damage after the first.',
+    energy: 0,
+    cd: 0,
+    unlockLevel: 1,
+    passive: true,
+  },
+  {
+    id: 'arrow-rain',
+    name: 'Arrow Rain',
+    playstyle: 'volley',
+    role: 'Ground AoE',
+    desc: 'Rain arrows for 140% ATK to every enemy.',
+    energy: 125,
+    cd: 9,
+    unlockLevel: 3,
+  },
+  {
+    id: 'multishot',
+    name: 'Multishot',
+    playstyle: 'volley',
+    role: 'Fan of arrows',
+    desc: 'Fan of arrows hitting up to 4 enemies for 130% ATK each.',
+    energy: 180,
+    cd: 11,
+    unlockLevel: 8,
+  },
+  {
+    id: 'storm-of-quills',
+    name: 'Storm of Quills',
+    playstyle: 'volley',
+    role: 'Ultimate barrage',
+    desc: 'Barrage for 2s: five waves of 80% ATK AoE.',
+    energy: 420,
+    cd: 20,
+    unlockLevel: 14,
+    ultimate: true,
+  },
+  {
+    id: 'aimed-shot',
+    name: 'Aimed Shot',
+    playstyle: 'marksmanship',
+    role: 'High Crit ST',
+    desc: 'Careful shot for 200% ATK with +25% Crit Rate. Marked targets take +15% more.',
+    energy: 100,
+    cd: 6,
+    unlockLevel: 1,
+  },
+  {
+    id: 'hunters-mark',
+    name: "Hunter's Mark",
+    playstyle: 'marksmanship',
+    role: 'Mark',
+    desc: 'Mark the front enemy for 8s: they take +20% damage from you.',
+    energy: 70,
+    cd: 10,
+    unlockLevel: 4,
+  },
+  {
+    id: 'explosive-trap',
+    name: 'Explosive Trap',
+    playstyle: 'marksmanship',
+    role: 'Trap burst',
+    desc: 'Place a trap that detonates after 0.8s for 220% ATK AoE and slows survivors 30% for 3s.',
+    energy: 150,
+    cd: 14,
+    unlockLevel: 9,
+  },
+  {
+    id: 'kill-shot',
+    name: 'Kill Shot',
+    playstyle: 'marksmanship',
+    role: 'Execute',
+    desc: 'Execute a target under 30% HP for 350% ATK. Always Crits.',
+    energy: 220,
+    cd: 16,
+    unlockLevel: 15,
+    ultimate: true,
+  },
+  // ---- Rogue --------------------------------------------------------------
+  {
+    id: 'backstab',
+    name: 'Backstab',
+    playstyle: 'assassination',
+    role: 'Passive opener',
+    desc: 'The first auto each fight and attacks from Stealth deal +60% damage and guarantee Crit.',
+    energy: 0,
+    cd: 0,
+    unlockLevel: 1,
+    passive: true,
+  },
+  {
+    id: 'garrote',
+    name: 'Garrote',
+    playstyle: 'assassination',
+    role: 'Bleed DoT',
+    desc: 'Bleed the front enemy for 40% ATK/s over 6s and deal 80% ATK on apply.',
+    energy: 90,
+    cd: 7,
+    unlockLevel: 3,
+  },
+  {
+    id: 'ambush',
+    name: 'Ambush',
+    playstyle: 'assassination',
+    role: 'Stealth Crit',
+    desc: 'Dash into Stealth for 1.5s, then strike for 220% ATK with +40% Crit Rate.',
+    energy: 160,
+    cd: 12,
+    unlockLevel: 7,
+  },
+  {
+    id: 'death-mark',
+    name: 'Death Mark',
+    playstyle: 'assassination',
+    role: 'Execute finisher',
+    desc: 'Finisher for 300% ATK. Below 35% HP deals +50% more. Consumes Bleed for bonus burst.',
+    energy: 450,
+    cd: 22,
+    unlockLevel: 14,
+    ultimate: true,
+  },
+  {
+    id: 'shadowstep',
+    name: 'Shadowstep',
+    playstyle: 'shadowdance',
+    role: 'Dash i-frames',
+    desc: 'Dash: brief immunity (0.6s) and +30% Haste for 3s.',
+    energy: 80,
+    cd: 8,
+    unlockLevel: 1,
+  },
+  {
+    id: 'smoke-bomb',
+    name: 'Smoke Bomb',
+    playstyle: 'shadowdance',
+    role: 'AoE miss',
+    desc: 'Blind enemies for 4s: 40% chance their attacks miss.',
+    energy: 110,
+    cd: 15,
+    unlockLevel: 5,
+  },
+  {
+    id: 'flurry',
+    name: 'Flurry',
+    playstyle: 'shadowdance',
+    role: 'Multi-hit',
+    desc: 'Four rapid strikes of 70% ATK on the front enemy.',
+    energy: 140,
+    cd: 10,
+    unlockLevel: 10,
+  },
+  {
+    id: 'cloak-of-shadows',
+    name: 'Cloak of Shadows',
+    playstyle: 'shadowdance',
+    role: 'Cleanse + immunity',
+    desc: 'Cleanse slows/roots on self and gain 2s immunity. Restore 10% Max HP.',
+    energy: 200,
+    cd: 18,
+    unlockLevel: 16,
+    ultimate: true,
+  },
 ];
 
 export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s])) as Record<
@@ -118,10 +404,26 @@ export const SKILL_BY_ID = Object.fromEntries(SKILLS.map((s) => [s.id, s])) as R
 
 export const BAR_SIZE = 4;
 
-export const DEFAULT_LOADOUT: SkillId[] = ['cleave', 'shield-bash'];
+export const DEFAULT_LOADOUT: Record<HeroClass, SkillId[]> = {
+  Warrior: ['cleave', 'shield-bash'],
+  Mage: ['firebolt', 'ice-lance'],
+  Ranger: ['piercing-shot', 'aimed-shot'],
+  Rogue: ['backstab', 'shadowstep'],
+};
+
+export const CLASS_PLAYSTYLES: Record<HeroClass, PlaystyleId[]> = {
+  Warrior: ['bladestorm', 'ironclad'],
+  Mage: ['inferno', 'frostbind'],
+  Ranger: ['volley', 'marksmanship'],
+  Rogue: ['assassination', 'shadowdance'],
+};
 
 export function skillsForPlaystyle(p: PlaystyleId): SkillDef[] {
   return SKILLS.filter((s) => s.playstyle === p);
+}
+
+export function skillsForClass(heroClass: HeroClass): SkillDef[] {
+  return SKILLS.filter((s) => PLAYSTYLES[s.playstyle].heroClass === heroClass);
 }
 
 export function isUnlocked(id: SkillId, level: number): boolean {

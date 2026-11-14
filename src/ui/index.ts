@@ -6,9 +6,12 @@ import type { Game, RunResult } from '../game/game';
 import { asset, navIcon, skillIcon } from './assets';
 import type { ModalOpts, Tab, UIContext } from './context';
 import { fmt } from './context';
+import { CLASS_PLAYSTYLES } from '../data/skills';
+import type { PlaystyleId } from '../data/types';
 import {
   showBag,
   showChat,
+  showClassPick,
   showCompare,
   showHero,
   showItemInfo,
@@ -17,6 +20,7 @@ import {
 } from './modals';
 import { renderAdventure, renderCamp, renderSkill, renderTown } from './panes';
 import { ICON } from './svg';
+import { heroSprite } from './assets';
 
 const NODE_ICON: Record<NodeType, string> = {
   camp: ICON.camp,
@@ -34,7 +38,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
       <div class="stage-vignette"></div>
       <div class="stage-chrome">
         <div class="plate">
-          <div class="avatar"><img src="${asset('sprites/hero-warrior.webp')}" alt="" draggable="false" /></div>
+          <div class="avatar"><img id="hero-avatar" src="${heroSprite(game.save.heroClass)}" alt="" draggable="false" /></div>
           <div class="name">Adventurer I</div>
           <div class="power">${ICON.star}<span id="cp">0</span></div>
         </div>
@@ -84,7 +88,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
   const ctx: UIContext = {
     game,
     tab: 'camp',
-    skillStyle: 'bladestorm',
+    skillStyle: CLASS_PLAYSTYLES[game.save.heroClass][0],
     get modalOpen() {
       return !!modalEl;
     },
@@ -126,6 +130,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
     showSettings: () => showSettings(ctx),
     showChat: () => showChat(ctx),
     showItemInfo: (slot) => showItemInfo(ctx, slot),
+    showClassPick: () => showClassPick(ctx),
     flashSlot(slot) {
       flash = slot;
     },
@@ -181,6 +186,11 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
     const html = m ? `${m[1]} ${m[2]}<br />${m[3]}` : title;
     if (titleEl.innerHTML !== html) titleEl.innerHTML = html;
     $('#cp').textContent = fmt(game.cp);
+    const av = $('#hero-avatar') as HTMLImageElement | null;
+    if (av) {
+      const next = heroSprite(game.save.heroClass);
+      if (av.getAttribute('src') !== next) av.src = next;
+    }
 
     const nodes = game.trackNodes;
     const cur = game.currentNodeIndex;
@@ -345,7 +355,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
         if (!game.claimQuest()) game.toast(`${game.quest?.text ?? ''} (${game.questProgress()}/${game.quest?.goal ?? 0})`, 'info');
         break;
       case 'style':
-        ctx.skillStyle = d.id as 'bladestorm' | 'ironclad';
+        ctx.skillStyle = d.id as PlaystyleId;
         ctx.render();
         break;
       case 'toggle-skill': {
@@ -410,6 +420,7 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
 
   renderChat();
   renderNow();
+  if (!game.save.classPicked) showClassPick(ctx);
   requestAnimationFrame(frameLoop);
 
   return { phaserParent: $('#phaser') };

@@ -1,7 +1,15 @@
 import { ACTS, LOCKED_ACTS, getAct, stageRecLevel } from '../data/acts';
 import { SLOTS } from '../data/gear';
 import { QUESTS } from '../data/quests';
-import { BAR_SIZE, PLAYSTYLES, SKILL_BY_ID, defaultPrimary, isUnlocked, skillsForPlaystyle } from '../data/skills';
+import {
+  BAR_SIZE,
+  CLASS_PLAYSTYLES,
+  PLAYSTYLES,
+  SKILL_BY_ID,
+  defaultPrimary,
+  isUnlocked,
+  skillsForPlaystyle,
+} from '../data/skills';
 import type { PlaystyleId, SkillId } from '../data/types';
 import { KEY_CAP, STAGES_PER_ACT } from '../game/state';
 import { asset, navIcon, skillIcon } from './assets';
@@ -67,7 +75,10 @@ export function renderSkill(ctx: UIContext): string {
       `<button class="sb-slot" data-action="toggle-skill" data-id="${id}"><img src="${skillIcon(id)}" alt="${def.name}" />${star}<span class="ec">${def.passive ? 'Passive' : def.energy}</span></button>`,
     );
   }
-  const style = ctx.skillStyle;
+  const styles = CLASS_PLAYSTYLES[g.save.heroClass];
+  let style = ctx.skillStyle;
+  if (!styles.includes(style)) style = styles[0];
+  ctx.skillStyle = style;
   const cards = skillsForPlaystyle(style)
     .map((s) => {
       const unlocked = isUnlocked(s.id, lvl);
@@ -88,11 +99,11 @@ export function renderSkill(ctx: UIContext): string {
     `<button class="tb ${style === id ? 'on' : ''}" data-action="style" data-id="${id}">${PLAYSTYLES[id].name}</button>`;
   const locked = g.mode !== 'camp' ? '<div class="note">In battle: retreat to camp to swap skills.</div>' : '';
   return `<div class="pane-inner scroll">
-    <div class="tab-title">Skills <small>${loadout.length}/${BAR_SIZE} equipped</small></div>
+    <div class="tab-title">Skills <small>${g.save.heroClass}  -  ${loadout.length}/${BAR_SIZE} equipped</small></div>
     <div class="skillbar">${slots.join('')}</div>
     <div class="tagline" style="text-align:center">Star = Primary skill (center Battle button). Equip a full playstyle for best set synergy.</div>
     ${locked}
-    <div class="tabs">${tab('bladestorm')}${tab('ironclad')}</div>
+    <div class="tabs">${styles.map(tab).join('')}</div>
     <div class="tagline">${PLAYSTYLES[style].tagline}</div>
     ${cards}
   </div>`;
@@ -175,7 +186,7 @@ export function renderTown(ctx: UIContext): string {
     <h3 style="margin:1cqw 0 0;font-family:var(--font-title);font-size:3.6cqw">Onboarding quests</h3>
     <div class="sheet-lite">${quests}</div>
     <button class="chip" data-action="settings" style="align-self:flex-start">Settings</button>
-    <div class="tagline">Class locked for the season: ${g.save.heroClass}. Acts ${ACTS.length + 1}-10 are still being carved out of the dark.</div>
+    <div class="tagline">Class locked for the season: ${g.save.heroClass}. Reset save to pick a new class. Acts ${ACTS.length + 1}-10 are still being carved out of the dark.</div>
   </div>`;
 }
 

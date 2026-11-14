@@ -1,4 +1,4 @@
-import type { Stats } from './types';
+import type { HeroClass, Stats } from './types';
 import { emptyStats } from './types';
 
 /** XP needed to go from level N to N+1 (index = N - 1). GDD §7.1. */
@@ -33,18 +33,25 @@ export function addXp(level: number, xp: number, gain: number): XpResult {
   return { level: lv, xp: cur, levelsGained: gained };
 }
 
-/** Warrior base stats at Lv1 and growth per level. GDD §7.2. */
-const WARRIOR_BASE = { atk: 20, def: 15, hp: 220 };
-const WARRIOR_GROWTH = { atk: 4, def: 3, hp: 45 };
+/** Base stats at Lv1 and growth per level. GDD §7.2. */
+const CLASS_STATS: Record<HeroClass, { base: { atk: number; def: number; hp: number }; growth: { atk: number; def: number; hp: number } }> =
+  {
+    Warrior: { base: { atk: 20, def: 15, hp: 220 }, growth: { atk: 4, def: 3, hp: 45 } },
+    Mage: { base: { atk: 24, def: 8, hp: 160 }, growth: { atk: 5, def: 1, hp: 28 } },
+    Ranger: { base: { atk: 22, def: 10, hp: 180 }, growth: { atk: 4.5, def: 2, hp: 32 } },
+    Rogue: { base: { atk: 23, def: 9, hp: 170 }, growth: { atk: 5, def: 1.5, hp: 30 } },
+  };
 
-export function heroBaseStats(level: number): Stats {
+export function heroBaseStats(level: number, heroClass: HeroClass = 'Warrior'): Stats {
   const s = emptyStats();
   const n = level - 1;
-  s.atk = WARRIOR_BASE.atk + WARRIOR_GROWTH.atk * n;
-  s.def = WARRIOR_BASE.def + WARRIOR_GROWTH.def * n;
-  s.hp = WARRIOR_BASE.hp + WARRIOR_GROWTH.hp * n;
-  s.critRate = 5;
-  s.critDmg = 0;
+  const { base, growth } = CLASS_STATS[heroClass];
+  s.atk = Math.round(base.atk + growth.atk * n);
+  s.def = Math.round(base.def + growth.def * n);
+  s.hp = Math.round(base.hp + growth.hp * n);
+  s.critRate = heroClass === 'Rogue' ? 8 : heroClass === 'Ranger' ? 7 : 5;
+  s.critDmg = heroClass === 'Rogue' ? 10 : 0;
+  s.skillPower = heroClass === 'Mage' ? 5 : 0;
   s.energyRegen = 0;
   return s;
 }
@@ -60,3 +67,10 @@ export function availableSpeeds(level: number): number[] {
   if (level >= 10) speeds.push(2);
   return speeds;
 }
+
+export const CLASS_BLURB: Record<HeroClass, string> = {
+  Warrior: 'Stout melee bruiser. Axes and iron will.',
+  Mage: 'Arcane caster. AoE burst and control.',
+  Ranger: 'Ranged hunter. Sustained DPS and kiting.',
+  Rogue: 'Shadow striker. Single-target burst and execute.',
+};
