@@ -315,3 +315,64 @@ export function applyTokenCap(earnedToday: number, gain: number): { awarded: num
   const awarded = Math.min(room, gain);
   return { awarded, earnedToday: earnedToday + awarded };
 }
+
+/** Local season ranking score for clan leaderboard (solo stub until live MP). */
+export function clanSeasonScore(wins: number, losses: number, tokens: number, members: number): number {
+  return Math.max(0, wins * 100 + tokens + members * 8 - losses * 12);
+}
+
+export interface ClanLeaderboardEntry {
+  rank: number;
+  name: string;
+  score: number;
+  wins: number;
+  members: number;
+  isPlayer: boolean;
+}
+
+const RIVAL_CLANS = [
+  'Ashen Pact',
+  'Rime Circle',
+  'Nightscar Legion',
+  'Quillmark Guild',
+  'Bone Choir',
+  'Spire Hawks',
+  'Mire Fang',
+  'Void Lark Cohort',
+  'Cinder Foxes',
+  'Echo Step',
+];
+
+/** Deterministic local rival board for the current season + optional player clan. */
+export function buildClanLeaderboard(
+  seasonId: number,
+  player: { name: string; wins: number; losses: number; tokens: number; members: number } | null,
+): ClanLeaderboardEntry[] {
+  const rivals: ClanLeaderboardEntry[] = RIVAL_CLANS.map((name, i) => {
+    const seed = (seasonId * 97 + i * 13) % 1000;
+    const wins = 2 + ((seed * 7) % 18);
+    const losses = 1 + ((seed * 3) % 12);
+    const tokens = 40 + ((seed * 11) % 220);
+    const members = CLAN_MIN_SIZE + ((seed * 5) % (CLAN_MAX_SIZE - CLAN_MIN_SIZE + 1));
+    return {
+      rank: 0,
+      name,
+      score: clanSeasonScore(wins, losses, tokens, members),
+      wins,
+      members,
+      isPlayer: false,
+    };
+  });
+  if (player) {
+    rivals.push({
+      rank: 0,
+      name: player.name,
+      score: clanSeasonScore(player.wins, player.losses, player.tokens, player.members),
+      wins: player.wins,
+      members: player.members,
+      isPlayer: true,
+    });
+  }
+  rivals.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  return rivals.map((e, i) => ({ ...e, rank: i + 1 }));
+}

@@ -1,11 +1,15 @@
 import type { PlaystyleId } from '../data/types';
 import type { Game } from '../game/game';
 
-export type Tab = 'camp' | 'skill' | 'adventure' | 'town';
+export type Tab = 'camp' | 'skill' | 'adventure' | 'clan';
+/** Sub-views inside the Clan tab. */
+export type ClanPane = 'hall' | 'board' | 'town';
 
 export interface UIContext {
   game: Game;
   tab: Tab;
+  /** Clan tab sub-pane (Hall / Leaderboard / Town services). */
+  clanPane: ClanPane;
   skillStyle: PlaystyleId;
   /** Skill bar slot index selected for swap (Skill tab). */
   skillBarFocus: number | null;

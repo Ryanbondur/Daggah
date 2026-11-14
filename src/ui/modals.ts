@@ -754,7 +754,7 @@ export function showTutorialCoach(ctx: UIContext): void {
     }
     if (t.dataset.action === 'tut-go') {
       ctx.closeModal();
-      if (step.tab === 'skill' || step.tab === 'adventure' || step.tab === 'town' || step.tab === 'camp') {
+      if (step.tab === 'skill' || step.tab === 'adventure' || step.tab === 'clan' || step.tab === 'camp') {
         ctx.setTab(step.tab);
       }
     }
