@@ -291,7 +291,13 @@ export function showSettings(ctx: UIContext): void {
         <p>Local 30-day season stub. Reset keeps clan membership and opens class pick.</p>
         <button class="chip" data-action="season-reset">Reset season (local)</button>
         <h3>Save</h3>
-        <p>Progress saves automatically to this browser.</p>
+        <p>Progress autosaves in this browser (survives refresh on the same site). Export a code before switching devices or if a republish ever changes origin.</p>
+        <div class="chip-row">
+          <button class="chip" data-action="export-save">Export save code</button>
+          <button class="chip" data-action="import-save">Import save code</button>
+        </div>
+        <label class="tagline" for="save-code-box">Save code</label>
+        <textarea id="save-code-box" rows="3" spellcheck="false" placeholder="DAG1.…." style="width:100%;box-sizing:border-box;margin:1cqw 0 2cqw;padding:2cqw;font:600 2.8cqw/1.35 ui-monospace,Menlo,Consolas,monospace;border:1px solid #c9c0b2;border-radius:1.2cqw;background:#f7f3ea;color:#2a241c;resize:vertical"></textarea>
         <button class="chip" data-action="reset" style="color:#8a281f">Reset save</button>
       </div>
       <div class="btns"><button class="btn gold" data-action="close">Close</button></div>
@@ -300,6 +306,8 @@ export function showSettings(ctx: UIContext): void {
   );
   let armed = false;
   let seasonArmed = false;
+  let importArmed = false;
+  const codeBox = () => el.querySelector('#save-code-box') as HTMLTextAreaElement | null;
   el.addEventListener('click', (ev) => {
     const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
     if (!t) return;
@@ -376,6 +384,45 @@ export function showSettings(ctx: UIContext): void {
           ctx.showClassPick();
         }
         break;
+      case 'export-save': {
+        const code = g.exportSaveCode();
+        const box = codeBox();
+        if (box) box.value = code;
+        const copied = (() => {
+          try {
+            void navigator.clipboard?.writeText(code);
+            return true;
+          } catch {
+            return false;
+          }
+        })();
+        g.toast(copied ? 'Save code copied' : 'Save code ready — copy from the box', copied ? 'good' : 'info');
+        break;
+      }
+      case 'import-save': {
+        const box = codeBox();
+        const code = box?.value ?? '';
+        if (!code.trim()) {
+          g.toast('Paste a save code into the box first', 'info');
+          break;
+        }
+        if (!importArmed) {
+          importArmed = true;
+          t.textContent = 'Tap again to overwrite save';
+          break;
+        }
+        const err = g.importSaveCode(code);
+        if (err) {
+          importArmed = false;
+          t.textContent = 'Import save code';
+          g.toast(err, 'bad');
+          break;
+        }
+        ctx.closeModal();
+        ctx.skillStyle = 'bladestorm';
+        if (!g.save.classPicked) ctx.showClassPick();
+        break;
+      }
       case 'reset':
         if (!armed) {
           armed = true;
