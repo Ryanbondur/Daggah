@@ -90,6 +90,8 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
   const resultQueue: RunResult[] = [];
   let flash: string | null = null;
   let renderQueued = false;
+  /** Only preserve scroll when re-rendering the same tab (equip/swap), not across tab switches. */
+  let scrollTab: Tab | null = null;
 
   const ctx: UIContext = {
     game,
@@ -162,7 +164,9 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
   function renderNow(): void {
     const wide = ctx.tab !== 'camp';
     pane.classList.toggle('wide', wide);
-    const scroll = pane.querySelector('.pane-inner.scroll')?.scrollTop ?? 0;
+    const keepScroll = scrollTab === ctx.tab;
+    const scroll = keepScroll ? (pane.querySelector('.pane-inner.scroll')?.scrollTop ?? 0) : 0;
+    scrollTab = ctx.tab;
     switch (ctx.tab) {
       case 'camp':
         pane.innerHTML = renderCamp(ctx);
@@ -341,11 +345,16 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
           if (!game.forceCast()) game.toast('Primary skill not ready', 'info');
         } else {
           game.startBattle();
+          // Wide tabs cover the HUD; Camp restores HP/EN orbs + retreat.
+          if (ctx.tab !== 'camp') ctx.setTab('camp');
         }
         break;
       case 'toggle-battle':
         if (game.inBattle) game.retreat();
-        else game.startBattle();
+        else {
+          game.startBattle();
+          if (ctx.tab !== 'camp') ctx.setTab('camp');
+        }
         break;
       case 'chat':
         showChat(ctx);
