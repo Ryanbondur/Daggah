@@ -13,6 +13,7 @@ import {
   sanitizeClanCode,
   sanitizeClanName,
 } from './clan';
+import { normalizeNightscarPity } from './nightscarPity';
 
 /**
  * Stable localStorage key (not versioned).
@@ -110,6 +111,11 @@ export interface SaveData {
   };
   /** Last successful persist timestamp (local or import). */
   savedAt: number;
+  /**
+   * Consecutive dry Nightscar Apex clears/sweeps (no Epic/Legendary loot).
+   * Soft-ramps endgame drop odds; resets on high-tier success. Cap 8.
+   */
+  nightscarPity: number;
 }
 
 export function defaultSave(now = Date.now()): SaveData {
@@ -168,6 +174,7 @@ export function defaultSave(now = Date.now()): SaveData {
       claimed: false,
     },
     savedAt: now,
+    nightscarPity: 0,
   };
 }
 
@@ -339,6 +346,7 @@ export function normalizeParsedSave(
       seenSkills: parsed.seenSkills ?? fresh.seenSkills,
       ...migrateClanFields(parsed, fresh, now),
       savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : now,
+      nightscarPity: normalizeNightscarPity(parsed.nightscarPity),
     };
   }
 
@@ -360,6 +368,7 @@ export function normalizeParsedSave(
       seenSkills: parsed.seenSkills ?? [...DEFAULT_LOADOUT[parsed.heroClass]],
       ...migrateClanFields(parsed, fresh, now),
       savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : now,
+      nightscarPity: normalizeNightscarPity(parsed.nightscarPity),
     };
   }
 

@@ -14,6 +14,7 @@ import {
 import type { PlaystyleId, SkillId } from '../data/types';
 import { CLAN_CREATE_COST, TOKEN_DAY_CAP, buildClanLeaderboard } from '../game/clan';
 import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../game/clanBrackets';
+import { NIGHTSCAR_PITY_MAX } from '../game/nightscarPity';
 import { HERO_CLASSES } from '../data/types';
 import { KEY_CAP, STAGES_PER_ACT } from '../game/state';
 import { asset, navIcon, skillIcon } from './assets';
@@ -185,6 +186,10 @@ export function renderAdventure(ctx: UIContext): string {
     const clears = s.dungeons[d.id]?.clears ?? 0;
     const lo = stageRecLevel(act.id, 1);
     const hi = stageRecLevel(act.id, 5);
+    const pityHint =
+      d.endgame && open
+        ? ` <small style="font-weight:600;color:#6b655a">Pity ${s.nightscarPity ?? 0}/${NIGHTSCAR_PITY_MAX}</small>`
+        : '';
     const buttons = open
       ? `<button class="btn red" data-action="dungeon-enter" data-id="${d.id}">Enter<br /><small style="font-size:2.2cqw">1 Key</small></button>
          <button class="btn gold ${cleared ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}">Sweep<br /><small style="font-size:2.2cqw">1 Key</small></button>`
@@ -193,7 +198,7 @@ export function renderAdventure(ctx: UIContext): string {
       <div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></div>
       <div class="stage-row">${chips}</div>
       <div class="dg ${open ? '' : 'locked'}">
-        <div class="dn"><b>${d.name}${d.endgame ? ' · Endgame' : ''}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${d.endgame ? '  -  stingy drops' : ''}` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
+        <div class="dn"><b>${d.name}${d.endgame ? ' · Endgame' : ''}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${d.endgame ? '  -  stingy drops' : ''}${pityHint}` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
         ${buttons}
       </div>
     </div>`;
