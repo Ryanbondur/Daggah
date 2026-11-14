@@ -54,6 +54,12 @@ export function showClassPick(ctx: UIContext): void {
       ctx.skillStyle = CLASS_PLAYSTYLES[id][0];
       ctx.closeModal();
       ctx.render();
+      // Boot only opens class pick when unset; coach must start after the pick.
+      if (ctx.game.tutorialIsActive) {
+        setTimeout(() => {
+          if (!ctx.modalOpen) showTutorialCoach(ctx);
+        }, 400);
+      }
     }
   });
 }

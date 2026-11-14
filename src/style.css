@@ -529,6 +529,8 @@ button {
 .pane-inner.scroll {
   overflow-y: auto;
   scrollbar-width: none;
+  /* Torn clip-path eats the bottom edge — keep last rows/taglines readable at 390×844. */
+  padding-bottom: 4.5cqw;
 }
 .pane-inner.scroll::-webkit-scrollbar {
   display: none;
@@ -1389,6 +1391,7 @@ button {
   scrollbar-width: none;
   flex: 1 1 auto;
   min-height: 0;
+  padding-bottom: 2cqw;
 }
 .sheet .body::-webkit-scrollbar {
   display: none;
