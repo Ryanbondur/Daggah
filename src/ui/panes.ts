@@ -1,5 +1,5 @@
 import { ACTS, getAct, stageRecLevel } from '../data/acts';
-import { SLOTS } from '../data/gear';
+import { RARITIES, SETS, SLOTS } from '../data/gear';
 import { QUESTS } from '../data/quests';
 import {
   BAR_SIZE,
@@ -15,16 +15,50 @@ import type { PlaystyleId, SkillId } from '../data/types';
 import { CLAN_CREATE_COST, TOKEN_DAY_CAP, buildClanLeaderboard } from '../game/clan';
 import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../game/clanBrackets';
 import { NIGHTSCAR_PITY_MAX } from '../game/nightscarPity';
+import { DAILY_SHOP_SIZE } from '../game/shop';
 import { HERO_CLASSES } from '../data/types';
 import { KEY_CAP, STAGES_PER_ACT } from '../game/state';
-import { asset, navIcon, skillIcon } from './assets';
-import type { ClanPane, UIContext } from './context';
+import { asset, itemIcon, navIcon, skillIcon } from './assets';
+import type { CampPane, ClanPane, UIContext } from './context';
 import { fmt } from './context';
 import { escapeHtml } from './escape';
 import { slotHtml } from './items';
 import { ICON } from './svg';
 
-export function renderCamp(ctx: UIContext): string {
+/** Shared Gold + Keys + Crystals strip (Adventure / Camp Shop / Town). */
+export function currencyStrip(ctx: UIContext, opts: { keys?: boolean; dust?: boolean; keyTimer?: boolean } = {}): string {
+  const g = ctx.game;
+  const s = g.save;
+  const showKeys = opts.keys !== false;
+  const showDust = !!opts.dust;
+  let keyTimer = '';
+  if (showKeys && opts.keyTimer !== false) {
+    g.refreshKeys();
+    keyTimer =
+      s.keys < KEY_CAP ? ` <small style="font-weight:600;color:#6b655a">+1 in ${fmtTime(g.nextKeyInMs())}</small>` : '';
+  }
+  return `<div class="res-bar currency-strip" role="group" aria-label="Currencies">
+    <span class="res"><img src="${navIcon('gold')}" alt="" /><b>${fmt(s.gold)}</b></span>
+    ${showKeys ? `<span class="res"><img src="${navIcon('key')}" alt="" />${s.keys}/${KEY_CAP}${keyTimer}</span>` : ''}
+    <span class="res"><img src="${navIcon('crystal')}" alt="" />${fmt(s.crystals)}</span>
+    ${showDust ? `<span class="res"><i class="dust"></i>${fmt(s.dust)}</span>` : ''}
+  </div>`;
+}
+
+function campSubTabs(active: CampPane): string {
+  const tabs: { id: CampPane; label: string }[] = [
+    { id: 'gear', label: 'Gear' },
+    { id: 'shop', label: 'Shop' },
+  ];
+  return `<div class="camp-subs" role="tablist">${tabs
+    .map(
+      (t) =>
+        `<button type="button" class="camp-sub ${t.id === active ? 'on' : ''}" data-action="camp-pane" data-pane="${t.id}" role="tab" aria-selected="${t.id === active}">${t.label}</button>`,
+    )
+    .join('')}</div>`;
+}
+
+function renderCampGear(ctx: UIContext): string {
   const g = ctx.game;
   const slots = SLOTS.map((slot) => {
     const it = g.save.gear[slot];
@@ -59,8 +93,14 @@ export function renderCamp(ctx: UIContext): string {
   const tut = g.tutorialIsActive
     ? `<button class="chip tut-chip" data-action="tutorial">Tutorial</button>`
     : '';
-  return `<div class="pane-inner">
+  const left = DAILY_SHOP_SIZE - g.save.shop.purchased.length;
+  return `<div class="camp-gear">
     <div class="gear-grid">${slots}<div class="wing-fill">${ICON.wings}</div></div>
+    <button type="button" class="shop-cta" data-action="camp-pane" data-pane="shop">
+      <img src="${navIcon('gold')}" alt="" />
+      <span><b>Daily Shop</b><small>${left} offer${left === 1 ? '' : 's'} left today</small></span>
+      <i>Open</i>
+    </button>
     <div class="bottom-row">
       ${quest}
       <div class="round-btns">
@@ -70,6 +110,45 @@ export function renderCamp(ctx: UIContext): string {
         <button class="round-btn" data-action="settings" aria-label="Settings">${ICON.shield}</button>
       </div>
     </div>
+  </div>`;
+}
+
+function renderCampShop(ctx: UIContext): string {
+  const g = ctx.game;
+  const offers = g.dailyShopOffers();
+  const left = offers.filter((o) => !o.purchased).length;
+  const rows = offers
+    .map((o) => {
+      const rarity = RARITIES[o.item.rarity];
+      const setLabel = o.item.setId ? ` · ${SETS[o.item.setId].name}` : '';
+      const dim = o.purchased || g.save.gold < o.price ? 'dim' : '';
+      const sold = o.purchased ? '<span class="sold">Sold</span>' : '';
+      return `<button type="button" class="vendor-row shop-offer ${dim}" data-action="shop-buy" data-i="${o.index}" ${o.purchased ? 'disabled' : ''}>
+        <img src="${itemIcon(o.item)}" alt="" />
+        <span>
+          <b style="color:${rarity.color}">${escapeHtml(o.item.name)}</b>
+          <small>${rarity.label}${setLabel} · Lv.${o.item.gearLevel}</small>
+        </span>
+        ${sold || `<b class="price"><img src="${navIcon('gold')}" alt="" />${fmt(o.price)}</b>`}
+      </button>`;
+    })
+    .join('');
+  return `<div class="camp-shop">
+    ${currencyStrip(ctx, { dust: false, keyTimer: false })}
+    <div class="shop-hero">
+      <b>Daily Merchant</b>
+      <span>Fresh slate each calendar day · Gold only · ${left}/${DAILY_SHOP_SIZE} left</span>
+    </div>
+    <div class="vendor-list shop-list">${rows}</div>
+    <p class="tagline">Prices climb with rarity. Set pieces cost a premium. Resets at midnight.</p>
+  </div>`;
+}
+
+export function renderCamp(ctx: UIContext): string {
+  const shop = ctx.campPane === 'shop';
+  return `<div class="pane-inner ${shop ? 'scroll' : ''}">
+    ${campSubTabs(ctx.campPane)}
+    ${shop ? renderCampShop(ctx) : renderCampGear(ctx)}
   </div>`;
 }
 
@@ -159,13 +238,7 @@ function fmtSeasonRemain(ms: number): string {
 export function renderAdventure(ctx: UIContext): string {
   const g = ctx.game;
   const s = g.save;
-  g.refreshKeys();
-  const keyTimer = s.keys < KEY_CAP ? ` <small style="font-weight:600;color:#6b655a">+1 in ${fmtTime(g.nextKeyInMs())}</small>` : '';
-  const res = `<div class="res-bar">
-    <span class="res"><img src="${navIcon('key')}" alt="" />${s.keys}/${KEY_CAP}${keyTimer}</span>
-    <span class="res"><img src="${navIcon('crystal')}" alt="" />${fmt(s.crystals)}</span>
-    <span class="res"><i class="dust"></i>${fmt(s.dust)}</span>
-  </div>`;
+  const res = currencyStrip(ctx, { dust: true, keyTimer: true });
   const power = g.stagePowerReadout(s.currentStage);
   const powerCls = power.underpowered ? 'low' : 'ok';
   const acts = ACTS.map((act) => {
@@ -373,8 +446,16 @@ function renderClanTownPane(ctx: UIContext): string {
   const dprog = g.dailyProgress();
   const dailyRow = `<div class="row ${g.save.daily.claimed ? 'on' : g.dailyReady() ? '' : 'off'}"><span>${g.save.daily.claimed ? '[x] ' : '[ ] '}${escapeHtml(dq.text)} (${dprog}/${dq.goal})</span></div>`;
 
+  const shopLeft = DAILY_SHOP_SIZE - g.save.shop.purchased.length;
   return `<div class="clan-panel">
+    ${currencyStrip(ctx, { dust: false, keyTimer: false })}
     <div class="town-grid">
+      <button type="button" class="town-card clickable shop-featured" data-action="open-daily-shop">
+        <img src="${navIcon('gold')}" alt="" />
+        <b>Daily Shop</b>
+        <span>Rotating gear &amp; set pieces for Gold. Fresh each day.</span>
+        <span class="live">${shopLeft} left · ${fmt(g.save.gold)} gold</span>
+      </button>
       <div class="town-card"><img src="${asset('icons/gear-a/weapon.webp')}" alt="" /><b>Blacksmith</b><span>Dust to Gear Level upgrades.</span><span class="soon">Coming soon</span></div>
       <div class="town-card"><img src="${navIcon('crystal')}" alt="" /><b>Quartermaster</b><span>Spend crystals on keys and bag space.</span><span class="soon">Coming soon</span></div>
       <button type="button" class="town-card clickable" data-action="season-board">

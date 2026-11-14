@@ -5,7 +5,7 @@ import { xpToNext } from '../data/xp';
 import { playSfx, unlockAudio } from '../game/audio';
 import type { Game, RunResult } from '../game/game';
 import { asset, navIcon, skillIcon } from './assets';
-import type { ClanPane, ModalOpts, Tab, UIContext } from './context';
+import type { CampPane, ClanPane, ModalOpts, Tab, UIContext } from './context';
 import { fmt } from './context';
 import { CLASS_PLAYSTYLES } from '../data/skills';
 import type { PlaystyleId } from '../data/types';
@@ -103,6 +103,7 @@ export function mountUI(
     game,
     tab: 'camp',
     clanPane: 'hall',
+    campPane: 'gear',
     skillStyle: CLASS_PLAYSTYLES[game.save.heroClass][0],
     skillBarFocus: null,
     get modalOpen() {
@@ -114,9 +115,15 @@ export function mountUI(
       if (tab === 'skill') game.markSkillsSeen();
       // Adventure often leads to dungeon/stage combat — warm Phaser early.
       if (tab === 'adventure') void opts.ensureStage();
+      // Battle / Adventure loop lands on gear; Shop stays sticky until left intentionally.
+      if (tab !== 'camp') ctx.campPane = 'gear';
       ctx.render();
     },
     ensureStage: () => opts.ensureStage(),
+    openDailyShop() {
+      ctx.campPane = 'shop';
+      ctx.setTab('camp');
+    },
     render() {
       if (renderQueued) return;
       renderQueued = true;
@@ -392,8 +399,10 @@ export function mountUI(
         } else {
           void withStage(() => {
             game.startBattle();
-            // Wide tabs cover the HUD; Camp restores HP/EN orbs + retreat.
+            // Wide tabs cover the HUD; Camp gear restores HP/EN orbs + retreat.
+            ctx.campPane = 'gear';
             if (ctx.tab !== 'camp') ctx.setTab('camp');
+            else ctx.render();
           });
         }
         break;
@@ -402,7 +411,9 @@ export function mountUI(
         else {
           void withStage(() => {
             game.startBattle();
+            ctx.campPane = 'gear';
             if (ctx.tab !== 'camp') ctx.setTab('camp');
+            else ctx.render();
           });
         }
         break;
@@ -485,6 +496,23 @@ export function mountUI(
       case 'dungeon-sweep':
         game.sweepDungeon(d.id!);
         break;
+      case 'camp-pane': {
+        const paneId = d.pane as CampPane;
+        if (paneId === 'gear' || paneId === 'shop') {
+          ctx.campPane = paneId;
+          ctx.render();
+        }
+        break;
+      }
+      case 'open-daily-shop':
+        ctx.openDailyShop();
+        break;
+      case 'shop-buy': {
+        const err = game.buyDailyShop(Number(d.i));
+        if (err) game.toast(err, 'bad');
+        else ctx.render();
+        break;
+      }
       case 'clan-pane': {
         const paneId = d.pane as ClanPane;
         if (paneId === 'hall' || paneId === 'board' || paneId === 'town') {

@@ -14,6 +14,8 @@ import {
   sanitizeClanName,
 } from './clan';
 import { normalizeNightscarPity } from './nightscarPity';
+import type { DailyShopSave } from './shop';
+import { defaultDailyShop, normalizeDailyShop } from './shop';
 
 /**
  * Stable localStorage key (not versioned).
@@ -109,6 +111,8 @@ export interface SaveData {
     fullLoadout: number;
     claimed: boolean;
   };
+  /** Town/Camp daily merchant slate (seed + purchased indices). */
+  shop: DailyShopSave;
   /** Last successful persist timestamp (local or import). */
   savedAt: number;
   /**
@@ -173,6 +177,7 @@ export function defaultSave(now = Date.now()): SaveData {
       fullLoadout: 0,
       claimed: false,
     },
+    shop: defaultDailyShop(now),
     savedAt: now,
     nightscarPity: 0,
   };
@@ -272,6 +277,7 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   | 'seasonClaimed'
   | 'seasonLoginDays'
   | 'daily'
+  | 'shop'
 > {
   const day = new Date(now).toISOString().slice(0, 10);
   const tut = parsed.tutorial;
@@ -318,6 +324,7 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
             claimed: !!parsed.daily.claimed,
           }
         : { ...fresh.daily, dayKey: day },
+    shop: normalizeDailyShop(parsed.shop, fresh.shop),
   };
 }
 
