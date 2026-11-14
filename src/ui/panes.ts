@@ -127,8 +127,8 @@ export function renderSkill(ctx: UIContext): string {
   const swapHint = barFull
     ? focus !== null
       ? `<div class="tagline" style="text-align:center">Slot ${focus + 1} selected — tap Equip/Swap on a skill (including passives) to replace it.</div>`
-      : `<div class="tagline" style="text-align:center">Bar full: tap a slot above, then Equip to swap in a passive or active.</div>`
-    : `<div class="tagline" style="text-align:center">Star = Primary (Battle button). Passives equip on the same 4-slot bar as actives.</div>`;
+      : `<div class="tagline" style="text-align:center">Bar full: tap a slot above, then Equip to swap. Equipping the other playstyle passive replaces the current one.</div>`
+    : `<div class="tagline" style="text-align:center">Star = Primary. Each class has 2 passives (one per playstyle) — Equip swaps between them.</div>`;
   return `<div class="pane-inner scroll">
     <div class="tab-title">Skills <small>${g.save.heroClass}  -  ${loadout.length}/${BAR_SIZE} equipped</small></div>
     <div class="skillbar">${slots.join('')}</div>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RARITIES, computeHero, cpDelta, rollItem, salvageValue, starterGear } from '../data/gear';
-import { DEFAULT_LOADOUT, isUnlocked } from '../data/skills';
+import { DEFAULT_LOADOUT, isUnlocked, passivesForClass } from '../data/skills';
+import { HERO_CLASSES } from '../data/types';
 import { addXp, availableSpeeds, heroBaseStats, maxEnergy, xpToNext } from '../data/xp';
 import { Game } from './game';
 import { mulberry32 } from './rng';
@@ -240,6 +241,22 @@ describe('skill loadout passives', () => {
     return game;
   }
 
+  it('gives every class exactly two passives (one per playstyle)', () => {
+    const expected: Record<string, string[]> = {
+      Warrior: ['cleave', 'bulwark'],
+      Mage: ['firebolt', 'frostbite'],
+      Ranger: ['piercing-shot', 'deadeye'],
+      Rogue: ['backstab', 'shadow-veil'],
+    };
+    for (const cls of HERO_CLASSES) {
+      const ids = passivesForClass(cls).map((s) => s.id);
+      expect(ids).toHaveLength(2);
+      expect(ids).toEqual(expected[cls]);
+      const styles = new Set(passivesForClass(cls).map((s) => s.playstyle));
+      expect(styles.size).toBe(2);
+    }
+  });
+
   it('equips and unequips the class passive like an active', () => {
     const game = leveledWarrior(1);
     expect(game.save.loadout).toContain('cleave');
@@ -247,6 +264,22 @@ describe('skill loadout passives', () => {
     expect(game.save.loadout).not.toContain('cleave');
     expect(game.toggleSkill('cleave')).toBeNull();
     expect(game.save.loadout).toContain('cleave');
+  });
+
+  it('swaps between the two class passives in one Equip tap and persists', () => {
+    const store = memoryStorage();
+    const game = new Game(store, mulberry32(3));
+    game.pickClass('Warrior');
+    expect(game.save.loadout).toContain('cleave');
+    expect(game.toggleSkill('bulwark')).toBeNull();
+    expect(game.save.loadout).toContain('bulwark');
+    expect(game.save.loadout).not.toContain('cleave');
+    expect(game.toggleSkill('cleave')).toBeNull();
+    expect(game.save.loadout).toContain('cleave');
+    expect(game.save.loadout).not.toContain('bulwark');
+    const back = loadSave(store);
+    expect(back.loadout).toContain('cleave');
+    expect(back.loadout).not.toContain('bulwark');
   });
 
   it('swaps a passive onto a full bar via replaceIndex and persists', () => {
@@ -264,6 +297,14 @@ describe('skill loadout passives', () => {
     // Round-trip save keeps the swapped passive.
     const back = loadSave(store);
     expect(back.loadout).toEqual(['cleave', 'iron-skin', 'rally', 'executioners-guard']);
+  });
+
+  it('bar-swaps the second playstyle passive onto a full active bar', () => {
+    const game = leveledWarrior(15);
+    game.save.loadout = ['whirlwind', 'bladestorm', 'war-banner', 'shield-bash'];
+    game.save.primary = 'bladestorm';
+    expect(game.toggleSkill('bulwark', 3)).toBeNull();
+    expect(game.save.loadout).toEqual(['whirlwind', 'bladestorm', 'war-banner', 'bulwark']);
   });
 
   it('clears primary when the replaced slot held Primary', () => {
