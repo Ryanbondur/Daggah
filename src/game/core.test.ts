@@ -80,6 +80,21 @@ describe('gear', () => {
     gear.helmet = rollItem(rng, { gearLevel: 5, rarity: 'rare', slot: 'helmet', setId: 'gravemarch' });
     expect(computeHero(5, gear, 'Warrior').effects.defPct).toBeGreaterThanOrEqual(6);
   });
+
+  it('applies Act 5-6 set bonuses (Quillstorm, Deadeye, Cinderstride)', () => {
+    const gear = starterGear('Ranger');
+    const rng = mulberry32(21);
+    gear.weapon = rollItem(rng, { gearLevel: 9, rarity: 'rare', slot: 'weapon', setId: 'quillstorm' });
+    gear.chest = rollItem(rng, { gearLevel: 9, rarity: 'rare', slot: 'chest', setId: 'quillstorm' });
+    expect(computeHero(9, gear, 'Ranger').effects.aoePct).toBeGreaterThanOrEqual(8);
+    gear.belt = rollItem(rng, { gearLevel: 9, rarity: 'rare', slot: 'belt', setId: 'deadeye' });
+    gear.helmet = rollItem(rng, { gearLevel: 9, rarity: 'rare', slot: 'helmet', setId: 'deadeye' });
+    expect(computeHero(9, gear, 'Ranger').effects.critRatePct).toBeGreaterThanOrEqual(6);
+    gear.gloves = rollItem(rng, { gearLevel: 11, rarity: 'epic', slot: 'gloves', setId: 'cinderstride' });
+    gear.boots = rollItem(rng, { gearLevel: 11, rarity: 'epic', slot: 'boots', setId: 'cinderstride' });
+    const fx = computeHero(11, gear, 'Ranger').effects;
+    expect(fx.hastePct).toBeGreaterThanOrEqual(6);
+  });
 });
 
 describe('save', () => {

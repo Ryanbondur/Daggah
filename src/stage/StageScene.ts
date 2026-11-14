@@ -56,6 +56,8 @@ export class StageScene extends Phaser.Scene {
     this.load.image('bg-ember', asset('bg/bg-ember-hollow.jpg'));
     this.load.image('bg-bone', asset('bg/bg-bone-gallery.jpg'));
     this.load.image('bg-frost', asset('bg/bg-frostvein.jpg'));
+    this.load.image('bg-mire', asset('bg/bg-witchmire.jpg'));
+    this.load.image('bg-cinder', asset('bg/bg-cinderreach.jpg'));
     for (const c of ['Warrior', 'Mage', 'Ranger', 'Rogue'] as HeroClass[]) {
       this.load.image(`hero-${c.toLowerCase()}`, heroSprite(c));
     }
@@ -71,6 +73,8 @@ export class StageScene extends Phaser.Scene {
     this.makeWideBg('bg-ember', 'ember');
     this.makeWideBg('bg-bone', 'bone');
     this.makeWideBg('bg-frost', 'frost');
+    this.makeWideBg('bg-mire', 'mire');
+    this.makeWideBg('bg-cinder', 'cinder');
     this.heroKey = `hero-${this.game_.save.heroClass.toLowerCase()}`;
 
     const g = this.make.graphics({ x: 0, y: 0 }, false);

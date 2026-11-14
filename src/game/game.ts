@@ -365,7 +365,7 @@ export class Game {
           note: `${a.dungeon?.name ?? 'The dungeon'} is now open in Adventure. ${
             nextPlayable
               ? `Act ${act + 1} awaits.`
-              : 'Acts 3-10 arrive in a future update. Farm dungeons and gear up!'
+              : 'Acts 7-10 arrive in a future update. Farm dungeons and gear up!'
           }`,
         },
       });
