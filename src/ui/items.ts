@@ -9,26 +9,43 @@ import { escapeHtml } from './escape';
 
 export function slotHtml(
   item: Item | undefined,
-  opts: { area?: string; action?: string; id?: string; locked?: boolean; slot?: string } = {},
+  opts: {
+    area?: string;
+    action?: string;
+    id?: string;
+    locked?: boolean;
+    slot?: string;
+    /** BiS / CP-delta badge from lootCompareHighlight (corner, portrait-safe). */
+    bisBadge?: string | null;
+  } = {},
 ): string {
   const area = opts.area ? `grid-area:${opts.area};` : '';
   if (!item) {
     return `<div class="slot" style="${area}opacity:.25"></div>`;
   }
+  const bis = opts.bisBadge ? true : false;
   const cls = [
     'slot',
     `r-${item.rarity}`,
     item.slot === 'weapon' ? 'weapon' : '',
     item.setId ? 'set' : '',
     opts.locked ? 'locked' : '',
+    bis ? 'bis' : '',
   ]
     .filter(Boolean)
     .join(' ');
   const data = opts.action
     ? ` data-action="${opts.action}" data-id="${escapeHtml(item.id)}" data-slot="${escapeHtml(opts.slot ?? item.slot)}"`
     : '';
-  return `<button class="${cls}" style="${area}"${data} aria-label="${escapeHtml(item.name)}">
+  const badge = opts.bisBadge
+    ? `<span class="bis-badge" title="BiS upgrade">${escapeHtml(opts.bisBadge)}</span>`
+    : '';
+  const label = opts.bisBadge
+    ? `${item.name} — BiS upgrade ${opts.bisBadge}`
+    : item.name;
+  return `<button class="${cls}" style="${area}"${data} aria-label="${escapeHtml(label)}">
     <img src="${itemIcon(item)}" alt="" draggable="false" />
+    ${badge}
     <span class="lv">Lv.${item.gearLevel}</span>
   </button>`;
 }
@@ -114,7 +131,9 @@ export function cardHtml(
   }
   const band =
     o.cp !== undefined
-      ? `<div class="band"><span class="cp">CP <i class="${o.cp < 0 ? 'neg' : ''}">${o.cp >= 0 ? '+' : ''}${o.cp}</i></span></div>`
+      ? `<div class="band"><span class="cp">CP <i class="${o.cp < 0 ? 'neg' : ''}">${
+          o.cp >= 0 ? '+' : ''
+        }${o.cp}</i>${o.cp > 0 ? '<em class="bis-tag">BiS upgrade</em>' : ''}</span></div>`
       : `<div class="band">${o.label ?? 'Current Gear'}</div>`;
   const req =
     o.reqLevel && o.heroLevel && o.reqLevel > o.heroLevel

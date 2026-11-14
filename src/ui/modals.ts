@@ -1,4 +1,4 @@
-import { RARITIES, SETS, computeHero, setCounts } from '../data/gear';
+import { RARITIES, SETS, computeHero, lootCompareHighlight, setCounts } from '../data/gear';
 import type { HeroClass, RarityId, SetId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_LABEL } from '../data/types';
 import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
@@ -1033,10 +1033,17 @@ export function showResult(ctx: UIContext, r: RunResult): void {
   let body = '';
   let buttons = '';
   if (r.kind === 'dungeon') {
-    const cells = r.loot.map((it) => slotHtml(it, {})).join('');
+    const highlights = r.loot.map((it) =>
+      lootCompareHighlight(g.save.level, g.save.gear, it, g.save.heroClass, g.save.loadout),
+    );
+    const cells = r.loot
+      .map((it, i) => slotHtml(it, { bisBadge: highlights[i]!.badge }))
+      .join('');
+    const upgrades = highlights.filter((h) => h.upgrade).length;
     body = `<p>${r.success ? 'Boss defeated! Spoils of the vault:' : escapeHtml(r.note ?? '')}</p>
       <div class="row"><span>XP gained</span><b>${fmt(r.xp)}</b></div>
       <div class="row"><span>Gear found</span><b>${r.loot.length}</b></div>
+      ${upgrades ? `<div class="row"><span>BiS upgrades</span><b class="bis-count">${upgrades}</b></div>` : ''}
       ${r.loot.length ? `<div class="loot-row">${cells}</div>` : ''}
       ${r.success && r.note ? `<p>${escapeHtml(r.note)}</p>` : ''}`;
     buttons = r.loot.length
