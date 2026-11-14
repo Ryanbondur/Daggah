@@ -63,7 +63,8 @@ button {
   width: min(100vw, calc(100dvh * 0.5625));
   container-type: inline-size;
   display: grid;
-  grid-template-rows: 43% 17% 29% 11%;
+  /* Match ref bands: stage ~37%, HUD ~12%, parchment pane ~42%, nav ~9% */
+  grid-template-rows: 37% 12% 42% 9%;
   background: var(--stone-0);
   overflow: hidden;
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
@@ -258,9 +259,9 @@ button {
 }
 .hud-btn {
   position: absolute;
-  top: 0.4cqw;
-  width: 7.6cqw;
-  height: 7.6cqw;
+  top: 0.2cqw;
+  width: 6.8cqw;
+  height: 6.8cqw;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #4a4654, #1d1b24);
   border: 0.5cqw solid #0d0c12;
@@ -285,10 +286,10 @@ button {
 }
 .chat-log {
   position: absolute;
-  left: 11cqw;
-  right: 11cqw;
-  top: 0.8cqw;
-  height: 11cqw;
+  left: 10cqw;
+  right: 10cqw;
+  top: 0.2cqw;
+  height: 7.5cqw;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -307,23 +308,26 @@ button {
 }
 .orb {
   position: absolute;
-  bottom: 3.8cqw;
-  width: 19.5cqw;
-  height: 19.5cqw;
+  bottom: 2.4cqw;
+  width: 17.5cqw;
+  height: 17.5cqw;
   z-index: 4;
 }
 .orb.hp {
-  left: 3.2cqw;
+  left: 4cqw;
 }
 .orb.en {
-  right: 3.2cqw;
+  right: 4cqw;
 }
 .orb .ring {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 40%, #0c0b10 55%, #2c2933 56%, #1a1820 62%, #0a090d 66%);
-  box-shadow: inset 0 0 1cqw #000, 0 0 0 0.35cqw #0a090d;
+  background: radial-gradient(circle at 50% 40%, #0c0b10 55%, #3a3644 56%, #1a1820 64%, #0a090d 68%);
+  box-shadow:
+    inset 0 0 1.2cqw #000,
+    0 0 0 0.45cqw #121018,
+    0 0 0 0.85cqw #5a5564;
   overflow: hidden;
 }
 .orb .liquid {
@@ -346,13 +350,13 @@ button {
 }
 .orb.hp .fill {
   background:
-    radial-gradient(circle at 35% 25%, rgba(255, 190, 170, 0.75), transparent 28%),
-    radial-gradient(circle at 50% 60%, #ee3a35, #b7181b 55%, #5a090d);
+    radial-gradient(circle at 35% 25%, rgba(255, 210, 190, 0.9), transparent 30%),
+    radial-gradient(circle at 50% 55%, #ff4a3e, #d4181c 48%, #7a0a10 78%, #3a0508);
 }
 .orb.en .fill {
   background:
-    radial-gradient(circle at 35% 25%, rgba(190, 150, 255, 0.55), transparent 28%),
-    radial-gradient(circle at 50% 60%, #34234f, #1a1030 55%, #07040e);
+    radial-gradient(circle at 35% 25%, rgba(170, 120, 255, 0.45), transparent 30%),
+    radial-gradient(circle at 50% 55%, #3a2858, #1c102e 48%, #0a0614 78%, #040208);
 }
 .orb .fill::before {
   content: '';
@@ -388,36 +392,38 @@ button {
 }
 .orb img.guard {
   position: absolute;
-  bottom: -3.2cqw;
-  width: 15cqw;
+  bottom: -3.4cqw;
+  width: 13.5cqw;
   z-index: 5;
   pointer-events: none;
+  filter: drop-shadow(0 0.5cqw 0.6cqw rgba(0, 0, 0, 0.75));
 }
 .orb.hp img.guard {
-  left: -8.5cqw;
+  left: -7.6cqw;
 }
 .orb.en img.guard {
-  right: -8.5cqw;
+  right: -7.6cqw;
 }
 .orb .ring {
   z-index: 2;
 }
 .xpbar {
   position: absolute;
-  left: 12cqw;
-  right: 12cqw;
-  bottom: 1.2cqw;
-  height: 3.2cqw;
+  left: 13cqw;
+  right: 13cqw;
+  bottom: 0.8cqw;
+  height: 2.8cqw;
   background: #120f10;
-  border: 0.45cqw solid #1f1c24;
-  box-shadow: 0 0 0 0.3cqw #3b3743;
+  border: 0.4cqw solid #1f1c24;
+  box-shadow: 0 0 0 0.28cqw #4a4552;
   z-index: 5;
+  overflow: hidden;
 }
 .xpbar .fill {
   position: absolute;
   inset: 0;
   width: 0;
-  background: linear-gradient(#e0843a, #b3571a 60%, #8e3f12);
+  background: linear-gradient(#f09842, #d06a1e 55%, #9a4512);
 }
 .xpbar .notch {
   position: absolute;
@@ -491,24 +497,29 @@ button {
   position: absolute;
   left: 0;
   right: 0;
-  top: 43%;
-  bottom: 11%;
+  top: 37%;
+  bottom: 9%;
   z-index: 7;
 }
 .pane-inner {
   position: absolute;
-  inset: 1.4cqw 2cqw 1cqw;
+  inset: 1.2cqw 1.6cqw 0.8cqw;
   background: var(--tex-parch);
   background-size: cover;
+  /* Torn parchment edge matching refs */
   clip-path: polygon(
-    0 1.5%, 3% 0, 9% 1.2%, 17% 0, 26% 1%, 38% 0, 50% 1.2%, 63% 0, 75% 1%, 88% 0, 96% 1.4%, 100% 0.5%,
-    99.6% 30%, 100% 55%, 99.5% 80%, 100% 99%, 90% 100%, 75% 99%, 60% 100%, 45% 99%, 30% 100%, 14% 99%, 3% 100%, 0.4% 85%, 0 60%, 0.5% 35%
+    0 2%, 2.5% 0, 8% 1.5%, 14% 0.2%, 22% 1.4%, 31% 0, 42% 1.6%, 52% 0.3%, 63% 1.5%, 74% 0, 85% 1.4%, 94% 0.2%, 100% 1.8%,
+    99.5% 28%, 100% 48%, 99.4% 72%, 100% 98.5%, 92% 100%, 80% 98.6%, 68% 100%, 55% 98.8%, 42% 100%, 28% 98.7%, 14% 100%, 4% 98.8%, 0 96%,
+    0.6% 78%, 0 55%, 0.5% 32%
   );
-  padding: 1.6cqw 1.4cqw 1cqw;
+  padding: 2cqw 1.6cqw 1.2cqw;
   display: flex;
   flex-direction: column;
   gap: 1.6cqw;
-  box-shadow: inset 0 0 6cqw rgba(60, 45, 20, 0.35);
+  box-shadow:
+    inset 0 0 5cqw rgba(40, 32, 18, 0.28),
+    inset 0 0 0 0.55cqw rgba(70, 58, 40, 0.35);
+  border: 0.55cqw solid #2a2620;
 }
 .pane-inner.scroll {
   overflow-y: auto;
@@ -538,37 +549,49 @@ button {
   padding: 0;
   --fill: var(--common);
   --fill-d: #8d8a82;
-  background: #17141a;
+  --glow: transparent;
+  background: #121018;
   clip-path: polygon(
     1% 3%, 10% 0, 28% 2%, 50% 0, 72% 2%, 90% 0, 99% 4%, 100% 30%, 98% 55%, 100% 80%, 98% 97%,
     82% 100%, 60% 98%, 40% 100%, 20% 98%, 3% 100%, 0 82%, 2% 55%, 0 28%
   );
+  box-shadow: 0 0 0 0.15cqw #0a090d, 0 0 1.2cqw var(--glow);
 }
 .slot::before {
   content: '';
   position: absolute;
-  inset: 0.45cqw;
+  inset: 0.5cqw;
   clip-path: inherit;
   background:
-    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.28), transparent 55%),
+    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.22), transparent 55%),
     linear-gradient(160deg, var(--fill), var(--fill-d));
-  box-shadow: inset 0 0 1.8cqw rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 1.8cqw rgba(0, 0, 0, 0.4);
 }
 .slot.r-common {
-  --fill: #c4c1b8;
-  --fill-d: #8f8c84;
+  --fill: #b8b5ad;
+  --fill-d: #7a776f;
+  --glow: transparent;
 }
 .slot.r-rare {
   --fill: #4b84e6;
-  --fill-d: #24489a;
+  --fill-d: #1e3f8a;
+  --glow: rgba(60, 120, 230, 0.45);
 }
 .slot.r-epic {
   --fill: #a95bdd;
-  --fill-d: #5e2b8c;
+  --fill-d: #5a2488;
+  --glow: rgba(160, 70, 220, 0.5);
 }
 .slot.r-legendary {
   --fill: #f6dc4a;
   --fill-d: #c49a1a;
+  --glow: rgba(255, 210, 60, 0.75);
+  animation: legendary-pulse 1.8s ease-in-out infinite;
+}
+@keyframes legendary-pulse {
+  50% {
+    box-shadow: 0 0 0 0.15cqw #0a090d, 0 0 2.2cqw rgba(255, 220, 80, 0.95);
+  }
 }
 .slot img {
   position: absolute;
@@ -588,12 +611,16 @@ button {
 }
 .slot .lv {
   position: absolute;
-  right: 11%;
-  bottom: 6%;
-  font-size: 2.1cqw;
+  right: 10%;
+  bottom: 5%;
+  font-size: 2.15cqw;
   font-weight: 800;
-  color: #1c1822;
-  text-shadow: 0 0 0.4cqw rgba(255, 255, 255, 0.6);
+  color: #f4efe3;
+  text-shadow:
+    0 0 0.35cqw #0a090d,
+    0.2cqw 0.2cqw 0 #0a090d,
+    -0.15cqw 0 #0a090d,
+    0 -0.15cqw #0a090d;
   pointer-events: none;
 }
 .slot.r-rare .lv,
@@ -1061,15 +1088,25 @@ button {
 .card .meta {
   margin-top: 1cqw;
   font-size: 3cqw;
-  line-height: 1.5;
-  color: #7a7468;
+  line-height: 1.45;
+  color: #6e675a;
 }
 .card .meta .rar {
-  font-weight: 600;
+  display: inline-block;
+  margin: 0.4cqw 0 0.6cqw;
+  padding: 0.35cqw 1.4cqw;
+  font-weight: 700;
+  font-size: 2.7cqw;
+  letter-spacing: 0.02em;
+  color: #f2ece0 !important;
+  background: #3a3732;
+  border: 0.25cqw solid #1c1a16;
+  box-shadow: inset 0 0 0.4cqw rgba(0, 0, 0, 0.35);
 }
 .card .meta .gl {
   color: #2c2723;
-  font-weight: 500;
+  font-weight: 600;
+  font-family: var(--font-title);
 }
 .card .ic {
   flex: none;
@@ -1106,11 +1143,12 @@ button {
 .card .band .cp i {
   font-style: normal;
   font-family: var(--font-num);
-  font-size: 4.6cqw;
+  font-size: 5.4cqw;
   font-weight: 400;
-  color: #3ddc4a;
-  -webkit-text-stroke: 0.7cqw #0e3a12;
+  color: #35e848;
+  -webkit-text-stroke: 0.75cqw #0a3210;
   paint-order: stroke fill;
+  text-shadow: 0 0 1cqw rgba(40, 220, 60, 0.35);
 }
 .card .band .cp i.neg {
   color: #ff5a4a;
@@ -1223,15 +1261,18 @@ button {
   transform: translateY(0.3cqw);
 }
 .btn.tan {
-  background: linear-gradient(#a99a82, #85775f);
-  color: #f2ead7;
-  font-size: 3.5cqw;
+  background: linear-gradient(#c4b59a, #9a8a6e);
+  color: #3a3228;
+  text-shadow: none;
+  font-size: 3.6cqw;
   flex: 0.82;
+  border-color: #2a2218;
 }
 .btn.red {
-  background: linear-gradient(#cf4a4c, #a02a30);
+  background: linear-gradient(#c43a3e, #8e1e24);
   flex: 1.15;
   font-size: 4.8cqw;
+  border-color: #2a0c0e;
 }
 .btn.gold {
   background: linear-gradient(#e2a53a, #b0701a);

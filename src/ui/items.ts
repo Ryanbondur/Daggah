@@ -97,7 +97,6 @@ export function cardHtml(
       <div class="band">${o.label ?? 'Current Gear'}</div>
     </div>`;
   }
-  const rar = RARITIES[item.rarity];
   const band =
     o.cp !== undefined
       ? `<div class="band"><span class="cp">CP <i class="${o.cp < 0 ? 'neg' : ''}">${o.cp >= 0 ? '+' : ''}${o.cp}</i></span></div>`
@@ -110,7 +109,7 @@ export function cardHtml(
     <div class="hd">
       <div>
         <div class="nm">${item.name}</div>
-        <div class="meta"><div class="rar" style="color:${item.rarity === 'common' ? '#6f6a5f' : rar.color}">${rarityLabel(item)}</div>
+        <div class="meta"><div class="rar" data-rarity="${item.rarity}">${rarityLabel(item)}</div>
         <div>${slotName(item)}</div><div class="gl">Gear Level ${item.gearLevel}</div></div>
       </div>
       <div class="ic"><img src="${itemIcon(item)}" alt="" draggable="false" /></div>
