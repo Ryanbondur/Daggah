@@ -66,11 +66,16 @@ button {
 #frame {
   position: relative;
   height: 100%;
-  width: min(100%, calc(100dvh * 0.5625));
-  container-type: inline-size;
+  /* Prefer small viewport height so iOS chrome / dynamic toolbars don't clip controls */
+  width: min(100%, calc(100svh * 0.5625));
+  max-width: calc(100dvh * 0.5625);
+  container-type: size;
   display: grid;
-  /* Match ref bands: stage ~37%, HUD ~12%, parchment pane ~42%, nav ~9% */
-  grid-template-rows: 37% 12% 42% 9%;
+  /*
+    Portrait bands tuned for phone HUD fit (DG-55):
+    stage ~34%, HUD ~15% (chat row + orbs), parchment ~40%, nav ~11% (≥44px taps on SE).
+  */
+  grid-template-rows: 34% 15% 40% 11%;
   background: var(--stone-0);
   overflow: hidden;
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
@@ -262,6 +267,9 @@ button {
 #hud {
   grid-row: 2;
   position: relative;
+  container-type: size;
+  /* Keep orb/chat math inside the band; guards may still paint slightly outside */
+  overflow: visible;
   background:
     linear-gradient(to bottom, rgba(8, 7, 14, 0.96), rgba(18, 16, 26, 0.9)),
     var(--tex-stone);
@@ -281,9 +289,10 @@ button {
 }
 .hud-btn {
   position: absolute;
-  top: 0.2cqw;
-  width: 6.8cqw;
-  height: 6.8cqw;
+  /* Float into stage so buttons clear HP/EN orb tops (phone HUD fit) */
+  top: max(-5.5cqw, -28px);
+  width: max(44px, 9.2cqw);
+  height: max(44px, 9.2cqw);
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #4a4654, #1d1b24);
   border: 0.5cqw solid #0d0c12;
@@ -297,10 +306,10 @@ button {
   height: 62%;
 }
 .hud-btn.chat {
-  left: 1.4cqw;
+  left: 1.2cqw;
 }
 .hud-btn.fight {
-  right: 1.4cqw;
+  right: 1.2cqw;
 }
 .hud-btn.fight.on {
   background: radial-gradient(circle at 35% 30%, #a8532a, #4a1f10);
@@ -308,10 +317,10 @@ button {
 }
 .chat-log {
   position: absolute;
-  left: 10cqw;
-  right: 10cqw;
-  top: 0.2cqw;
-  height: 7.5cqw;
+  left: 14cqw;
+  right: 14cqw;
+  top: 0.4cqw;
+  height: min(7.5cqw, 28cqh);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -335,16 +344,17 @@ button {
 }
 .orb {
   position: absolute;
-  bottom: 1.6cqw;
-  width: 18.5cqw;
-  height: 18.5cqw;
+  bottom: max(3.2cqw, 14px);
+  /* Cap to HUD height so orbs never crowd chat/fight into the orb faces */
+  width: min(17.2cqw, 62cqh);
+  height: min(17.2cqw, 62cqh);
   z-index: 4;
 }
 .orb.hp {
-  left: 5.2cqw;
+  left: 4.6cqw;
 }
 .orb.en {
-  right: 5.2cqw;
+  right: 4.6cqw;
 }
 .orb .ring {
   position: absolute;
@@ -436,10 +446,10 @@ button {
 }
 .xpbar {
   position: absolute;
-  left: 14cqw;
-  right: 14cqw;
-  bottom: 0.6cqw;
-  height: 3cqw;
+  left: 16cqw;
+  right: 16cqw;
+  bottom: 0.8cqw;
+  height: max(14px, 3cqw);
   background: #100d0e;
   border: 0.4cqw solid #1f1c24;
   box-shadow: 0 0 0 0.3cqw #5a5562;
@@ -473,10 +483,10 @@ button {
 }
 .lvl-badge {
   position: absolute;
-  left: 9.6cqw;
+  left: 11cqw;
   bottom: 0;
-  width: 7.4cqw;
-  height: 7.4cqw;
+  width: max(32px, 7.4cqw);
+  height: max(32px, 7.4cqw);
   z-index: 6;
   display: grid;
   place-items: center;
@@ -495,16 +505,17 @@ button {
 }
 .speed-btn {
   position: absolute;
-  right: 9.8cqw;
-  bottom: 0.6cqw;
-  width: 5.2cqw;
-  height: 5.2cqw;
+  /* Sit in the center channel above the XP bar, clear of EN orb */
+  right: max(24cqw, 72px);
+  bottom: max(4.8cqw, 24px);
+  width: max(44px, 8.5cqw);
+  height: max(44px, 8.5cqw);
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #4a4654, #1d1b24);
   border: 0.4cqw solid #0d0c12;
   box-shadow: 0 0 0 0.25cqw #4a4654;
   font-family: var(--font-num);
-  font-size: 2.3cqw;
+  font-size: max(11px, 2.4cqw);
   color: #e9e4d6;
   z-index: 6;
 }
@@ -573,8 +584,9 @@ button {
   position: absolute;
   left: 0;
   right: 0;
-  top: 37%;
-  bottom: 9%;
+  /* Keep in sync with #frame grid bands (stage 34% / nav 11%) */
+  top: 34%;
+  bottom: 11%;
   z-index: 7;
 }
 .pane-inner {
@@ -591,6 +603,8 @@ button {
     0.7% 84%, 0 70%, 0.6% 56%, 0 42%, 0.5% 28%, 0 14%
   );
   padding: 2.2cqw 1.8cqw 1.4cqw;
+  /* Lift camp footer above the floating battle orb (worst on SE-height phones) */
+  padding-bottom: max(28px, 7cqw);
   display: flex;
   flex-direction: column;
   gap: 1.6cqw;
@@ -603,8 +617,8 @@ button {
 .pane-inner.scroll {
   overflow-y: auto;
   scrollbar-width: none;
-  /* Torn clip-path eats the bottom edge — keep last rows/taglines readable at 390×844. */
-  padding-bottom: 4.5cqw;
+  /* Torn clip-path + battle-orb overhang — keep footer controls/copy clear. */
+  padding-bottom: max(36px, 9cqw);
 }
 .pane-inner.scroll::-webkit-scrollbar {
   display: none;
@@ -803,14 +817,25 @@ button {
 .bottom-row {
   display: flex;
   align-items: center;
-  gap: 1.6cqw;
-  height: 10cqw;
+  gap: max(8px, 1.6cqw);
+  min-height: max(44px, 11cqw);
+  height: auto;
   flex: none;
+  /* Keep quest + Camp utilities clear of the centered battle orb overhang */
+  padding-inline: max(4px, 1cqw) max(8px, 2cqw);
+  margin-bottom: max(2px, 0.4cqw);
+  position: relative;
+  z-index: 4;
+}
+.bottom-row .quest {
+  max-width: calc(100% - max(148px, 36cqw));
 }
 .quest {
   position: relative;
-  flex: 1;
-  height: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  align-self: stretch;
   display: flex;
   align-items: center;
   gap: 1.6cqw;
@@ -885,13 +910,22 @@ button {
 }
 .round-btns {
   display: flex;
-  gap: 1.4cqw;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: max(8px, 2cqw);
   flex: none;
+  max-width: min(52vw, 210px);
+}
+.round-btns .tut-chip {
+  flex: 1 0 100%;
+  text-align: center;
 }
 .round-btn {
   position: relative;
-  width: 9.4cqw;
-  height: 9.4cqw;
+  width: max(44px, 10cqw);
+  height: max(44px, 10cqw);
+  flex: none;
   border-radius: 50%;
   background: radial-gradient(circle at 40% 30%, #4a4552, #232029);
   border: 0.5cqw solid #121016;
@@ -935,12 +969,16 @@ button {
   border-top: 0.55cqw solid #1a1822;
   box-shadow: inset 0 0.35cqw 0 rgba(255, 255, 255, 0.04);
   display: grid;
-  grid-template-columns: 1fr 1fr 22cqw 1fr 1fr;
-  align-items: end;
+  /* Wider center well so battle orb does not eat Skill / Adventure hit areas */
+  grid-template-columns: 1fr 1fr minmax(72px, 24cqw) 1fr 1fr;
+  align-items: stretch;
+  min-height: 52px;
+  padding-bottom: 0;
 }
 .nav-btn {
   position: relative;
   height: 100%;
+  min-height: 44px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -948,14 +986,14 @@ button {
   gap: 0.15cqw;
   font-family: var(--font-title);
   font-weight: 800;
-  font-size: 3.4cqw;
+  font-size: clamp(11px, 3.2cqw, 14px);
   color: #e8e2d2;
   -webkit-text-stroke: 0.45cqw #0b0a10;
   paint-order: stroke fill;
   letter-spacing: 0.02em;
 }
 .nav-btn img {
-  height: 6.8cqw;
+  height: clamp(22px, 6.2cqw, 30px);
   width: auto;
   max-width: 9.5cqw;
   object-fit: contain;
@@ -989,36 +1027,41 @@ button {
 .battle-btn {
   position: absolute;
   left: 50%;
-  bottom: 0.2cqw;
+  bottom: 0.35cqw;
   transform: translateX(-50%);
-  width: 21cqw;
-  height: 25cqw;
+  /* Float into parchment, but clamp so SE stays tappable and Pro Max does not dominate */
+  width: clamp(72px, 20cqw, 92px);
+  height: clamp(92px, 24.5cqw, 118px);
   z-index: 12;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
+  touch-action: manipulation;
 }
 .battle-btn .frame-img {
   position: absolute;
   left: 0;
   top: 0;
   width: 100%;
-  height: 21.5cqw;
+  height: 82%;
   object-fit: contain;
   filter: drop-shadow(0 0.7cqw 0.8cqw rgba(0, 0, 0, 0.75));
+  pointer-events: none;
 }
 .battle-btn .skill-face {
   position: absolute;
   left: 50%;
-  top: 9.2cqw;
-  width: 11.2cqw;
-  height: 11.2cqw;
+  top: 38%;
+  width: 52%;
+  height: auto;
+  aspect-ratio: 1;
   transform: translate(-50%, 0);
   border-radius: 50%;
   overflow: hidden;
   display: none;
   background: #0a0910;
+  pointer-events: none;
 }
 .battle-btn .skill-face img {
   width: 100%;
@@ -1054,15 +1097,16 @@ button {
   gap: 0.5cqw;
   font-family: var(--font-title);
   font-weight: 800;
-  font-size: 3.5cqw;
+  font-size: clamp(11px, 3.2cqw, 14px);
   color: #f1ead6;
   -webkit-text-stroke: 0.5cqw #0b0a10;
   paint-order: stroke fill;
-  margin-bottom: 1.1cqw;
+  margin-bottom: 0.6cqw;
+  pointer-events: none;
 }
 .battle-btn .cost svg {
-  width: 3.4cqw;
-  height: 3.4cqw;
+  width: clamp(12px, 3.2cqw, 16px);
+  height: clamp(12px, 3.2cqw, 16px);
 }
 
 /* ----------------------------------------------------------------- toasts */
@@ -2823,10 +2867,11 @@ button {
   font-weight: 700;
 }
 
-/* Art/UX: orbs closer to ref — thicker stone rim, brighter liquid meniscus */
+/* Art/UX: orbs closer to ref — thicker stone rim, brighter liquid meniscus.
+   Keep size capped to HUD height so phone layouts do not reintroduce overlap. */
 .orb {
-  width: 19.2cqw;
-  height: 19.2cqw;
+  width: min(18cqw, 62cqh);
+  height: min(18cqw, 62cqh);
 }
 .orb .ring {
   background:
