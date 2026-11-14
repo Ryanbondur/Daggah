@@ -71,6 +71,7 @@ import type { PvpResult } from './pvp';
 import { buildOpponentRoster, simulatePvp } from './pvp';
 import type { Rng } from './rng';
 import { defaultRng } from './rng';
+import { exportSaveCode, importSaveCode } from './saveCode';
 import type { SaveData, Storage } from './state';
 import {
   BAG_CAP,
@@ -177,6 +178,31 @@ export class Game {
 
   persist(): void {
     writeSave(this.storage, this.save);
+  }
+
+  /** Shareable single-line save code (localStorage remains the fast cache). */
+  exportSaveCode(): string {
+    this.persist();
+    return exportSaveCode(this.save);
+  }
+
+  /**
+   * Replace the current save from an Export code.
+   * @returns null on success, or an error message.
+   */
+  importSaveCode(code: string): string | null {
+    const result = importSaveCode(code);
+    if (!result.ok) return result.error;
+    this.save = result.save;
+    this.battle = null;
+    this.mode = 'camp';
+    this.dungeonCtx = null;
+    this.lives = MAX_LIVES;
+    this.persist();
+    this.emit({ t: 'run' });
+    this.emit({ t: 'change' });
+    this.toast('Save imported', 'good');
+    return null;
   }
 
   changed(): void {

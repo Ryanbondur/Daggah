@@ -7,7 +7,15 @@ import { HERO_CLASSES } from '../data/types';
 import type { ClanData, SeasonData } from './clan';
 import { defaultSeason, normalizeClanMember } from './clan';
 
-export const SAVE_KEY = 'daggah.save.v3';
+/**
+ * Stable localStorage key (not versioned).
+ * Version bumps used to orphan progress on republish when migration missed a key;
+ * schema version lives inside the JSON (`SaveData.version`) instead.
+ */
+export const SAVE_KEY = 'daggah.save';
+/** Older keys still read + migrated on load. */
+export const LEGACY_SAVE_KEYS = ['daggah.save.v3', 'daggah.save.v2', 'daggah.save.v1'] as const;
+export const SAVE_BACKUP_KEY = 'daggah.save.bak';
 export const SAVE_VERSION = 3;
 export const BAG_CAP = 24;
 export const KEY_CAP = 8;
@@ -83,6 +91,8 @@ export interface SaveData {
     fullLoadout: number;
     claimed: boolean;
   };
+  /** Last successful persist timestamp (local or import). */
+  savedAt: number;
 }
 
 export function defaultSave(now = Date.now()): SaveData {
@@ -137,6 +147,7 @@ export function defaultSave(now = Date.now()): SaveData {
       fullLoadout: 0,
       claimed: false,
     },
+    savedAt: now,
   };
 }
 
@@ -232,78 +243,132 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   };
 }
 
-export function loadSave(storage: Storage | undefined, now = Date.now()): SaveData {
+/** Normalize a parsed partial save blob, or null if unusable. */
+export function normalizeParsedSave(
+  parsed: Partial<SaveData> & { version?: number },
+  now = Date.now(),
+): SaveData | null {
   const fresh = defaultSave(now);
-  if (!storage) return fresh;
+  if (!parsed) return null;
+
+  // Warrior-only v1 era.
+  if (parsed.version === 1 && parsed.heroClass === 'Warrior') {
+    return {
+      ...fresh,
+      ...parsed,
+      version: SAVE_VERSION,
+      heroClass: 'Warrior',
+      classPicked: true,
+      gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
+      settings: normalizeSettings(parsed.settings, fresh.settings),
+      dungeons: parsed.dungeons ?? {},
+      bag: parsed.bag ?? [],
+      pending: parsed.pending ?? [],
+      loadout: parsed.loadout?.length ? parsed.loadout : fresh.loadout,
+      seenSkills: parsed.seenSkills ?? fresh.seenSkills,
+      ...migrateClanFields(parsed, fresh, now),
+      savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : now,
+    };
+  }
+
+  // Accept current + future schema versions with a known class (forward-compatible).
+  // Unknown fields are dropped by the explicit shape; missing fields fill from fresh.
+  if (typeof parsed.version === 'number' && parsed.version >= 2 && isHeroClass(parsed.heroClass)) {
+    return {
+      ...fresh,
+      ...parsed,
+      version: SAVE_VERSION,
+      heroClass: parsed.heroClass,
+      classPicked: parsed.classPicked !== false,
+      gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
+      settings: normalizeSettings(parsed.settings, fresh.settings),
+      dungeons: parsed.dungeons ?? {},
+      bag: parsed.bag ?? [],
+      pending: parsed.pending ?? [],
+      loadout: parsed.loadout?.length ? parsed.loadout : [...DEFAULT_LOADOUT[parsed.heroClass]],
+      seenSkills: parsed.seenSkills ?? [...DEFAULT_LOADOUT[parsed.heroClass]],
+      ...migrateClanFields(parsed, fresh, now),
+      savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : now,
+    };
+  }
+
+  return null;
+}
+
+/** Parse raw JSON text into SaveData (shared by localStorage + import codes). */
+export function loadSaveFromRaw(raw: string, now = Date.now()): SaveData | null {
   try {
-    // Prefer v3; migrate readable v2 / Warrior v1.
-    const raw =
-      storage.getItem(SAVE_KEY) ?? storage.getItem('daggah.save.v2') ?? storage.getItem('daggah.save.v1');
-    if (!raw) return fresh;
     const parsed = JSON.parse(raw) as Partial<SaveData> & { version?: number };
-    if (!parsed) return fresh;
-    if (parsed.version === 1 && parsed.heroClass === 'Warrior') {
-      const migrated: SaveData = {
-        ...fresh,
-        ...parsed,
-        version: SAVE_VERSION,
-        heroClass: 'Warrior',
-        classPicked: true,
-        gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
-        settings: normalizeSettings(parsed.settings, fresh.settings),
-        dungeons: parsed.dungeons ?? {},
-        bag: parsed.bag ?? [],
-        pending: parsed.pending ?? [],
-        loadout: parsed.loadout?.length ? parsed.loadout : fresh.loadout,
-        seenSkills: parsed.seenSkills ?? fresh.seenSkills,
-        ...migrateClanFields(parsed, fresh, now),
-      };
-      writeSave(storage, migrated);
-      storage.removeItem('daggah.save.v1');
-      storage.removeItem('daggah.save.v2');
-      return migrated;
-    }
-    if ((parsed.version === 2 || parsed.version === SAVE_VERSION) && isHeroClass(parsed.heroClass)) {
-      const migrated: SaveData = {
-        ...fresh,
-        ...parsed,
-        version: SAVE_VERSION,
-        heroClass: parsed.heroClass,
-        classPicked: parsed.classPicked !== false,
-        gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
-        settings: normalizeSettings(parsed.settings, fresh.settings),
-        dungeons: parsed.dungeons ?? {},
-        bag: parsed.bag ?? [],
-        pending: parsed.pending ?? [],
-        loadout: parsed.loadout?.length ? parsed.loadout : [...DEFAULT_LOADOUT[parsed.heroClass]],
-        seenSkills: parsed.seenSkills ?? [...DEFAULT_LOADOUT[parsed.heroClass]],
-        ...migrateClanFields(parsed, fresh, now),
-      };
-      if (parsed.version !== SAVE_VERSION) {
-        writeSave(storage, migrated);
-        storage.removeItem('daggah.save.v2');
-      }
-      return migrated;
-    }
-    return fresh;
+    return normalizeParsedSave(parsed, now);
   } catch {
-    return fresh;
+    return null;
   }
 }
 
-export function writeSave(storage: Storage | undefined, save: SaveData): void {
+function readRawSave(storage: Storage): { raw: string; fromKey: string } | null {
+  const primary = storage.getItem(SAVE_KEY);
+  if (primary) return { raw: primary, fromKey: SAVE_KEY };
+  for (const key of LEGACY_SAVE_KEYS) {
+    const raw = storage.getItem(key);
+    if (raw) return { raw, fromKey: key };
+  }
+  return null;
+}
+
+function clearLegacyKeys(storage: Storage): void {
+  for (const key of LEGACY_SAVE_KEYS) storage.removeItem(key);
+}
+
+export function loadSave(storage: Storage | undefined, now = Date.now()): SaveData {
+  const fresh = defaultSave(now);
+  if (!storage) return fresh;
+  const found = readRawSave(storage);
+  if (!found) return fresh;
+
+  const migrated = loadSaveFromRaw(found.raw, now);
+  if (!migrated) {
+    // Keep corrupt blob recoverable; do not clobber until a real persist succeeds.
+    try {
+      storage.setItem(SAVE_BACKUP_KEY, found.raw);
+    } catch {
+      /* ignore */
+    }
+    return fresh;
+  }
+
+  // Migrate legacy versioned keys onto the stable key once.
+  if (found.fromKey !== SAVE_KEY) {
+    writeSave(storage, migrated);
+    return migrated;
+  }
+  // Backfill missing schema fields (e.g. savedAt) without churning every load.
+  try {
+    const peek = JSON.parse(found.raw) as { version?: number; savedAt?: number };
+    if (peek.version !== SAVE_VERSION || typeof peek.savedAt !== 'number') {
+      writeSave(storage, migrated);
+    }
+  } catch {
+    writeSave(storage, migrated);
+  }
+  return migrated;
+}
+
+export function writeSave(storage: Storage | undefined, save: SaveData, now = Date.now()): void {
   if (!storage) return;
   try {
+    save.savedAt = now;
     storage.setItem(SAVE_KEY, JSON.stringify(save));
+    clearLegacyKeys(storage);
   } catch {
     /* storage full or unavailable */
   }
 }
 
 export function clearSave(storage: Storage | undefined): void {
-  storage?.removeItem(SAVE_KEY);
-  storage?.removeItem('daggah.save.v2');
-  storage?.removeItem('daggah.save.v1');
+  if (!storage) return;
+  storage.removeItem(SAVE_KEY);
+  storage.removeItem(SAVE_BACKUP_KEY);
+  clearLegacyKeys(storage);
 }
 
 export function stageToActStage(index: number): { act: number; stage: number } {

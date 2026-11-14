@@ -8,6 +8,7 @@ import '@fontsource/inter/800.css';
 import '@fontsource/lilita-one/400.css';
 import Phaser from 'phaser';
 import './style.css';
+import { syncCloudSave } from './game/cloudSave';
 import { Game } from './game/game';
 import { StageScene } from './stage/StageScene';
 import { mountUI } from './ui';
@@ -21,6 +22,14 @@ async function boot(): Promise<void> {
     }
   })();
   const game = new Game(storage);
+
+  // Optional cloud sync: no-ops on public hosts without /api/daggah-save.
+  void syncCloudSave(storage, game.save).then(({ save, result }) => {
+    if (result.status === 'pulled') {
+      game.save = save;
+      game.emit({ t: 'change' });
+    }
+  });
 
   await Promise.all([
     document.fonts.load('900 20px "Playfair Display"'),
