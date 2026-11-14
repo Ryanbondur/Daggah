@@ -1,4 +1,4 @@
-import { ACTS, LOCKED_ACTS, getAct, stageRecLevel } from '../data/acts';
+import { ACTS, getAct, stageRecLevel } from '../data/acts';
 import { SLOTS } from '../data/gear';
 import { QUESTS } from '../data/quests';
 import {
@@ -151,20 +151,16 @@ export function renderAdventure(ctx: UIContext): string {
       <div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></div>
       <div class="stage-row">${chips}</div>
       <div class="dg ${open ? '' : 'locked'}">
-        <div class="dn"><b>${d.name}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
+        <div class="dn"><b>${d.name}${d.endgame ? ' · Endgame' : ''}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${d.endgame ? '  -  stingy drops' : ''}` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
         ${buttons}
       </div>
     </div>`;
   }).join('');
-  const locked = LOCKED_ACTS.map(
-    (a) => `<div class="act-card locked"><div class="act-head"><span>Act ${a.id}: ${a.name}</span><small>Coming soon</small></div></div>`,
-  ).join('');
   return `<div class="pane-inner scroll">
     <div class="tab-title">Adventure <small>[Normal]</small></div>
     ${res}
     <div class="diff-row"><button class="chip" style="background:#3a3644;color:#ffe9a8">Normal</button><button class="chip" style="opacity:.5">Hard (soon)</button><button class="chip" style="opacity:.5">Torment (soon)</button></div>
     ${acts}
-    ${locked}
   </div>`;
 }
 
@@ -186,7 +182,7 @@ export function renderTown(ctx: UIContext): string {
     <h3 style="margin:1cqw 0 0;font-family:var(--font-title);font-size:3.6cqw">Onboarding quests</h3>
     <div class="sheet-lite">${quests}</div>
     <button class="chip" data-action="settings" style="align-self:flex-start">Settings</button>
-    <div class="tagline">Class locked for the season: ${g.save.heroClass}. Reset save to pick a new class. Acts ${ACTS.length + 1}-10 are still being carved out of the dark.</div>
+    <div class="tagline">Class locked for the season: ${g.save.heroClass}. Reset save to pick a new class. Clear Act 10 to unlock Nightscar Apex endgame. Clans / seasons next.</div>
   </div>`;
 }
 

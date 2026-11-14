@@ -11,7 +11,7 @@ export const KEY_CAP = 8;
 export const KEY_REGEN_MS = 30 * 60 * 1000;
 export const DUNGEON_CRYSTAL_COST = 50;
 export const STAGES_PER_ACT = 5;
-export const PLAYABLE_STAGES = 40;
+export const PLAYABLE_STAGES = 50;
 
 export interface Settings {
   autoSalvageReplaced: boolean;

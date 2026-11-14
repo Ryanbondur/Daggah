@@ -89,8 +89,16 @@ export const RARITIES: Record<RarityId, RarityDef> = {
 
 export const RARITY_ORDER: RarityId[] = ['common', 'rare', 'epic', 'legendary'];
 
-/** Drop tables. GDD §6.8. */
-export type DropSource = 'stage-boss' | 'stage-elite' | 'dungeon-floor' | 'dungeon-mini' | 'dungeon-boss';
+/** Drop tables. GDD §6.8. Nightscar floors are stingier; boss uses the endgame table. */
+export type DropSource =
+  | 'stage-boss'
+  | 'stage-elite'
+  | 'dungeon-floor'
+  | 'dungeon-mini'
+  | 'dungeon-boss'
+  | 'nightscar-floor'
+  | 'nightscar-mini'
+  | 'nightscar-boss';
 
 const DROP_WEIGHTS: Record<DropSource, Record<RarityId, number>> = {
   'stage-boss': { common: 70, rare: 25, epic: 5, legendary: 0 },
@@ -98,6 +106,10 @@ const DROP_WEIGHTS: Record<DropSource, Record<RarityId, number>> = {
   'dungeon-floor': { common: 55, rare: 30, epic: 13, legendary: 2 },
   'dungeon-mini': { common: 45, rare: 35, epic: 16, legendary: 4 },
   'dungeon-boss': { common: 35, rare: 40, epic: 20, legendary: 5 },
+  // Intentionally stingy floors; boss chase table from GDD §6.8.
+  'nightscar-floor': { common: 65, rare: 28, epic: 6, legendary: 1 },
+  'nightscar-mini': { common: 50, rare: 35, epic: 12, legendary: 3 },
+  'nightscar-boss': { common: 20, rare: 40, epic: 28, legendary: 12 },
 };
 
 export function rollRarity(rng: Rng, source: DropSource): RarityId {
@@ -346,6 +358,30 @@ export const SETS: Record<SetId, SetDef> = {
       { pieces: 6, text: 'After ultimate: +10% dmg 5s' },
     ],
   },
+  voidwoven: {
+    id: 'voidwoven',
+    name: 'Voidwoven',
+    act: 9,
+    favors: 'Any / endgame prep',
+    icon: 'i',
+    bonuses: [
+      { pieces: 2, text: '+9% all primary' },
+      { pieces: 4, text: '+10% Crit Dmg' },
+      { pieces: 6, text: 'Ultimate cost -10%' },
+    ],
+  },
+  'nightscar-regalia': {
+    id: 'nightscar-regalia',
+    name: 'Nightscar Regalia',
+    act: 10,
+    favors: 'All endgame',
+    icon: 'j',
+    bonuses: [
+      { pieces: 2, text: '+10% all primary' },
+      { pieces: 4, text: '+12% Skill Power' },
+      { pieces: 6, text: 'Class ultimate +20% dmg' },
+    ],
+  },
 };
 
 export interface SetEffects {
@@ -376,6 +412,8 @@ export interface SetEffects {
   cloakDurationBonus: number;
   postUltDmgPct: number;
   postUltDuration: number;
+  ultimateCostPct: number;
+  ultimateDmgPct: number;
 }
 
 export function emptySetEffects(): SetEffects {
@@ -407,6 +445,8 @@ export function emptySetEffects(): SetEffects {
     cloakDurationBonus: 0,
     postUltDmgPct: 0,
     postUltDuration: 0,
+    ultimateCostPct: 0,
+    ultimateDmgPct: 0,
   };
 }
 
@@ -464,6 +504,20 @@ export function computeSetEffects(gear: Gear): SetEffects {
     fx.postUltDmgPct += 10;
     fx.postUltDuration = Math.max(fx.postUltDuration, 5);
   }
+  if (n('voidwoven') >= 2) {
+    fx.atkPct += 9;
+    fx.defPct += 9;
+    fx.hpPct += 9;
+  }
+  if (n('voidwoven') >= 4) fx.critDmgPct += 10;
+  if (n('voidwoven') >= 6) fx.ultimateCostPct += 10;
+  if (n('nightscar-regalia') >= 2) {
+    fx.atkPct += 10;
+    fx.defPct += 10;
+    fx.hpPct += 10;
+  }
+  if (n('nightscar-regalia') >= 4) fx.skillPowerPct += 12;
+  if (n('nightscar-regalia') >= 6) fx.ultimateDmgPct += 20;
   return fx;
 }
 

@@ -1,6 +1,6 @@
 # Daggah
 
-Dark-fantasy, portrait (9:16) browser auto-combat RPG. Current slice: four classes (Warrior, Mage, Ranger, Rogue), Acts 1–8, gear sets, skills, dungeons and local save.
+Dark-fantasy, portrait (9:16) browser auto-combat RPG. Current slice: four classes (Warrior, Mage, Ranger, Rogue), Acts 1–10 through Nightscar Apex, gear sets, skills, dungeons and local save.
 
 Stack: Vite + TypeScript + Phaser 3. Phaser renders the stage (camp and battle); DOM/CSS renders the HUD, panes and modals.
 
@@ -21,25 +21,25 @@ npm run art        # re-slice generated art from art-src/ into public/assets/ (n
 - **Camp**: 12-slot gear pane, HP and Energy orbs, level/XP track, speed toggle, onboarding quest strip, bag, hero stats and settings.
 - **Battle**: auto-combat west→east through stage nodes. Skills fire from the equipped 4-bar; center **Battle** starts a run and force-casts Primary mid-fight.
 - **Skill**: each class has 2 playstyles × 4 skills (8 total). Equip freely within class out of combat.
-- **Adventure**: Acts 1–8 (through Ashen Spire and Echoing Dark), 5 stages each. Dungeons through Spire Forge and Echo Crypt. Keys regenerate over time; sweep after first clear.
-- **Sets**: Ember Raider, Cavern Cleaver/Bulwark, Gravemarch, Ashen Codex, Rime Circlet, Quillstorm, Deadeye, Cinderstride, Nightfang, Gloomveil, Echoplate (2/4/6-piece bonuses).
+- **Adventure**: Acts 1–10 (through Voidgate and Nightscar Depths), 5 stages each. Dungeons through Gate Reliquary and **Nightscar Apex** (endgame, stingy drops, unlock after Act 10 clear). Keys regenerate over time; sweep after first clear.
+- **Sets**: Ember Raider, Cavern Cleaver/Bulwark, Gravemarch, Ashen Codex, Rime Circlet, Quillstorm, Deadeye, Cinderstride, Nightfang, Gloomveil, Echoplate, Voidwoven, Nightscar Regalia (2/4/6-piece bonuses).
 - **Gear compare**: CP + per-stat deltas; Replace / Salvage / bag keep. Auto-salvage options in Settings.
 - **Town**: stub cards + onboarding quests + Settings.
 - **Save**: `daggah.save.v2` (migrates readable Warrior v1 saves). Autosaves on change and every 5s.
 
-Out of scope: Acts 9–10, Nightscar, clans/4v4, seasons server.
+Out of scope: clans/4v4 PvP, seasons server.
 
 ## Controls
 
 - Bottom nav: Camp · Skill · Battle · Adventure · Town.
 - Center **Battle**: start current stage, then force-cast Primary.
 - Top-right HUD swords: start or retreat. Speed cycles unlocked multipliers.
-- Settings playtest tools: +500 XP, +1 Level, Clear Acts 1–8, +Keys +Crystals, Roll 5 drops, Reset save (reopens class pick).
+- Settings playtest tools: +500 XP, +1 Level, Clear Acts 1–10, +Keys +Crystals, Roll 5 drops, Reset save (reopens class pick).
 
 ## Project layout
 
 ```
-src/data/    types, XP, skills (all classes), gear/sets/CP, acts 1-8 + enemies, quests
+src/data/    types, XP, skills (all classes), gear/sets/CP, acts 1-10 + enemies, quests
 src/game/    combat engine, Game controller, save, tests
 src/stage/   Phaser StageScene
 src/ui/      DOM panes, modals (incl. class pick), HUD
@@ -47,13 +47,14 @@ scripts/     process-art.py
 art-src/     raw generated art → public/assets/
 ```
 
-`src/game/sim.test.ts` auto-plays a Warrior through all 40 stages and smoke-clears Act 1 on Mage/Ranger/Rogue.
+`src/game/sim.test.ts` auto-plays a Warrior through all 50 stages and smoke-clears Act 1 on Mage/Ranger/Rogue.
 
 ## Design assumptions
 
 - CP uses the GDD formula (smaller than the reference "+167" scale).
 - Quest 1 pays 300 crystals.
-- Mid/late enemy growth softens after Act 2, Act 4, and Act 6 so Acts 7–8 stay clearable with dungeon farming.
+- Mid/late enemy growth softens after Act 2, 4, 6, and 8 so Acts 9–10 stay clearable with dungeon farming.
+- Nightscar Apex floors use stingier rarity weights; the boss uses the GDD endgame table (higher legendary chase).
 - Art is best-effort dark-fantasy cartoon (Sonnet 5.5 unavailable for GenerateImage this run); chroma-keyed via `npm run art`.
 
 ## Playtest checklist
@@ -61,6 +62,6 @@ art-src/     raw generated art → public/assets/
 1. Fresh load → class pick → pick each class once (reset between) and confirm hero sprite + default loadout.
 2. Warrior: Battle 1-1, loot compare, salvage 5, claim quest.
 3. Skill pane: switch both playstyles, equip 4 skills, set Primary star.
-4. Adventure: push into Act 7 Ashen Spire and Act 8 Echoing Dark; enter Spire Forge / Echo Crypt.
-5. Settings → Clear Acts 1–8, farm a dungeon, Review Gear.
+4. Adventure: push into Act 9 Voidgate and Act 10 Nightscar Depths; enter Gate Reliquary / Nightscar Apex after act clears.
+5. Settings → Clear Acts 1–10, farm Nightscar Apex, Review Gear (Voidwoven / Nightscar Regalia).
 6. Reload: progress persists. Reset: class pick returns.
