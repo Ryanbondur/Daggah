@@ -685,6 +685,50 @@ button {
   box-shadow: 0 0 0.8cqw #4dff6a;
   border: 0.25cqw solid #0b2a10;
 }
+/* BiS / CP-delta loot badge — corner chip, keeps portrait readable */
+.slot.bis {
+  box-shadow:
+    0 0 0 0.22cqw var(--rim),
+    0 0 1.4cqw var(--glow),
+    0 0 1.1cqw rgba(53, 232, 72, 0.55);
+}
+.slot .bis-badge {
+  position: absolute;
+  left: 50%;
+  top: 5%;
+  z-index: 2;
+  transform: translateX(-50%);
+  max-width: 86%;
+  padding: 0.15cqw 0.7cqw;
+  border-radius: 0.4cqw;
+  background: rgba(10, 50, 16, 0.88);
+  border: 0.2cqw solid #35e848;
+  font-family: var(--font-num);
+  font-size: 2cqw;
+  font-weight: 700;
+  line-height: 1.15;
+  color: #35e848;
+  text-shadow: 0 0 0.35cqw #0a3210;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.loot-row .slot .bis-badge {
+  font-size: 2.35cqw;
+}
+.sheet .row b.bis-count {
+  color: #1f6b2a;
+}
+.card .band .cp .bis-tag {
+  font-style: normal;
+  font-family: var(--font-title);
+  font-size: 2.8cqw;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #1f6b2a;
+  margin-left: 1.2cqw;
+}
 .slot.flash {
   animation: slotflash 0.9s ease-out;
 }

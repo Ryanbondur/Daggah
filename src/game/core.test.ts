@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { RARITIES, computeHero, cpDelta, rollItem, salvageValue, starterGear } from '../data/gear';
+import {
+  RARITIES,
+  computeHero,
+  cpDelta,
+  lootCompareHighlight,
+  rollItem,
+  salvageValue,
+  starterGear,
+} from '../data/gear';
 import { DEFAULT_LOADOUT, isUnlocked, passivesForClass } from '../data/skills';
 import { HERO_CLASSES } from '../data/types';
 import { addXp, availableSpeeds, heroBaseStats, maxEnergy, xpToNext } from '../data/xp';
@@ -68,6 +76,29 @@ describe('gear', () => {
     const rng = mulberry32(11);
     const item = rollItem(rng, { gearLevel: 4, rarity: 'rare', slot: 'chest' });
     expect(cpDelta(4, gear, item, 'Warrior')).toBeGreaterThan(0);
+  });
+
+  it('lootCompareHighlight marks BiS upgrades with CP badge or BiS', () => {
+    const gear = starterGear();
+    const rng = mulberry32(11);
+    const upgrade = rollItem(rng, { gearLevel: 4, rarity: 'rare', slot: 'chest' });
+    const hi = lootCompareHighlight(4, gear, upgrade, 'Warrior');
+    expect(hi.upgrade).toBe(true);
+    expect(hi.levelOk).toBe(true);
+    expect(hi.cpDelta).toBeGreaterThan(0);
+    expect(hi.badge).toBe(`+${hi.cpDelta}`);
+
+    const empty = { ...gear, ring: undefined };
+    const fill = rollItem(rng, { gearLevel: 1, rarity: 'common', slot: 'ring' });
+    const emptyHi = lootCompareHighlight(1, empty, fill, 'Warrior');
+    expect(emptyHi.upgrade).toBe(true);
+    expect(emptyHi.badge).toBe('BiS');
+
+    const locked = rollItem(rng, { gearLevel: 9, rarity: 'epic', slot: 'helmet' });
+    const lockedHi = lootCompareHighlight(1, gear, locked, 'Warrior');
+    expect(lockedHi.levelOk).toBe(false);
+    expect(lockedHi.upgrade).toBe(false);
+    expect(lockedHi.badge).toBeNull();
   });
 
   it('applies set bonuses at 2 pieces including Gravemarch', () => {

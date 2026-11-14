@@ -16,6 +16,7 @@ import {
   RARITIES,
   cpDelta,
   computeHero,
+  lootCompareHighlight,
   rarityAtMost,
   rarityBelow,
   rollItem,
@@ -813,10 +814,13 @@ export class Game {
   }
 
   isUpgrade(item: Item): boolean {
-    return (
-      cpDelta(this.save.level, this.save.gear, item, this.save.heroClass, this.save.loadout) > 0 &&
-      item.gearLevel <= this.save.level
-    );
+    return lootCompareHighlight(
+      this.save.level,
+      this.save.gear,
+      item,
+      this.save.heroClass,
+      this.save.loadout,
+    ).upgrade;
   }
 
   /** Whether loot should auto-salvage given settings (rarity threshold and/or worse-than-equipped). */

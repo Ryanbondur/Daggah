@@ -700,6 +700,36 @@ export function cpDelta(
   );
 }
 
+/** Slot badge for dungeon loot / compare lists: empty slot → BiS, else CP delta. */
+export interface LootCompareHighlight {
+  upgrade: boolean;
+  cpDelta: number;
+  levelOk: boolean;
+  /** Corner badge text when `upgrade` (portrait-safe); null otherwise. */
+  badge: string | null;
+}
+
+/**
+ * Pure compare highlight for a drop vs the equipped piece in that slot.
+ * Mirrors gear-compare rules: positive CP and equippable = upgrade.
+ */
+export function lootCompareHighlight(
+  level: number,
+  gear: Gear,
+  item: Item,
+  heroClass: HeroClass = 'Warrior',
+  loadout?: SkillId[],
+): LootCompareHighlight {
+  const delta = cpDelta(level, gear, item, heroClass, loadout);
+  const levelOk = item.gearLevel <= level;
+  const upgrade = delta > 0 && levelOk;
+  let badge: string | null = null;
+  if (upgrade) {
+    badge = gear[item.slot] ? `+${delta}` : 'BiS';
+  }
+  return { upgrade, cpDelta: delta, levelOk, badge };
+}
+
 let itemCounter = 0;
 function newId(): string {
   itemCounter += 1;
