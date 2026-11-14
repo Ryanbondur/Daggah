@@ -214,6 +214,14 @@ def main() -> None:
     single("ui-clan-hall", "ui/clan-hall.webp", 220)
     single("ui-season-board", "ui/season-board.webp", 220)
 
+    # Seamless UI textures (no chroma key) — public + Vite CSS import path
+    for tex in ("tex-parchment.jpg", "tex-stone.jpg"):
+        src = SRC / tex
+        for dest in (OUT / "ui" / tex, ROOT / "src" / "assets" / "ui" / tex):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            Image.open(src).convert("RGB").save(dest, "JPEG", quality=90)
+            print("wrote", dest.relative_to(ROOT))
+
 
 if __name__ == "__main__":
     main()
