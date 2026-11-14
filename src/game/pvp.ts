@@ -5,6 +5,7 @@ import { HERO_CLASSES } from '../data/types';
 import { maxEnergy } from '../data/xp';
 import type { ClanMember } from './clan';
 import { buildAiMember } from './clan';
+import type { ClanBracketId } from './clanBrackets';
 import type { Rng } from './rng';
 
 export const PVP_TIMEOUT_S = 90;
@@ -59,6 +60,12 @@ export interface PvpResult {
   enemyTeam: { name: string; heroClass: HeroClass; hp: number; maxHp: number; isAi: boolean }[];
   /** True when this match used AI fillers / AI rivals (solo playtest). */
   practiceAi: boolean;
+  /** Match bracket (natural or challenge-up). */
+  bracket: ClanBracketId;
+  /** True when this match used the daily challenge-up. */
+  challengeUp: boolean;
+  /** Ally team CP sum used for bracket assignment. */
+  teamCp: number;
 }
 
 function scaleStats(stats: Stats, pct: number): Stats {
@@ -191,6 +198,11 @@ export function simulatePvp(
   playerGear: Gear,
   playerLevel: number,
   rng: Rng,
+  meta: { bracket: ClanBracketId; challengeUp: boolean; teamCp: number } = {
+    bracket: 'veteran',
+    challengeUp: false,
+    teamCp: 0,
+  },
 ): PvpResult {
   const fighters: PvpFighter[] = [
     ...allyRoster.map((m) => fighterFromMember(m, 'ally', playerGear, playerLevel, rng)),
@@ -353,6 +365,9 @@ export function simulatePvp(
     allyTeam: snap('ally'),
     enemyTeam: snap('enemy'),
     practiceAi,
+    bracket: meta.bracket,
+    challengeUp: meta.challengeUp,
+    teamCp: meta.teamCp,
   };
 }
 

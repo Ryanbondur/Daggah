@@ -12,7 +12,8 @@ import {
   skillsForPlaystyle,
 } from '../data/skills';
 import type { PlaystyleId, SkillId } from '../data/types';
-import { CLAN_CREATE_COST, TOKEN_DAY_CAP, TOKEN_LOSS, TOKEN_WIN, buildClanLeaderboard } from '../game/clan';
+import { CLAN_CREATE_COST, TOKEN_DAY_CAP, buildClanLeaderboard } from '../game/clan';
+import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../game/clanBrackets';
 import { HERO_CLASSES } from '../data/types';
 import { KEY_CAP, STAGES_PER_ACT } from '../game/state';
 import { asset, navIcon, skillIcon } from './assets';
@@ -260,6 +261,16 @@ function renderClanHallPane(ctx: UIContext): string {
     return `<span class="class-pip ${ok ? 'on' : ''}" title="${c}">${c[0]}</span>`;
   }).join('');
   const ready = g.clanRosterReady();
+  const bracket = g.clanBracketStatus();
+  const win = BRACKET_TOKEN_WIN[bracket.bracket];
+  const loss = BRACKET_TOKEN_LOSS[bracket.bracket];
+  const floorBlock = !bracket.floorMet
+    ? `<p class="clan-warn">${escapeHtml(bracket.floorMessage)}</p>`
+    : '';
+  const challengeBtn =
+    bracket.canChallengeUp && bracket.nextLabel
+      ? `<button type="button" class="btn gold ${ready ? '' : 'disabled'}" data-action="clan-queue-challenge">Challenge up → ${escapeHtml(bracket.nextLabel)}</button>`
+      : '';
 
   return `<div class="clan-panel">
     <div class="clan-banner clan-banner-pane">
@@ -270,6 +281,13 @@ function renderClanHallPane(ctx: UIContext): string {
         <div class="class-pips">${classCheck}</div>
       </div>
     </div>
+    <div class="clan-bracket-card">
+      <span class="clan-bracket-pill ${bracket.bracket}">${escapeHtml(bracket.label)}</span>
+      <div>
+        <b>Team CP ${fmt(bracket.teamCp)}</b>
+        <span>${escapeHtml(bracketRangeLabel(bracket.bracket))} · Challenge-up ${bracket.challengeUpLeft}/1 today</span>
+      </div>
+    </div>
     <p class="ai-banner">AI teammates &amp; rivals until live multiplayer. Your class stays human.</p>
     <div class="clan-roster">${rows}</div>
     ${
@@ -277,12 +295,14 @@ function renderClanHallPane(ctx: UIContext): string {
         ? `<p class="clan-warn">Missing ${missing.join(', ')}. Fill AI roster for 4v4.</p>`
         : `<p class="clan-ok">Roster ready — one of each class.</p>`
     }
+    ${floorBlock}
     <div class="clan-actions-row">
       <button type="button" class="btn stone" data-action="clan-recruit">Fill AI roster</button>
-      <button type="button" class="btn red ${ready ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
+      <button type="button" class="btn red ${ready && bracket.floorMet ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
+      ${challengeBtn}
       <button type="button" class="btn tan" data-action="clan-leave">Leave clan</button>
     </div>
-    <p class="tagline">Win +${TOKEN_WIN} / Loss +${TOKEN_LOSS} tokens (cap ${TOKEN_DAY_CAP}/day). Gear + skills are yours; allies/rivals are AI.</p>
+    <p class="tagline">${escapeHtml(bracket.label)} payout Win +${win} / Loss +${loss} (cap ${TOKEN_DAY_CAP}/day). Scout ${BRACKET_TOKEN_WIN.scout}/${BRACKET_TOKEN_LOSS.scout} · Veteran ${BRACKET_TOKEN_WIN.veteran}/${BRACKET_TOKEN_LOSS.veteran} · Nightscar ${BRACKET_TOKEN_WIN.nightscar}/${BRACKET_TOKEN_LOSS.nightscar}.</p>
   </div>`;
 }
 

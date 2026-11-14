@@ -163,6 +163,7 @@ describe('pvp replay strip data', () => {
     const game = new Game(memoryStorage(), mulberry32(6));
     game.pickClass('Warrior');
     game.save.level = 12;
+    game.save.stagesCleared = 15;
     let saw: { t: string; skillName?: string; target?: string }[] = [];
     game.on((e) => {
       if (e.t === 'pvp') saw = e.result.log;

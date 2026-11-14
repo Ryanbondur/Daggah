@@ -50,8 +50,6 @@ import type { ClanData } from './clan';
 import {
   CLAN_CREATE_COST,
   TOKEN_DAY_CAP,
-  TOKEN_LOSS,
-  TOKEN_WIN,
   applyTokenCap,
   createClan,
   dayKey,
@@ -66,6 +64,18 @@ import {
   seasonDay,
   seasonRemainingMs,
 } from './clan';
+import type { ClanBracketId } from './clanBrackets';
+import {
+  BRACKET_TARGET_AVG_CP,
+  CLAN_BRACKET_LABEL,
+  assignBracket,
+  bracketTokenReward,
+  challengeUpAvailable,
+  clanQueueFloorMessage,
+  meetsClanQueueFloor,
+  nextBracket,
+  teamCpSum,
+} from './clanBrackets';
 import type { BattleEvent, HeroInput, RunDef } from './combat';
 import { Battle, STEP } from './combat';
 import type { PvpResult } from './pvp';
@@ -115,16 +125,53 @@ export type GameEvent =
   | { t: 'pvp'; result: PvpResult; tokens: number }
   | { t: 'chat'; text: string };
 
-/** Clan Armorer catalog (GDD Clanforged). */
-export const CLAN_VENDOR: { slot: SlotId; rarity: 'epic' | 'legendary'; cost: number; label: string }[] = [
+/** Clan Armorer catalog (GDD Clanforged). Legendaries are Nightscar-exclusive. */
+export const CLAN_VENDOR: {
+  slot: SlotId;
+  rarity: 'epic' | 'legendary';
+  cost: number;
+  label: string;
+  nightscarOnly?: boolean;
+}[] = [
   { slot: 'weapon', rarity: 'epic', cost: 40, label: 'Clanforged Weapon (Epic)' },
   { slot: 'chest', rarity: 'epic', cost: 35, label: 'Clanforged Chest (Epic)' },
   { slot: 'helmet', rarity: 'epic', cost: 30, label: 'Clanforged Helm (Epic)' },
   { slot: 'ring', rarity: 'epic', cost: 30, label: 'Clanforged Ring (Epic)' },
-  { slot: 'weapon', rarity: 'legendary', cost: 80, label: 'Clanforged Weapon (Legendary)' },
-  { slot: 'medal', rarity: 'legendary', cost: 70, label: 'Clanforged Medal (Legendary)' },
-  { slot: 'amulet', rarity: 'legendary', cost: 70, label: 'Clanforged Amulet (Legendary)' },
+  {
+    slot: 'weapon',
+    rarity: 'legendary',
+    cost: 80,
+    label: 'Clanforged Weapon (Legendary)',
+    nightscarOnly: true,
+  },
+  {
+    slot: 'medal',
+    rarity: 'legendary',
+    cost: 70,
+    label: 'Clanforged Medal (Legendary)',
+    nightscarOnly: true,
+  },
+  {
+    slot: 'amulet',
+    rarity: 'legendary',
+    cost: 70,
+    label: 'Clanforged Amulet (Legendary)',
+    nightscarOnly: true,
+  },
 ];
+
+export interface ClanBracketStatus {
+  teamCp: number;
+  bracket: ClanBracketId;
+  label: string;
+  floorMet: boolean;
+  floorMessage: string;
+  challengeUpLeft: number;
+  canChallengeUp: boolean;
+  nextBracket: ClanBracketId | null;
+  nextLabel: string | null;
+  nightscarShopUnlocked: boolean;
+}
 
 type Listener = (e: GameEvent) => void;
 
@@ -1292,11 +1339,39 @@ export class Game {
     return this.save.clan ? missingClasses(this.save.clan.members) : [...HERO_CLASSES];
   }
 
+  /** Current roster team CP + Scout/Veteran/Nightscar status for Clan Hall UI. */
+  clanBracketStatus(now = Date.now()): ClanBracketStatus {
+    this.syncPlayerClanMember();
+    const roster =
+      this.save.clan && this.clanRosterReady()
+        ? pickQueueRoster(this.save.clan.members, this.save.heroClass)
+        : null;
+    const teamCp = roster ? teamCpSum(roster) : this.cp * 4;
+    const bracket = assignBracket(teamCp);
+    const floorMet = meetsClanQueueFloor(this.save.stagesCleared, this.cp);
+    const today = dayKey(now);
+    const challengeLeft = challengeUpAvailable(this.save.clanChallengeUpDayKey, today) ? 1 : 0;
+    const nxt = nextBracket(bracket);
+    return {
+      teamCp,
+      bracket,
+      label: CLAN_BRACKET_LABEL[bracket],
+      floorMet,
+      floorMessage: clanQueueFloorMessage(),
+      challengeUpLeft: challengeLeft,
+      canChallengeUp: floorMet && !!roster && challengeLeft > 0 && !!nxt,
+      nextBracket: nxt,
+      nextLabel: nxt ? CLAN_BRACKET_LABEL[nxt] : null,
+      nightscarShopUnlocked: this.save.clanNightscarUnlocked,
+    };
+  }
+
   /**
    * Playtest helper: ensure a clan exists, fill AI teammates, queue 4v4 vs AI rivals.
    * Creates a free "Practice Hall" clan when the player is not in one.
+   * Soft floor still applies (same as ranked queue) so solo test mirrors live rules.
    */
-  queuePractice4v4(): string | null {
+  queuePractice4v4(opts?: { challengeUp?: boolean }): string | null {
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
     if (!this.save.classPicked) return 'Pick a class first.';
     if (!this.save.clan) {
@@ -1312,22 +1387,46 @@ export class Game {
     const fillErr = this.fillAiClanRoster();
     if (fillErr && !this.clanRosterReady()) return fillErr;
     this.advanceTutorial('clan');
-    return this.queueClanPvp();
+    return this.queueClanPvp(opts);
   }
 
   /** Queue local 4v4 auto-battle. Returns error or null + emits pvp event. */
-  queueClanPvp(): string | null {
+  queueClanPvp(opts?: { challengeUp?: boolean }): string | null {
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
     if (!this.save.clan) return 'Join a clan first.';
+    if (!meetsClanQueueFloor(this.save.stagesCleared, this.cp)) {
+      return clanQueueFloorMessage();
+    }
     this.save.clan.members = this.save.clan.members.map(normalizeClanMember);
     this.syncPlayerClanMember();
     const roster = pickQueueRoster(this.save.clan.members, this.save.heroClass);
     if (!roster) return 'Need 4 members with one of each class ready.';
-    const avgCp = roster.reduce((s, m) => s + m.cp, 0) / roster.length;
-    const enemies = buildOpponentRoster(this.rng, roster, avgCp);
-    const result = simulatePvp(roster, enemies, this.save.gear, this.save.level, this.rng);
+    const teamCp = teamCpSum(roster);
+    const natural = assignBracket(teamCp);
+    let matchBracket: ClanBracketId = natural;
+    let usedChallenge = false;
+    if (opts?.challengeUp) {
+      const nxt = nextBracket(natural);
+      if (!nxt) return 'Already Nightscar — no higher bracket.';
+      const today = dayKey();
+      if (!challengeUpAvailable(this.save.clanChallengeUpDayKey, today)) {
+        return 'Challenge-up already used today.';
+      }
+      matchBracket = nxt;
+      usedChallenge = true;
+    }
+    const avgCp = teamCp / roster.length;
+    const matchAvg = usedChallenge ? BRACKET_TARGET_AVG_CP[matchBracket] : avgCp;
+    const enemies = buildOpponentRoster(this.rng, roster, matchAvg);
+    const result = simulatePvp(roster, enemies, this.save.gear, this.save.level, this.rng, {
+      bracket: matchBracket,
+      challengeUp: usedChallenge,
+      teamCp,
+    });
     this.refreshClanTokenDay();
-    const base = result.won ? TOKEN_WIN : TOKEN_LOSS;
+    if (usedChallenge) this.save.clanChallengeUpDayKey = dayKey();
+    if (matchBracket === 'nightscar') this.save.clanNightscarUnlocked = true;
+    const base = bracketTokenReward(matchBracket, result.won);
     const tokenPct = this.totals.effects.tokenGainPct;
     const gain = Math.round(base * (1 + tokenPct / 100));
     const { awarded, earnedToday } = applyTokenCap(this.save.clanTokensEarnedToday, gain);
@@ -1337,10 +1436,13 @@ export class Game {
     else this.save.clanLosses += 1;
     this.bumpDaily('clan');
     this.advanceTutorial('clan');
+    const tierNote = ` [${CLAN_BRACKET_LABEL[matchBracket]}${usedChallenge ? '↑' : ''}]`;
     const capNote =
       awarded < gain ? ` (day cap ${TOKEN_DAY_CAP}; +${awarded})` : ` (+${awarded} tokens)`;
-    this.say(`Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${capNote}${result.practiceAi ? ' (AI practice)' : ''}.`);
-    this.toast(`${result.won ? 'Victory' : 'Defeat'}${capNote}`, result.won ? 'good' : 'bad');
+    this.say(
+      `Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${tierNote}${capNote}${result.practiceAi ? ' (AI practice)' : ''}.`,
+    );
+    this.toast(`${result.won ? 'Victory' : 'Defeat'}${tierNote}${capNote}`, result.won ? 'good' : 'bad');
     this.emit({ t: 'pvp', result, tokens: awarded });
     this.changed();
     return null;
@@ -1349,6 +1451,9 @@ export class Game {
   buyClanVendor(index: number): string | null {
     const offer = CLAN_VENDOR[index];
     if (!offer) return 'Unknown offer.';
+    if (offer.nightscarOnly && !this.save.clanNightscarUnlocked) {
+      return 'Nightscar bracket unlock required for this piece.';
+    }
     if (this.save.clanTokens < offer.cost) return `Need ${offer.cost} clan tokens.`;
     this.save.clanTokens -= offer.cost;
     const gl = Math.max(18, Math.min(20, this.save.level));
@@ -1399,6 +1504,8 @@ export class Game {
       : null;
     this.save.season = { seasonId, startedAt: Date.now() };
     this.save.clanTokens = keepTokens;
+    this.save.clanChallengeUpDayKey = '';
+    this.save.clanNightscarUnlocked = false;
     this.save.classPicked = false;
     this.battle = null;
     this.mode = 'camp';

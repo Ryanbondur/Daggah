@@ -537,6 +537,15 @@ export function mountUI(
         if (err) game.toast(err, 'bad');
         break;
       }
+      case 'clan-queue-challenge': {
+        if (!game.clanRosterReady()) {
+          game.toast('Need one of each class — Fill AI roster', 'bad');
+          break;
+        }
+        const err = game.queueClanPvp({ challengeUp: true });
+        if (err) game.toast(err, 'bad');
+        break;
+      }
       case 'clan-leave':
         game.leaveClan();
         ctx.clanPane = 'hall';
