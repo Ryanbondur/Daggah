@@ -210,8 +210,10 @@ export class Battle {
   }
 
   skillCost(id: SkillId): number {
+    const def = SKILL_BY_ID[id];
     const pct = this.heroInput.effects.skillCostPct[id] ?? 0;
-    return Math.round(SKILL_BY_ID[id].energy * (1 - pct / 100));
+    const ultPct = def.ultimate ? this.heroInput.effects.ultimateCostPct : 0;
+    return Math.round(def.energy * (1 - pct / 100) * (1 - ultPct / 100));
   }
 
   skillCd(id: SkillId): number {
@@ -651,6 +653,9 @@ export class Battle {
     if (opts.skill) {
       const skillBonus = inp.effects.skillDmgPct[opts.skill] ?? 0;
       if (skillBonus) dmg *= 1 + skillBonus / 100;
+      if (SKILL_BY_ID[opts.skill]?.ultimate && inp.effects.ultimateDmgPct > 0) {
+        dmg *= 1 + inp.effects.ultimateDmgPct / 100;
+      }
     }
     if (this.buffs.postUltT > 0 && inp.effects.postUltDmgPct > 0) {
       dmg *= 1 + inp.effects.postUltDmgPct / 100;

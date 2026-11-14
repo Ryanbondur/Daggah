@@ -88,9 +88,11 @@ export type SetId =
   | 'cinderstride'
   | 'nightfang'
   | 'gloomveil'
-  | 'echoplate';
+  | 'echoplate'
+  | 'voidwoven'
+  | 'nightscar-regalia';
 
-export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h';
+export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j';
 
 export interface Item {
   id: string;

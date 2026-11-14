@@ -357,9 +357,107 @@ export const ENEMIES: Record<string, EnemyDef> = {
     atkInterval: 2.35,
     speed: 0.18,
   },
+  'void-larva': {
+    id: 'void-larva',
+    name: 'Void Larva',
+    sprite: 'enemy-void-larva',
+    role: 'trash',
+    size: 0.16,
+    hpMul: 0.88,
+    atkMul: 1.1,
+    atkInterval: 1.4,
+    speed: 0.35,
+  },
+  'rift-shade': {
+    id: 'rift-shade',
+    name: 'Rift Shade',
+    sprite: 'enemy-rift-shade',
+    role: 'trash',
+    size: 0.2,
+    hpMul: 1,
+    atkMul: 1.08,
+    atkInterval: 1.6,
+    speed: 0.28,
+  },
+  'gate-warden': {
+    id: 'gate-warden',
+    name: 'Gate Warden',
+    sprite: 'enemy-gate-warden',
+    role: 'elite',
+    size: 0.37,
+    hpMul: 1.05,
+    atkMul: 1.15,
+    atkInterval: 2.1,
+    speed: 0.19,
+  },
+  'void-herald': {
+    id: 'void-herald',
+    name: 'Void Herald',
+    sprite: 'boss-void-herald',
+    role: 'boss',
+    size: 0.52,
+    hpMul: 1,
+    atkMul: 1.12,
+    atkInterval: 2.35,
+    speed: 0.17,
+  },
+  'nightscar-shade': {
+    id: 'nightscar-shade',
+    name: 'Nightscar Shade',
+    sprite: 'enemy-nightscar-shade',
+    role: 'trash',
+    size: 0.18,
+    hpMul: 0.9,
+    atkMul: 1.12,
+    atkInterval: 1.45,
+    speed: 0.34,
+  },
+  'abyss-crawler': {
+    id: 'abyss-crawler',
+    name: 'Abyss Crawler',
+    sprite: 'enemy-abyss-crawler',
+    role: 'trash',
+    size: 0.19,
+    hpMul: 1.05,
+    atkMul: 1.05,
+    atkInterval: 1.65,
+    speed: 0.26,
+  },
+  'nightscar-champion': {
+    id: 'nightscar-champion',
+    name: 'Nightscar Champion',
+    sprite: 'enemy-nightscar-champion',
+    role: 'elite',
+    size: 0.38,
+    hpMul: 1.1,
+    atkMul: 1.18,
+    atkInterval: 2.05,
+    speed: 0.18,
+  },
+  'daggah-hungering': {
+    id: 'daggah-hungering',
+    name: 'Daggah, the Hungering',
+    sprite: 'boss-daggah-hungering',
+    role: 'boss',
+    size: 0.55,
+    hpMul: 1.05,
+    atkMul: 1.15,
+    atkInterval: 2.3,
+    speed: 0.16,
+  },
 };
 
-export type BackgroundId = 'ember' | 'cavern' | 'bone' | 'frost' | 'mire' | 'cinder' | 'spire' | 'echo';
+export type BackgroundId =
+  | 'ember'
+  | 'cavern'
+  | 'bone'
+  | 'frost'
+  | 'mire'
+  | 'cinder'
+  | 'spire'
+  | 'echo'
+  | 'void'
+  | 'nightscar';
 
 export interface DungeonDef {
   id: string;
@@ -368,6 +466,8 @@ export interface DungeonDef {
   glBand: [number, number];
   sets: SetId[];
   floors: number;
+  /** Nightscar Apex: stingy endgame drop tables (GDD §5.4 / §6.8). */
+  endgame?: boolean;
 }
 
 export interface ActDef {
@@ -545,12 +645,47 @@ export const ACTS: ActDef[] = [
       floors: 10,
     },
   },
-];
-
-/** Acts 9-10 are designed (GDD §5.1) but locked in this slice. */
-export const LOCKED_ACTS: { id: number; name: string; theme: string }[] = [
-  { id: 9, name: 'Voidgate', theme: 'Breach corridors' },
-  { id: 10, name: 'Nightscar Depths', theme: 'Final abyss' },
+  {
+    id: 9,
+    name: 'Voidgate',
+    theme: 'Breach corridors',
+    bg: 'void',
+    stages: 5,
+    recLevel: [16, 18],
+    trash: ['void-larva', 'rift-shade'],
+    elite: 'gate-warden',
+    boss: 'void-herald',
+    playable: true,
+    dungeon: {
+      id: 'gate-reliquary',
+      name: 'Gate Reliquary',
+      actId: 9,
+      glBand: [16, 18],
+      sets: ['voidwoven'],
+      floors: 10,
+    },
+  },
+  {
+    id: 10,
+    name: 'Nightscar Depths',
+    theme: 'Final abyss',
+    bg: 'nightscar',
+    stages: 5,
+    recLevel: [18, 20],
+    trash: ['nightscar-shade', 'abyss-crawler'],
+    elite: 'nightscar-champion',
+    boss: 'daggah-hungering',
+    playable: true,
+    dungeon: {
+      id: 'nightscar-apex',
+      name: 'Nightscar Apex',
+      actId: 10,
+      glBand: [18, 20],
+      sets: ['nightscar-regalia'],
+      floors: 10,
+      endgame: true,
+    },
+  },
 ];
 
 export function getAct(id: number): ActDef {
@@ -593,9 +728,11 @@ export interface EnemyScale {
 
 /** Enemy stats for a given tier and role. Tuned against hero progression in game/sim.test.ts. */
 export function enemyScale(tier: number, role: EnemyRole): EnemyScale {
-  // Soften after Act 2, Act 4, then Act 6 so Acts 7-8 stay clearable with set farming.
-  const growth = tier <= 9 ? 1.22 : tier <= 19 ? 1.175 : tier <= 29 ? 1.14 : 1.11;
-  const atkGrowth = tier <= 9 ? 1.15 : tier <= 19 ? 1.12 : tier <= 29 ? 1.1 : 1.08;
+  // Soften after Act 2, 4, 6, then 8 so Acts 9-10 stay clearable with set farming.
+  const growth =
+    tier <= 9 ? 1.22 : tier <= 19 ? 1.175 : tier <= 29 ? 1.14 : tier <= 39 ? 1.11 : 1.085;
+  const atkGrowth =
+    tier <= 9 ? 1.15 : tier <= 19 ? 1.12 : tier <= 29 ? 1.1 : tier <= 39 ? 1.08 : 1.06;
   const hp = 55 * Math.pow(growth, tier);
   const atk = 9 * Math.pow(atkGrowth, tier);
   const def = 2 + tier * 2.0;

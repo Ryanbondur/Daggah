@@ -114,6 +114,34 @@ describe('gear', () => {
     const echo = computeHero(15, gear, 'Rogue').effects;
     expect(echo.atkPct).toBeGreaterThanOrEqual(7);
   });
+
+  it('applies Act 9-10 set bonuses (Voidwoven, Nightscar Regalia)', () => {
+    const gear = starterGear('Warrior');
+    const rng = mulberry32(44);
+    gear.weapon = rollItem(rng, { gearLevel: 17, rarity: 'epic', slot: 'weapon', setId: 'voidwoven' });
+    gear.chest = rollItem(rng, { gearLevel: 17, rarity: 'epic', slot: 'chest', setId: 'voidwoven' });
+    const void2 = computeHero(17, gear, 'Warrior').effects;
+    expect(void2.atkPct).toBeGreaterThanOrEqual(9);
+    expect(void2.defPct).toBeGreaterThanOrEqual(9);
+    expect(void2.hpPct).toBeGreaterThanOrEqual(9);
+    gear.belt = rollItem(rng, { gearLevel: 17, rarity: 'epic', slot: 'belt', setId: 'voidwoven' });
+    gear.helmet = rollItem(rng, { gearLevel: 17, rarity: 'epic', slot: 'helmet', setId: 'voidwoven' });
+    expect(computeHero(17, gear, 'Warrior').effects.critDmgPct).toBeGreaterThanOrEqual(10);
+    gear.gloves = rollItem(rng, { gearLevel: 17, rarity: 'legendary', slot: 'gloves', setId: 'voidwoven' });
+    gear.boots = rollItem(rng, { gearLevel: 17, rarity: 'legendary', slot: 'boots', setId: 'voidwoven' });
+    expect(computeHero(17, gear, 'Warrior').effects.ultimateCostPct).toBeGreaterThanOrEqual(10);
+    const night: typeof gear = {};
+    night.weapon = rollItem(rng, { gearLevel: 19, rarity: 'epic', slot: 'weapon', setId: 'nightscar-regalia' });
+    night.chest = rollItem(rng, { gearLevel: 19, rarity: 'epic', slot: 'chest', setId: 'nightscar-regalia' });
+    night.belt = rollItem(rng, { gearLevel: 19, rarity: 'epic', slot: 'belt', setId: 'nightscar-regalia' });
+    night.helmet = rollItem(rng, { gearLevel: 19, rarity: 'epic', slot: 'helmet', setId: 'nightscar-regalia' });
+    night.gloves = rollItem(rng, { gearLevel: 19, rarity: 'legendary', slot: 'gloves', setId: 'nightscar-regalia' });
+    night.boots = rollItem(rng, { gearLevel: 19, rarity: 'legendary', slot: 'boots', setId: 'nightscar-regalia' });
+    const fx = computeHero(19, night, 'Warrior').effects;
+    expect(fx.atkPct).toBeGreaterThanOrEqual(10);
+    expect(fx.skillPowerPct).toBeGreaterThanOrEqual(12);
+    expect(fx.ultimateDmgPct).toBeGreaterThanOrEqual(20);
+  });
 });
 
 describe('save', () => {

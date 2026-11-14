@@ -47,6 +47,14 @@ export const ENEMY_SPRITES = [
   'enemy-crystal-mite',
   'enemy-crystal-golem',
   'boss-resonance-queen',
+  'enemy-void-larva',
+  'enemy-rift-shade',
+  'enemy-gate-warden',
+  'boss-void-herald',
+  'enemy-nightscar-shade',
+  'enemy-abyss-crawler',
+  'enemy-nightscar-champion',
+  'boss-daggah-hungering',
 ];
 
 export const SKILL_IDS: SkillId[] = [

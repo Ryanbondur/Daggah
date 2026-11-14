@@ -273,8 +273,7 @@ export class Game {
       this.persist();
     } else if (this.mode === 'dungeon' && this.dungeonCtx && type !== 'camp') {
       const ctx = this.dungeonCtx;
-      const source: DropSource =
-        type === 'boss' ? 'dungeon-boss' : type === 'miniboss' ? 'dungeon-mini' : 'dungeon-floor';
+      const source = this.dungeonDropSource(ctx.dungeon, type);
       const drops = type === 'boss' ? 2 : 1;
       for (let i = 0; i < drops; i++) {
         ctx.loot.push(this.rollDungeonItem(ctx.dungeon, index + 1, source));
@@ -602,8 +601,7 @@ export class Game {
     const baseTier = stageTier(d.actId, 5) + 0.3;
     for (let floor = 1; floor <= d.floors; floor++) {
       const type: NodeType = floor === d.floors ? 'boss' : floor === 5 ? 'miniboss' : 'trash';
-      const source: DropSource =
-        type === 'boss' ? 'dungeon-boss' : type === 'miniboss' ? 'dungeon-mini' : 'dungeon-floor';
+      const source = this.dungeonDropSource(d, type);
       const drops = type === 'boss' ? 2 : 1;
       for (let i = 0; i < drops; i++) loot.push(this.rollDungeonItem(d, floor, source));
       const tier = baseTier + (floor - 1) * 0.12;
@@ -642,6 +640,13 @@ export class Game {
       rarity: rollRarity(this.rng, source),
     });
     this.queueLoot([item]);
+  }
+
+  private dungeonDropSource(d: DungeonDef, type: NodeType): DropSource {
+    if (d.endgame) {
+      return type === 'boss' ? 'nightscar-boss' : type === 'miniboss' ? 'nightscar-mini' : 'nightscar-floor';
+    }
+    return type === 'boss' ? 'dungeon-boss' : type === 'miniboss' ? 'dungeon-mini' : 'dungeon-floor';
   }
 
   private rollDungeonItem(d: DungeonDef, floor: number, source: DropSource): Item {
