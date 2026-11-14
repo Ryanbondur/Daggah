@@ -789,6 +789,47 @@ export function salvageValue(item: Item): { dust: number; crystals: number } {
   return RARITIES[item.rarity].salvage;
 }
 
+/** Vendor junk price — gold from dust/crystals salvage yield. */
+export function sellValue(item: Item): number {
+  const v = salvageValue(item);
+  return v.dust * 2 + v.crystals * 10;
+}
+
+export function rarityIndex(r: RarityId): number {
+  return RARITY_ORDER.indexOf(r);
+}
+
+/** True when `item` rarity is strictly below the given ceiling. */
+export function rarityBelow(item: Item, ceiling: RarityId): boolean {
+  return rarityIndex(item.rarity) < rarityIndex(ceiling);
+}
+
+/** True when `item` rarity is at or below the given max (inclusive). */
+export function rarityAtMost(item: Item, max: RarityId): boolean {
+  return rarityIndex(item.rarity) <= rarityIndex(max);
+}
+
+/**
+ * Recommended CP for a stage at the given hero/gear level — full rare kit
+ * (primary stats only) so push tension reads against a clear farming bar.
+ */
+export function estimateStageRecCp(level: number): number {
+  const gl = Math.max(1, level);
+  const gear: Gear = {};
+  for (const slot of SLOTS) {
+    gear[slot] = {
+      id: `rec_${slot}`,
+      slot,
+      rarity: 'rare',
+      gearLevel: gl,
+      name: 'Benchmark',
+      icon: 'a',
+      stats: baseStatsForSlot(slot, gl, RARITIES.rare.mult),
+    };
+  }
+  return computeHero(gl, gear, 'Warrior').cp;
+}
+
 export function formatStat(key: StatKey, value: number): string {
   const suffix = key === 'critRate' || key === 'critDmg' || key === 'skillPower' || key === 'haste' ? '%' : '';
   const v = Number.isInteger(value) ? String(value) : value.toFixed(1);

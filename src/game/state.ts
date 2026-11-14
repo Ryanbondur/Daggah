@@ -2,7 +2,7 @@ import type { Gear } from '../data/gear';
 import { starterGear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import { defaultTutorial, type TutorialState } from '../data/tutorial';
-import type { HeroClass, Item, SkillId } from '../data/types';
+import type { HeroClass, Item, RarityId, SkillId } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
 import type { ClanData, SeasonData } from './clan';
 import { defaultSeason, normalizeClanMember } from './clan';
@@ -19,6 +19,13 @@ export const PLAYABLE_STAGES = 50;
 export interface Settings {
   autoSalvageReplaced: boolean;
   autoSalvageWorse: boolean;
+  /**
+   * Auto-salvage loot at or below this rarity (inclusive).
+   * `null` = off (only `autoSalvageWorse` / bag-full rules apply).
+   */
+  autoSalvageRarityMax: RarityId | null;
+  /** Persist mute for combat SFX. */
+  muted: boolean;
   speed: number;
 }
 
@@ -102,7 +109,13 @@ export function defaultSave(now = Date.now()): SaveData {
     seenSkills: [...DEFAULT_LOADOUT.Warrior],
     questIndex: 0,
     salvageCount: 0,
-    settings: { autoSalvageReplaced: true, autoSalvageWorse: false, speed: 1 },
+    settings: {
+      autoSalvageReplaced: true,
+      autoSalvageWorse: false,
+      autoSalvageRarityMax: 'common',
+      muted: false,
+      speed: 1,
+    },
     createdAt: now,
     clanTokens: 0,
     clanTokensEarnedToday: 0,
@@ -135,6 +148,30 @@ export interface Storage {
 
 function isHeroClass(v: unknown): v is HeroClass {
   return typeof v === 'string' && (HERO_CLASSES as string[]).includes(v);
+}
+
+const RARITY_IDS: RarityId[] = ['common', 'rare', 'epic', 'legendary'];
+
+function isRarityId(v: unknown): v is RarityId {
+  return typeof v === 'string' && (RARITY_IDS as string[]).includes(v);
+}
+
+function normalizeSettings(
+  parsed: Partial<Settings> | undefined,
+  fresh: Settings,
+): Settings {
+  const merged = { ...fresh, ...(parsed ?? {}) };
+  if (parsed && 'autoSalvageRarityMax' in parsed) {
+    const max = parsed.autoSalvageRarityMax;
+    merged.autoSalvageRarityMax = max === null ? null : isRarityId(max) ? max : fresh.autoSalvageRarityMax;
+  } else {
+    merged.autoSalvageRarityMax = fresh.autoSalvageRarityMax;
+  }
+  merged.muted = !!merged.muted;
+  merged.autoSalvageReplaced = !!merged.autoSalvageReplaced;
+  merged.autoSalvageWorse = !!merged.autoSalvageWorse;
+  merged.speed = typeof merged.speed === 'number' ? merged.speed : fresh.speed;
+  return merged;
 }
 
 function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: number): Pick<
@@ -213,7 +250,7 @@ export function loadSave(storage: Storage | undefined, now = Date.now()): SaveDa
         heroClass: 'Warrior',
         classPicked: true,
         gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
-        settings: { ...fresh.settings, ...(parsed.settings ?? {}) },
+        settings: normalizeSettings(parsed.settings, fresh.settings),
         dungeons: parsed.dungeons ?? {},
         bag: parsed.bag ?? [],
         pending: parsed.pending ?? [],
@@ -234,7 +271,7 @@ export function loadSave(storage: Storage | undefined, now = Date.now()): SaveDa
         heroClass: parsed.heroClass,
         classPicked: parsed.classPicked !== false,
         gear: { ...fresh.gear, ...(parsed.gear ?? {}) },
-        settings: { ...fresh.settings, ...(parsed.settings ?? {}) },
+        settings: normalizeSettings(parsed.settings, fresh.settings),
         dungeons: parsed.dungeons ?? {},
         bag: parsed.bag ?? [],
         pending: parsed.pending ?? [],

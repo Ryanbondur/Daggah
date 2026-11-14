@@ -1,5 +1,5 @@
-import { SETS, computeHero, setCounts } from '../data/gear';
-import type { HeroClass, SetId, StatKey } from '../data/types';
+import { RARITIES, SETS, computeHero, setCounts } from '../data/gear';
+import type { HeroClass, RarityId, SetId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_LABEL } from '../data/types';
 import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
 import { CLAN_CREATE_COST, TOKEN_DAY_CAP, TOKEN_LOSS, TOKEN_WIN } from '../game/clan';
@@ -147,18 +147,33 @@ export function showItemInfo(ctx: UIContext, slot: string): void {
   );
 }
 
+const BAG_BULK_CEILINGS: RarityId[] = ['rare', 'epic', 'legendary'];
+let bagBulkCeiling: RarityId = 'rare';
+
 export function showBag(ctx: UIContext): void {
   const g = ctx.game;
   const bag = g.save.bag;
   const cells: string[] = [];
   for (const it of bag) cells.push(slotHtml(it, { action: 'bag-item' }));
   for (let i = bag.length; i < BAG_CAP; i++) cells.push('<div class="bag-empty"></div>');
+  const ceil = bagBulkCeiling;
+  const ceilChips = BAG_BULK_CEILINGS.map(
+    (r) =>
+      `<button class="chip ${ceil === r ? 'on' : ''}" data-action="bag-ceil" data-r="${r}">Below ${RARITIES[r].label}</button>`,
+  ).join('');
   const el = ctx.openModal(
     `<div class="sheet">
       <h2>Bag <small style="font-size:3.2cqw;font-family:var(--font-ui)">${bag.length}/${BAG_CAP}</small></h2>
-      <div class="body"><p>Tap a piece to compare it with what you have equipped.</p><div class="bag-grid">${cells.join('')}</div></div>
+      <div class="body">
+        <p>Tap a piece to compare it with what you have equipped.</p>
+        <div class="bag-grid">${cells.join('')}</div>
+        <h3>Clear overflow</h3>
+        <div class="chip-row bag-ceil-row">${ceilChips}</div>
+        <p class="tagline">Salvage → dust/crystals. Sell → gold. Both target items strictly below the chip rarity.</p>
+      </div>
       <div class="btns">
-        <button class="btn stone" data-action="bag-salvage-commons">Salvage Commons</button>
+        <button class="btn stone" data-action="bag-salvage-below">Salvage all below</button>
+        <button class="btn stone" data-action="bag-sell-below">Sell all below</button>
         <button class="btn gold" data-action="bag-close">Close</button>
       </div>
     </div>`,
@@ -172,9 +187,16 @@ export function showBag(ctx: UIContext): void {
       ctx.showCompare(t.dataset.id!, 'bag');
     } else if (t.dataset.action === 'bag-close') {
       ctx.closeModal();
-    } else if (t.dataset.action === 'bag-salvage-commons') {
-      const commons = g.save.bag.filter((i) => i.rarity === 'common');
-      commons.forEach((i) => g.salvage(i));
+    } else if (t.dataset.action === 'bag-ceil') {
+      bagBulkCeiling = t.dataset.r as RarityId;
+      ctx.closeModal();
+      showBag(ctx);
+    } else if (t.dataset.action === 'bag-salvage-below') {
+      g.salvageBagBelow(bagBulkCeiling);
+      ctx.closeModal();
+      showBag(ctx);
+    } else if (t.dataset.action === 'bag-sell-below') {
+      g.sellBagBelow(bagBulkCeiling);
       ctx.closeModal();
       showBag(ctx);
     }
@@ -234,12 +256,24 @@ export function showSettings(ctx: UIContext): void {
       return `<button class="btn ${s.speed === sp ? 'gold' : 'stone'} ${ok ? '' : 'disabled'}" data-action="speed" data-v="${sp}" style="font-size:3cqw;padding:1.6cqw .6cqw">${label}</button>`;
     })
     .join('');
+  const rarityMax = s.autoSalvageRarityMax;
+  const rarityChips = (['off', 'common', 'rare', 'epic'] as const)
+    .map((r) => {
+      const on = r === 'off' ? rarityMax === null : rarityMax === r;
+      const label = r === 'off' ? 'Off' : `≤ ${RARITIES[r].label}`;
+      return `<button class="chip ${on ? 'on' : ''}" data-action="set-rarity-max" data-r="${r}">${label}</button>`;
+    })
+    .join('');
   const el = ctx.openModal(
     `<div class="sheet">
       <h2>Settings</h2>
       <div class="body">
+        <button class="toggle" data-action="set-mute"><span>Mute combat SFX<small>Hit and skill sounds (persists)</small></span><i class="sw ${s.muted ? 'on' : ''}"></i></button>
         <button class="toggle" data-action="set-auto-replaced"><span>Auto-salvage replaced gear<small>Default for the Replace dialog</small></span><i class="sw ${s.autoSalvageReplaced ? 'on' : ''}"></i></button>
         <button class="toggle" data-action="set-auto-worse"><span>Auto-salvage non-upgrades<small>Skip the compare dialog for drops that would lower your CP</small></span><i class="sw ${s.autoSalvageWorse ? 'on' : ''}"></i></button>
+        <h3>Auto-salvage rarity</h3>
+        <p class="tagline">Loot at or below this rarity is salvaged on pickup (bag overflow relief).</p>
+        <div class="chip-row">${rarityChips}</div>
         <h3>Battle speed</h3>
         <div class="btns" style="margin-top:0">${speedChips}</div>
         <h3>Playtest tools</h3>
@@ -273,6 +307,11 @@ export function showSettings(ctx: UIContext): void {
       case 'close':
         ctx.closeModal();
         break;
+      case 'set-mute':
+        g.setMuted(!g.save.settings.muted);
+        ctx.closeModal();
+        showSettings(ctx);
+        break;
       case 'set-auto-replaced':
         g.setAutoSalvageReplaced(!g.save.settings.autoSalvageReplaced);
         ctx.closeModal();
@@ -283,6 +322,13 @@ export function showSettings(ctx: UIContext): void {
         ctx.closeModal();
         showSettings(ctx);
         break;
+      case 'set-rarity-max': {
+        const r = t.dataset.r;
+        g.setAutoSalvageRarityMax(r === 'off' || !r ? null : (r as RarityId));
+        ctx.closeModal();
+        showSettings(ctx);
+        break;
+      }
       case 'speed':
         g.setSpeed(Number(t.dataset.v));
         ctx.closeModal();
@@ -683,6 +729,19 @@ export function showResult(ctx: UIContext, r: RunResult): void {
       ? `<button class="btn stone" data-action="res-salvage">Salvage Non-Upgrades</button>
          <button class="btn gold" data-action="res-review">Review Gear</button>`
       : `<button class="btn gold" data-action="res-ok">OK</button>`;
+  } else if (r.kind === 'stageFailed') {
+    const your = r.yourCp ?? g.cp;
+    const rec = r.recCp ?? your;
+    const low = your < rec;
+    body = `<p>${escapeHtml(r.note ?? '')}</p>
+      <div class="cp-tension ${low ? 'low' : 'ok'}">
+        <div class="row"><span>Your CP</span><b>${fmt(your)}</b></div>
+        <div class="row"><span>Stage rec. CP</span><b>${fmt(rec)}</b></div>
+        <div class="row"><span>Delta</span><b class="${low ? 'bad' : 'good'}">${low ? '' : '+'}${fmt(your - rec)}</b></div>
+      </div>
+      <p class="farm-nudge">${escapeHtml(r.farmHint ?? 'Farm gear → retry.')}</p>`;
+    buttons = `<button class="btn stone" data-action="res-farm">Farm Dungeon</button>
+      <button class="btn gold" data-action="res-retry">Retry Stage</button>`;
   } else {
     body = `<p>${r.note ?? ''}</p>`;
     buttons = `<button class="btn gold" data-action="res-ok">${r.kind === 'actClear' ? 'Onward' : 'Back to Camp'}</button>`;
@@ -697,6 +756,15 @@ export function showResult(ctx: UIContext, r: RunResult): void {
     switch (t.dataset.action) {
       case 'res-ok':
         ctx.closeModal();
+        break;
+      case 'res-farm':
+        ctx.closeModal();
+        ctx.setTab('adventure');
+        break;
+      case 'res-retry':
+        ctx.closeModal();
+        ctx.setTab('camp');
+        g.startBattle();
         break;
       case 'res-review':
         ctx.closeModal();
