@@ -42,6 +42,7 @@ import {
   tutorialActive,
   type TutorialStep,
 } from '../data/tutorial';
+import { APP_CONTENT_VERSION, shouldShowWhatsNew } from '../data/whatsNew';
 import type { HeroClass, Item, PlaystyleId, RarityId, SkillId, SlotId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
@@ -1126,6 +1127,19 @@ export class Game {
     this.changed();
   }
 
+  // ---- what's new ---------------------------------------------------------
+
+  shouldShowWhatsNew(): boolean {
+    // First-run coach takes priority; notes are for returning players after a bump.
+    if (this.tutorialIsActive) return false;
+    return shouldShowWhatsNew(this.save.lastSeenContentVersion);
+  }
+
+  dismissWhatsNew(): void {
+    this.save.lastSeenContentVersion = APP_CONTENT_VERSION;
+    this.changed();
+  }
+
   // ---- season milestones --------------------------------------------------
 
   seasonProgressInput() {
@@ -1215,6 +1229,7 @@ export class Game {
     });
     this.say(`Clan ${this.save.clan.name} founded. Code ${this.save.clan.code}.`);
     this.toast(`Clan founded (−${CLAN_CREATE_COST} crystals)`, 'good');
+    this.advanceTutorial('clan');
     this.changed();
     return null;
   }
@@ -1232,6 +1247,7 @@ export class Game {
     });
     this.say(`Joined ${this.save.clan.name} (${this.save.clan.code}).`);
     this.toast(`Joined ${this.save.clan.name}`, 'good');
+    this.advanceTutorial('clan');
     this.changed();
     return null;
   }
@@ -1293,6 +1309,7 @@ export class Game {
     }
     const fillErr = this.fillAiClanRoster();
     if (fillErr && !this.clanRosterReady()) return fillErr;
+    this.advanceTutorial('clan');
     return this.queueClanPvp();
   }
 
@@ -1317,6 +1334,7 @@ export class Game {
     if (result.won) this.save.clanWins += 1;
     else this.save.clanLosses += 1;
     this.bumpDaily('clan');
+    this.advanceTutorial('clan');
     const capNote =
       awarded < gain ? ` (day cap ${TOKEN_DAY_CAP}; +${awarded})` : ` (+${awarded} tokens)`;
     this.say(`Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${capNote}${result.practiceAi ? ' (AI practice)' : ''}.`);
@@ -1351,10 +1369,12 @@ export class Game {
     const seasonId = this.save.season.seasonId + 1;
     const keepTokens = 0; // GDD: clan tokens reset
     const everTut = this.save.tutorial.everCompleted;
+    const lastSeen = this.save.lastSeenContentVersion;
     this.save = defaultSave();
     this.save.tutorial.everCompleted = everTut;
     this.save.tutorial.step = everTut ? TUTORIAL_STEPS.length : 0;
     this.save.tutorial.skipped = false;
+    this.save.lastSeenContentVersion = lastSeen;
     this.save.clan = clan
       ? {
           ...clan,
