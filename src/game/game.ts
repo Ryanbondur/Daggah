@@ -95,6 +95,7 @@ import {
   DUNGEON_CRYSTAL_COST,
   KEY_CAP,
   KEY_REGEN_MS,
+  msUntilNextKey,
   PLAYABLE_STAGES,
   STAGES_PER_ACT,
   clearSave,
@@ -753,8 +754,7 @@ export class Game {
   }
 
   nextKeyInMs(now = Date.now()): number {
-    if (this.save.keys >= KEY_CAP) return 0;
-    return Math.max(0, KEY_REGEN_MS - (now - this.save.keysAt));
+    return msUntilNextKey(this.save.keys, this.save.keysAt, now);
   }
 
   private payDungeonEntry(): boolean {

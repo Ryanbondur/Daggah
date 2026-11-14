@@ -13,7 +13,16 @@ import { HERO_CLASSES } from '../data/types';
 import { addXp, availableSpeeds, heroBaseStats, maxEnergy, xpToNext } from '../data/xp';
 import { Game } from './game';
 import { mulberry32 } from './rng';
-import { SAVE_KEY, defaultSave, loadSave, writeSave } from './state';
+import {
+  KEY_CAP,
+  KEY_REGEN_MS,
+  SAVE_KEY,
+  defaultSave,
+  formatKeyRegenLabel,
+  loadSave,
+  msUntilNextKey,
+  writeSave,
+} from './state';
 import type { Storage } from './state';
 
 function memoryStorage(): Storage {
@@ -350,5 +359,36 @@ describe('skill loadout passives', () => {
     const game = leveledWarrior(1);
     game.startBattle();
     expect(game.toggleSkill('cleave')).toMatch(/camp/i);
+  });
+});
+
+describe('dungeon key regen', () => {
+  it('msUntilNextKey is 0 at cap and otherwise remaining interval', () => {
+    const now = 1_000_000;
+    expect(msUntilNextKey(KEY_CAP, now - 60_000, now)).toBe(0);
+    expect(msUntilNextKey(3, now, now)).toBe(KEY_REGEN_MS);
+    expect(msUntilNextKey(3, now - 10 * 60_000, now)).toBe(KEY_REGEN_MS - 10 * 60_000);
+    expect(msUntilNextKey(3, now - KEY_REGEN_MS - 5_000, now)).toBe(0);
+  });
+
+  it('formatKeyRegenLabel shows full at cap and Xm countdown otherwise', () => {
+    expect(formatKeyRegenLabel(KEY_CAP, 0)).toBe('full');
+    expect(formatKeyRegenLabel(7, 30 * 60_000)).toBe('next key in 30m');
+    expect(formatKeyRegenLabel(2, 90_000)).toBe('next key in 2m');
+    expect(formatKeyRegenLabel(2, 1)).toBe('next key in 1m');
+  });
+
+  it('Game.refreshKeys awards keys on the 30m cadence up to cap 8', () => {
+    const game = new Game(memoryStorage(), mulberry32(1));
+    const t0 = 5_000_000;
+    game.save.keys = 5;
+    game.save.keysAt = t0;
+    game.refreshKeys(t0 + KEY_REGEN_MS * 2 + 1);
+    expect(game.save.keys).toBe(7);
+    expect(game.nextKeyInMs(t0 + KEY_REGEN_MS * 2 + 1)).toBe(KEY_REGEN_MS - 1);
+    game.refreshKeys(t0 + KEY_REGEN_MS * 10);
+    expect(game.save.keys).toBe(KEY_CAP);
+    expect(game.nextKeyInMs(t0 + KEY_REGEN_MS * 10)).toBe(0);
+    expect(formatKeyRegenLabel(game.save.keys, game.nextKeyInMs())).toBe('full');
   });
 });

@@ -17,7 +17,7 @@ import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../gam
 import { NIGHTSCAR_PITY_MAX } from '../game/nightscarPity';
 import { DAILY_SHOP_SIZE } from '../game/shop';
 import { HERO_CLASSES } from '../data/types';
-import { KEY_CAP, STAGES_PER_ACT } from '../game/state';
+import { KEY_CAP, STAGES_PER_ACT, formatKeyRegenLabel } from '../game/state';
 import { asset, itemIcon, navIcon, skillIcon } from './assets';
 import type { CampPane, ClanPane, UIContext } from './context';
 import { fmt } from './context';
@@ -31,15 +31,19 @@ export function currencyStrip(ctx: UIContext, opts: { keys?: boolean; dust?: boo
   const s = g.save;
   const showKeys = opts.keys !== false;
   const showDust = !!opts.dust;
-  let keyTimer = '';
-  if (showKeys && opts.keyTimer !== false) {
-    g.refreshKeys();
-    keyTimer =
-      s.keys < KEY_CAP ? ` <small style="font-weight:600;color:#6b655a">+1 in ${fmtTime(g.nextKeyInMs())}</small>` : '';
+  let keyChip = '';
+  if (showKeys) {
+    if (opts.keyTimer !== false) {
+      g.refreshKeys();
+      const keyLabel = formatKeyRegenLabel(s.keys, g.nextKeyInMs());
+      keyChip = `<span class="res res-keys"><img src="${navIcon('key')}" alt="" /><span class="keys-count">${s.keys}/${KEY_CAP}</span><small class="keys-regen">${keyLabel}</small></span>`;
+    } else {
+      keyChip = `<span class="res"><img src="${navIcon('key')}" alt="" />${s.keys}/${KEY_CAP}</span>`;
+    }
   }
   return `<div class="res-bar currency-strip" role="group" aria-label="Currencies">
     <span class="res"><img src="${navIcon('gold')}" alt="" /><b>${fmt(s.gold)}</b></span>
-    ${showKeys ? `<span class="res"><img src="${navIcon('key')}" alt="" />${s.keys}/${KEY_CAP}${keyTimer}</span>` : ''}
+    ${keyChip}
     <span class="res"><img src="${navIcon('crystal')}" alt="" />${fmt(s.crystals)}</span>
     ${showDust ? `<span class="res"><i class="dust"></i>${fmt(s.dust)}</span>` : ''}
   </div>`;
@@ -221,12 +225,6 @@ export function renderSkill(ctx: UIContext): string {
     <div class="tagline">${PLAYSTYLES[style].tagline}</div>
     ${cards}
   </div>`;
-}
-
-function fmtTime(ms: number): string {
-  const s = Math.ceil(ms / 1000);
-  const m = Math.floor(s / 60);
-  return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
 function fmtSeasonRemain(ms: number): string {
