@@ -68,6 +68,10 @@ export function mountUI(
       <div class="xpbar"><div class="fill" id="xp-fill"></div><i class="notch" style="left:33%"></i><i class="notch" style="left:66%"></i><div class="txt" id="xp-txt"></div></div>
       <button class="speed-btn" id="speed" data-action="speed">1x</button>
     </section>
+    <div class="crystal-wallet" id="crystal-wallet" aria-live="polite" title="Crystals">
+      <img src="${navIcon('crystal')}" alt="" draggable="false" />
+      <b id="crystal-val">0</b>
+    </div>
     <section id="pane"></section>
     <nav id="nav">
       <button class="nav-btn" data-tab="camp"><img src="${navIcon('camp')}" alt="" />Camp</button>
@@ -276,6 +280,7 @@ export function mountUI(
     $('#xp-fill').style.width = need ? `${(game.save.xp / need) * 100}%` : '100%';
     $('#fight-toggle').classList.toggle('on', inBattle);
     setText('#speed', `${game.speed}x`);
+    setText('#crystal-val', fmt(game.save.crystals));
     $('#new-badge').hidden = !game.newSkillsAvailable;
 
     const btn = $('#battle-btn');
