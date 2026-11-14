@@ -22,6 +22,7 @@ import { fmt } from './context';
 import { CHECK_SVG, cardHtml, slotHtml } from './items';
 import { asset, heroSprite } from './assets';
 import { escapeHtml } from './escape';
+import { copyTextToClipboard } from './clipboard';
 import { SEASON_MILESTONES } from '../data/season';
 import { TUTORIAL_STEPS } from '../data/tutorial';
 import { WHATS_NEW } from '../data/whatsNew';
@@ -311,7 +312,7 @@ export function showSettings(ctx: UIContext): void {
         )}</p>
         <div class="chip-row">
           <button class="chip" data-action="cloud-create">Create / show code</button>
-          <button class="chip" data-action="cloud-copy">Copy code</button>
+          <button class="chip" data-action="cloud-copy">Copy sync code</button>
           <button class="chip" data-action="cloud-link">Paste code to restore</button>
           <button class="chip" data-action="cloud-sync-now">Sync now</button>
           <button class="chip" data-action="cloud-unlink">Unlink</button>
@@ -363,7 +364,20 @@ export function showSettings(ctx: UIContext): void {
         const box = accountBox();
         if (code && box) box.value = code;
         refreshCloudStatus();
-        g.toast(code ? 'Account code ready — copy it to your other devices' : 'Could not store account code', code ? 'good' : 'bad');
+        if (!code) {
+          g.toast('Could not store account code', 'bad');
+          break;
+        }
+        void (async () => {
+          const copied = await copyTextToClipboard(code, box);
+          if (copied) {
+            g.toast('Copied sync code', 'good');
+          } else {
+            box?.focus();
+            box?.select();
+            g.toast('Sync code ready — select & copy from the box', 'info');
+          }
+        })();
         break;
       }
       case 'cloud-copy': {
@@ -374,15 +388,16 @@ export function showSettings(ctx: UIContext): void {
           break;
         }
         if (box) box.value = code;
-        const copied = (() => {
-          try {
-            void navigator.clipboard?.writeText(code);
-            return true;
-          } catch {
-            return false;
+        void (async () => {
+          const copied = await copyTextToClipboard(code, box);
+          if (copied) {
+            g.toast('Copied sync code', 'good');
+          } else {
+            box?.focus();
+            box?.select();
+            g.toast('Select & copy from the sync code box', 'info');
           }
         })();
-        g.toast(copied ? 'Account code copied' : 'Copy from the account code box', copied ? 'good' : 'info');
         break;
       }
       case 'cloud-link': {
@@ -559,15 +574,16 @@ export function showSettings(ctx: UIContext): void {
         const code = g.exportSaveCode();
         const box = codeBox();
         if (box) box.value = code;
-        const copied = (() => {
-          try {
-            void navigator.clipboard?.writeText(code);
-            return true;
-          } catch {
-            return false;
+        void (async () => {
+          const copied = await copyTextToClipboard(code, box);
+          if (copied) {
+            g.toast('Save code copied', 'good');
+          } else {
+            box?.focus();
+            box?.select();
+            g.toast('Save code ready — copy from the box', 'info');
           }
         })();
-        g.toast(copied ? 'Save code copied' : 'Save code ready — copy from the box', copied ? 'good' : 'info');
         break;
       }
       case 'import-save': {
