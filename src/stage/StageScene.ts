@@ -546,10 +546,10 @@ export class StageScene extends Phaser.Scene {
         const big = ev.crit || !!ev.skill;
         this.floatText(p.x + (Math.random() - 0.5) * W * 0.05, p.y - H * 0.02, String(ev.dmg), {
           color: ev.crit ? '#ffe14a' : '#ff9a1f',
-          size: H * (ev.crit ? 0.11 : big ? 0.095 : 0.078),
-          rise: H * 0.16,
-          life: 820,
-          stroke: '#3a1200',
+          size: H * (ev.crit ? 0.125 : big ? 0.105 : 0.088),
+          rise: H * 0.18,
+          life: 900,
+          stroke: '#2a0c00',
         });
         if (ev.crit || (ev.skill && !ev.aoe)) this.cameras.main.shake(70, 0.0025);
         break;
@@ -670,7 +670,7 @@ export class StageScene extends Phaser.Scene {
         fontSize: `${Math.round(o.size)}px`,
         color: o.color,
         stroke: o.stroke ?? '#2a1300',
-        strokeThickness: Math.max(3, Math.round(o.size * 0.18)),
+        strokeThickness: Math.max(4, Math.round(o.size * 0.22)),
       })
       .setOrigin(0.5)
       .setDepth(20);

@@ -12,6 +12,10 @@ import type { UIContext } from './context';
 import { fmt } from './context';
 import { CHECK_SVG, cardHtml, slotHtml } from './items';
 import { asset, heroSprite } from './assets';
+import { escapeHtml } from './escape';
+import { SEASON_MILESTONES } from '../data/season';
+import { TUTORIAL_STEPS } from '../data/tutorial';
+import { playstyleCommitted } from '../data/skills';
 
 const STAT_ORDER: StatKey[] = [
   'atk',
@@ -63,7 +67,12 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
   let auto = g.save.settings.autoSalvageReplaced;
   const total = source === 'pending' ? g.save.pending.length : 0;
 
-  const left = cardHtml(info.current, { gear: g.save.gear, label: 'Current Gear', assumeEquipped: true });
+  const left = cardHtml(info.current, {
+    gear: g.save.gear,
+    label: 'Current Gear',
+    assumeEquipped: true,
+    loadout: g.save.loadout,
+  });
   const rightFooter = `
     <div class="autochk ${auto ? 'on' : ''}" data-action="auto-toggle">
       <div class="box">${CHECK_SVG}</div><div>Auto-salvage replaced gear</div>
@@ -81,6 +90,7 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
     reqLevel: item.gearLevel,
     heroLevel: g.save.level,
     footer: rightFooter,
+    loadout: g.save.loadout,
   });
   const counter =
     source === 'pending'
@@ -125,6 +135,7 @@ export function showItemInfo(ctx: UIContext, slot: string): void {
       gear: g.save.gear,
       label: 'Equipped',
       assumeEquipped: true,
+      loadout: g.save.loadout,
     })}</div></div>`,
     { onDismiss: () => ctx.closeModal() },
   );
@@ -166,7 +177,7 @@ export function showBag(ctx: UIContext): void {
 
 export function showHero(ctx: UIContext): void {
   const g = ctx.game;
-  const t = computeHero(g.save.level, g.save.gear, g.save.heroClass);
+  const t = computeHero(g.save.level, g.save.gear, g.save.heroClass, g.save.loadout);
   const rows = STAT_ORDER.map(
     (k) => `<div class="row"><span>${STAT_LABEL[k]}</span><b>${formatStat(k, Math.round(t.stats[k] * 10) / 10)}</b></div>`,
   ).join('');
@@ -176,8 +187,12 @@ export function showHero(ctx: UIContext): void {
     .map((id) => {
       const def = SETS[id];
       const n = counts[id] ?? 0;
-      return `<h3>${def.name} (${n}/6)</h3>${def.bonuses
-        .map((b) => `<div class="row ${n >= b.pieces ? 'on' : 'off'}"><span>(${b.pieces}) ${b.text}</span></div>`)
+      const styleOk = !def.favorsPlaystyle || playstyleCommitted(g.save.loadout, def.favorsPlaystyle);
+      const styleNote = def.favorsPlaystyle
+        ? `<div class="row ${styleOk ? 'on' : 'off'}"><span>${styleOk ? 'Playstyle active' : 'Equip ≥3 ' + def.favorsPlaystyle + ' skills'}</span></div>`
+        : '';
+      return `<h3>${escapeHtml(def.name)} (${n}/6)</h3>${styleNote}${def.bonuses
+        .map((b) => `<div class="row ${n >= b.pieces && (b.pieces <= 2 || styleOk) ? 'on' : 'off'}"><span>(${b.pieces}) ${escapeHtml(b.text)}</span></div>`)
         .join('')}`;
     })
     .join('');
@@ -334,7 +349,7 @@ export function showChat(ctx: UIContext): void {
   const g = ctx.game;
   const lines = g.chat
     .slice(-14)
-    .map((l) => `<div class="row"><span>${l}</span></div>`)
+    .map((l) => `<div class="row"><span>${escapeHtml(l)}</span></div>`)
     .join('');
   ctx.openModal(
     `<div class="sheet">
@@ -367,14 +382,14 @@ export function showClanHall(ctx: UIContext): void {
     const rows = clan.members
       .map((m) => {
         const badge = m.isPlayer ? '<span class="ai-pill you">YOU</span>' : '<span class="ai-pill">AI</span>';
-        return `<div class="row"><span>${badge} ${m.name} <small>${m.role}</small></span><b>${m.heroClass} · CP ${fmt(m.cp)}</b></div>`;
+        return `<div class="row"><span>${badge} ${escapeHtml(m.name)} <small>${escapeHtml(m.role)}</small></span><b>${m.heroClass} · CP ${fmt(m.cp)}</b></div>`;
       })
       .join('');
     const classCheck = HERO_CLASSES.map((c) => {
       const ok = clan.members.some((m) => m.heroClass === c);
       return `<span class="class-pip ${ok ? 'on' : ''}">${c[0]}</span>`;
     }).join('');
-    body = `<div class="clan-banner"><img src="${asset('ui/clan-hall.webp')}" alt="" /><div><b>${clan.name}</b><span>Code ${clan.code}</span><div class="class-pips">${classCheck}</div></div></div>
+    body = `<div class="clan-banner"><img src="${asset('ui/clan-hall.webp')}" alt="" /><div><b>${escapeHtml(clan.name)}</b><span>Code ${escapeHtml(clan.code)}</span><div class="class-pips">${classCheck}</div></div></div>
       <p class="ai-banner">AI teammates &amp; rivals until full live multiplayer. Your class stays human.</p>
       <div class="body-scroll">${rows}</div>
       ${missing.length ? `<p class="warn">Missing: ${missing.join(', ')}. Fill AI roster for 4v4.</p>` : '<p>Roster has one of each class — ready to queue (AI practice).</p>'}
@@ -454,20 +469,38 @@ export function showClanHall(ctx: UIContext): void {
 
 export function showSeasonBoard(ctx: UIContext): void {
   const g = ctx.game;
+  g.refreshDaily();
+  g.noteSeasonLogin();
   const day = g.seasonDay;
-  const remainH = Math.ceil(g.seasonRemainingMs / 3_600_000);
+  const remainMs = g.seasonRemainingMs;
+  const remainD = Math.floor(remainMs / 86_400_000);
+  const remainH = Math.floor((remainMs % 86_400_000) / 3_600_000);
+  const input = g.seasonProgressInput();
+  const miles = SEASON_MILESTONES.map((m) => {
+    const prog = m.progress(input);
+    const claimed = g.save.seasonClaimed.includes(m.id);
+    const ready = !claimed && prog >= m.goal;
+    const state = claimed ? 'on' : ready ? 'ready' : 'off';
+    return `<button class="milestone ${state}" data-action="claim-mile" data-id="${m.id}" ${ready ? '' : 'disabled'}>
+      <span>${escapeHtml(m.text)} <em>(${Math.min(prog, m.goal)}/${m.goal})</em></span>
+      <b>${claimed ? 'Claimed' : ready ? 'Claim' : `Day ~${m.dayHint}`}</b>
+    </button>`;
+  }).join('');
   let armed = false;
   const el = ctx.openModal(
     `<div class="sheet">
       <h2>Season ${g.save.season.seasonId}</h2>
       <div class="body">
         <div class="season-hero"><img src="${asset('ui/season-board.webp')}" alt="" />
-          <div><b>Day ${day} / 30</b><span>~${remainH}h remaining</span></div>
+          <div><b>Day ${day} / 30</b><span>${remainD}d ${remainH}h remaining</span>
+          <div class="season-timer"><i style="width:${Math.min(100, (day / 30) * 100)}%"></i></div></div>
         </div>
         <div class="row"><span>Clan record</span><b>${g.save.clanWins}W / ${g.save.clanLosses}L</b></div>
         <div class="row"><span>Clan tokens</span><b>${fmt(g.save.clanTokens)}</b></div>
         <div class="row"><span>Tokens today</span><b>${g.save.clanTokensEarnedToday} / ${TOKEN_DAY_CAP}</b></div>
-        <p>Participation tiers (Recruit / Campaigner / Warlord / Legend) are design-ready; this build tracks wins and the timer only.</p>
+        <div class="row"><span>Login days</span><b>${g.save.seasonLoginDays.length}</b></div>
+        <h3>Local milestones</h3>
+        <div class="milestone-list">${miles}</div>
         <p>Local reset wipes level, gear, and currencies; keeps clan membership and re-opens class pick.</p>
         <button class="chip" data-action="season-reset" style="color:#8a281f">Reset season (local)</button>
       </div>
@@ -479,6 +512,14 @@ export function showSeasonBoard(ctx: UIContext): void {
     const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
     if (!t) return;
     if (t.dataset.action === 'close') ctx.closeModal();
+    if (t.dataset.action === 'claim-mile') {
+      const err = g.claimSeasonMilestone(t.dataset.id!);
+      if (err) g.toast(err, 'info');
+      else {
+        ctx.closeModal();
+        showSeasonBoard(ctx);
+      }
+    }
     if (t.dataset.action === 'season-reset') {
       if (!armed) {
         armed = true;
@@ -532,13 +573,27 @@ export function showClanArmorer(ctx: UIContext): void {
 
 export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number): void {
   const row = (f: { name: string; heroClass: HeroClass; hp: number; maxHp: number; isAi: boolean }) =>
-    `<div class="pvp-f"><b>${f.heroClass}</b><span>${f.isAi ? '<span class="ai-pill">AI</span> ' : '<span class="ai-pill you">YOU</span> '}${f.name}</span><i>${f.hp}/${f.maxHp}</i></div>`;
+    `<div class="pvp-f"><b>${f.heroClass}</b><span>${f.isAi ? '<span class="ai-pill">AI</span> ' : '<span class="ai-pill you">YOU</span> '}${escapeHtml(f.name)}</span><i>${f.hp}/${f.maxHp}</i></div>`;
   const ally = result.allyTeam.map(row).join('');
   const enemy = result.enemyTeam.map(row).join('');
+  const stripEvents = result.log.filter((e) => e.t === 'skill' || e.t === 'kill');
+  const strip = stripEvents
+    .map((e) => {
+      const side = e.team === 'enemy' ? 'foe' : 'ally';
+      if (e.t === 'kill') {
+        return `<div class="replay-chip kill ${side}" title="${escapeHtml(e.text)}">
+          <b>${escapeHtml(e.target ?? '?')}</b><span>fallen</span><i>${e.time.toFixed(1)}s</i>
+        </div>`;
+      }
+      return `<div class="replay-chip skill ${side}" title="${escapeHtml(e.text)}">
+        <b>${escapeHtml(e.actor ?? '?')}</b><span>${escapeHtml(e.skillName ?? 'skill')}</span><i>${e.dmg ?? ''}${e.crit ? '!' : ''}</i>
+      </div>`;
+    })
+    .join('');
   const log = result.log
     .filter((e) => e.t === 'kill' || e.t === 'end' || e.t === 'skill')
-    .slice(-8)
-    .map((e) => `<div class="row"><span>${e.text}</span></div>`)
+    .slice(-10)
+    .map((e) => `<div class="row"><span>${escapeHtml(e.text)}</span></div>`)
     .join('');
   const el = ctx.openModal(
     `<div class="sheet pvp-sheet">
@@ -550,6 +605,8 @@ export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number)
         <div class="row"><span>Duration</span><b>${result.duration}s</b></div>
         <div class="row"><span>Clan Tokens</span><b>+${tokens}</b></div>
         <div class="pvp-teams"><div><h3>Your clan</h3>${ally}</div><div><h3>AI rivals</h3>${enemy}</div></div>
+        <h3>Replay strip</h3>
+        <div class="replay-strip">${strip || '<span class="tagline">No casts recorded.</span>'}</div>
         <div class="body-scroll">${log}</div>
       </div>
       <div class="btns"><button class="btn gold" data-action="close">OK</button></div>
@@ -558,6 +615,46 @@ export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number)
   );
   el.addEventListener('click', (ev) => {
     if ((ev.target as HTMLElement).closest('[data-action="close"]')) ctx.closeModal();
+  });
+}
+
+export function showTutorialCoach(ctx: UIContext): void {
+  const g = ctx.game;
+  const step = g.tutorialStep;
+  if (!step) return;
+  const idx = g.save.tutorial.step;
+  const skip = g.canSkipTutorial()
+    ? '<button class="chip" data-action="tut-skip">Skip tutorial</button>'
+    : '';
+  const el = ctx.openModal(
+    `<div class="sheet tutorial-sheet">
+      <h2>Tutorial ${idx + 1}/${TUTORIAL_STEPS.length}</h2>
+      <div class="body">
+        <h3>${escapeHtml(step.title)}</h3>
+        <p>${escapeHtml(step.body)}</p>
+        <p class="tagline">Hint: ${escapeHtml(step.tab ?? 'camp')} tab</p>
+        ${skip}
+      </div>
+      <div class="btns">
+        <button class="btn gold" data-action="tut-go">Got it</button>
+      </div>
+    </div>`,
+    { className: 'tutorial-dim', onDismiss: () => ctx.closeModal() },
+  );
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    if (t.dataset.action === 'tut-skip') {
+      g.skipTutorial();
+      ctx.closeModal();
+      return;
+    }
+    if (t.dataset.action === 'tut-go') {
+      ctx.closeModal();
+      if (step.tab === 'skill' || step.tab === 'adventure' || step.tab === 'town' || step.tab === 'camp') {
+        ctx.setTab(step.tab);
+      }
+    }
   });
 }
 

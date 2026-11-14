@@ -1,6 +1,7 @@
 import type { Gear } from '../data/gear';
 import { starterGear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
+import { defaultTutorial, type TutorialState } from '../data/tutorial';
 import type { HeroClass, Item, SkillId } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
 import type { ClanData, SeasonData } from './clan';
@@ -58,6 +59,23 @@ export interface SaveData {
   clanLosses: number;
   clan: ClanData | null;
   season: SeasonData;
+  /** First-run tutorial coach. */
+  tutorial: TutorialState;
+  /** Claimed season milestone ids. */
+  seasonClaimed: string[];
+  /** Distinct calendar days played this season (for Recruit tier). */
+  seasonLoginDays: string[];
+  /** Daily quest progress counters (reset each calendar day). */
+  daily: {
+    dayKey: string;
+    questId: string;
+    stages: number;
+    dungeons: number;
+    salvage: number;
+    clan: number;
+    fullLoadout: number;
+    claimed: boolean;
+  };
 }
 
 export function defaultSave(now = Date.now()): SaveData {
@@ -93,6 +111,19 @@ export function defaultSave(now = Date.now()): SaveData {
     clanLosses: 0,
     clan: null,
     season: defaultSeason(now),
+    tutorial: defaultTutorial(),
+    seasonClaimed: [],
+    seasonLoginDays: [new Date(now).toISOString().slice(0, 10)],
+    daily: {
+      dayKey: new Date(now).toISOString().slice(0, 10),
+      questId: 'daily-stage-3',
+      stages: 0,
+      dungeons: 0,
+      salvage: 0,
+      clan: 0,
+      fullLoadout: 0,
+      claimed: false,
+    },
   };
 }
 
@@ -115,7 +146,13 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   | 'clanLosses'
   | 'clan'
   | 'season'
+  | 'tutorial'
+  | 'seasonClaimed'
+  | 'seasonLoginDays'
+  | 'daily'
 > {
+  const day = new Date(now).toISOString().slice(0, 10);
+  const tut = parsed.tutorial;
   return {
     clanTokens: typeof parsed.clanTokens === 'number' ? parsed.clanTokens : 0,
     clanTokensEarnedToday: typeof parsed.clanTokensEarnedToday === 'number' ? parsed.clanTokensEarnedToday : 0,
@@ -130,6 +167,31 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
         }
       : null,
     season: parsed.season?.startedAt ? parsed.season : defaultSeason(parsed.createdAt ?? now),
+    tutorial:
+      tut && typeof tut.step === 'number'
+        ? {
+            step: tut.step,
+            everCompleted: !!tut.everCompleted,
+            skipped: !!tut.skipped,
+          }
+        : fresh.tutorial,
+    seasonClaimed: Array.isArray(parsed.seasonClaimed) ? parsed.seasonClaimed.filter((x) => typeof x === 'string') : [],
+    seasonLoginDays: Array.isArray(parsed.seasonLoginDays)
+      ? parsed.seasonLoginDays.filter((x) => typeof x === 'string')
+      : [day],
+    daily:
+      parsed.daily && typeof parsed.daily.dayKey === 'string'
+        ? {
+            dayKey: parsed.daily.dayKey,
+            questId: typeof parsed.daily.questId === 'string' ? parsed.daily.questId : fresh.daily.questId,
+            stages: Number(parsed.daily.stages) || 0,
+            dungeons: Number(parsed.daily.dungeons) || 0,
+            salvage: Number(parsed.daily.salvage) || 0,
+            clan: Number(parsed.daily.clan) || 0,
+            fullLoadout: Number(parsed.daily.fullLoadout) || 0,
+            claimed: !!parsed.daily.claimed,
+          }
+        : { ...fresh.daily, dayKey: day },
   };
 }
 

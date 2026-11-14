@@ -160,8 +160,8 @@ export function buildAiMember(
   tier: AiGearTier = 'scaled',
 ): ClanMember {
   const gear = aiGearFor(rng, level, heroClass, tier);
-  const totals = computeHero(level, gear, heroClass);
   const loadout = loadoutForLevel(heroClass, Math.max(level, tier === 'endgame' ? 18 : level), Math.floor(rng.next() * 2));
+  const totals = computeHero(level, gear, heroClass, loadout);
   return {
     id: `ai_${heroClass.toLowerCase()}_${Math.floor(rng.next() * 1e9).toString(36)}`,
     name: rng.pick(AI_NAMES),
@@ -192,12 +192,30 @@ export function normalizeClanMember(m: ClanMember): ClanMember {
   return { ...m, isAi: m.isPlayer ? false : m.isAi !== false };
 }
 
+/** Strip tags / control chars from clan name before storage. */
+export function sanitizeClanName(name: string): string {
+  const cleaned = name
+    .replace(/<[^>]*>/g, '')
+    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .trim()
+    .slice(0, 24);
+  return cleaned || 'Nameless Clan';
+}
+
+/** Normalize join codes to safe alphanumerics. */
+export function sanitizeClanCode(code: string): string {
+  return code
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 8);
+}
+
 export function createClan(
   rng: Rng,
   name: string,
   player: { heroClass: HeroClass; level: number; cp: number; loadout: SkillId[]; primary: SkillId | null },
 ): ClanData {
-  const trimmed = name.trim().slice(0, 24) || 'Nameless Clan';
+  const trimmed = sanitizeClanName(name);
   const playerMember: ClanMember = {
     id: 'player',
     name: 'You',
@@ -224,7 +242,7 @@ export function joinClanByCode(
   code: string,
   player: { heroClass: HeroClass; level: number; cp: number; loadout: SkillId[]; primary: SkillId | null },
 ): ClanData {
-  const clean = code.trim().toUpperCase().slice(0, 8) || makeCode(rng);
+  const clean = sanitizeClanCode(code) || makeCode(rng);
   const clan = createClan(rng, `Clan ${clean.slice(0, 4)}`, player);
   clan.code = clean;
   clan.members[0].role = 'member';

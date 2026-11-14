@@ -8,6 +8,7 @@ import {
   SKILL_BY_ID,
   defaultPrimary,
   isUnlocked,
+  playstyleCommitted,
   skillsForPlaystyle,
 } from '../data/skills';
 import type { PlaystyleId, SkillId } from '../data/types';
@@ -16,6 +17,7 @@ import { KEY_CAP, STAGES_PER_ACT } from '../game/state';
 import { asset, navIcon, skillIcon } from './assets';
 import type { UIContext } from './context';
 import { fmt } from './context';
+import { escapeHtml } from './escape';
 import { slotHtml } from './items';
 import { ICON } from './svg';
 
@@ -35,19 +37,31 @@ export function renderCamp(ctx: UIContext): string {
   const prog = g.questProgress();
   const ready = g.questReady();
   const reward = q?.reward.crystals ?? q?.reward.dust ?? q?.reward.keys ?? 0;
+  const dq = g.dailyQuest;
+  const dprog = g.dailyProgress();
+  const dready = g.dailyReady();
+  const dreward = dq.reward.crystals ?? dq.reward.dust ?? dq.reward.keys ?? 0;
   const quest = q
     ? `<button class="quest ${ready ? 'ready' : ''}" data-action="quest">
         <span class="qi"><img src="${navIcon('crystal')}" alt="" /><b>${fmt(reward)}</b></span>
-        <span class="qt">${q.text}<em>(${prog}/${q.goal})</em></span>
+        <span class="qt">${escapeHtml(q.text)}<em>(${prog}/${q.goal})</em></span>
         ${ready ? '<span class="bang">!</span>' : ''}
       </button>`
-    : `<div class="quest"><span class="qt" style="padding-left:2cqw">All onboarding quests complete.<em>More in the full game.</em></span></div>`;
+    : `<button class="quest ${dready ? 'ready' : ''}" data-action="daily-quest">
+        <span class="qi"><img src="${navIcon('crystal')}" alt="" /><b>${fmt(dreward)}</b></span>
+        <span class="qt">${escapeHtml(dq.text)}<em>(${dprog}/${dq.goal})</em></span>
+        ${dready ? '<span class="bang">!</span>' : g.save.daily.claimed ? '<span class="bang" style="opacity:.4">✓</span>' : ''}
+      </button>`;
   const bagBadge = g.save.bag.length ? `<span class="badge">${g.save.bag.length}</span>` : '';
+  const tut = g.tutorialIsActive
+    ? `<button class="chip tut-chip" data-action="tutorial">Tutorial</button>`
+    : '';
   return `<div class="pane-inner">
     <div class="gear-grid">${slots}<div class="wing-fill">${ICON.wings}</div></div>
     <div class="bottom-row">
       ${quest}
       <div class="round-btns">
+        ${tut}
         <button class="round-btn bag" data-action="bag" aria-label="Bag">${ICON.bag}${bagBadge}</button>
         <button class="round-btn" data-action="hero" aria-label="Hero">${ICON.crown}</button>
         <button class="round-btn" data-action="settings" aria-label="Settings">${ICON.shield}</button>
@@ -99,10 +113,15 @@ export function renderSkill(ctx: UIContext): string {
   const tab = (id: PlaystyleId) =>
     `<button class="tb ${style === id ? 'on' : ''}" data-action="style" data-id="${id}">${PLAYSTYLES[id].name}</button>`;
   const locked = g.mode !== 'camp' ? '<div class="note">In battle: retreat to camp to swap skills.</div>' : '';
+  const committed = playstyleCommitted(loadout, style);
+  const identity = committed
+    ? `<div class="note good">Playstyle locked in — ${PLAYSTYLES[style].name} set bonuses at full power.</div>`
+    : `<div class="note">Equip ≥3 ${PLAYSTYLES[style].name} skills to unlock that set's 4/6 bonuses (beats raw CP).</div>`;
   return `<div class="pane-inner scroll">
     <div class="tab-title">Skills <small>${g.save.heroClass}  -  ${loadout.length}/${BAR_SIZE} equipped</small></div>
     <div class="skillbar">${slots.join('')}</div>
-    <div class="tagline" style="text-align:center">Star = Primary skill (center Battle button). Equip a full playstyle for best set synergy.</div>
+    <div class="tagline" style="text-align:center">Star = Primary skill (center Battle button). Loadout swaps beat mismatched high-CP gear.</div>
+    ${identity}
     ${locked}
     <div class="tabs">${styles.map(tab).join('')}</div>
     <div class="tagline">${PLAYSTYLES[style].tagline}</div>
@@ -181,10 +200,13 @@ export function renderTown(ctx: UIContext): string {
   const earned = g.save.clanTokensEarnedToday;
   const quests = QUESTS.map((q, i) => {
     const state = i < g.save.questIndex ? 'on' : i === g.save.questIndex ? '' : 'off';
-    return `<div class="row ${state}"><span>${i < g.save.questIndex ? '[x] ' : '[ ] '}${q.text}</span></div>`;
+    return `<div class="row ${state}"><span>${i < g.save.questIndex ? '[x] ' : '[ ] '}${escapeHtml(q.text)}</span></div>`;
   }).join('');
+  const dq = g.dailyQuest;
+  const dprog = g.dailyProgress();
+  const dailyRow = `<div class="row ${g.save.daily.claimed ? 'on' : g.dailyReady() ? '' : 'off'}"><span>${g.save.daily.claimed ? '[x] ' : '[ ] '}${escapeHtml(dq.text)} (${dprog}/${dq.goal})</span></div>`;
   const clanHint = clan
-    ? `${clan.name} · ${clan.members.length} (AI OK) · ${g.clanRosterReady() ? 'Roster ready' : 'Fill AI roster'}`
+    ? `${escapeHtml(clan.name)} · ${clan.members.length} (AI OK) · ${g.clanRosterReady() ? 'Roster ready' : 'Fill AI roster'}`
     : `Create (${CLAN_CREATE_COST} crystals) or practice 4v4 vs AI`;
   return `<div class="pane-inner scroll">
     <div class="tab-title">Town <small>Season ${g.save.season.seasonId}  -  Day ${day}/30 · ${remain}</small></div>
@@ -205,8 +227,8 @@ export function renderTown(ctx: UIContext): string {
       <button class="town-card clickable" data-action="season-board">
         <img src="${asset('ui/season-board.webp')}" alt="" />
         <b>Season Board</b>
-        <span>30-day season timer and local reset.</span>
-        <span class="live">Day ${day}/30</span>
+        <span>30-day timer, local milestones, reset.</span>
+        <span class="live">Day ${day}/30 · ${remain}</span>
       </button>
       <button class="town-card clickable" data-action="clan-armorer">
         <img src="${asset('icons/gear-k/weapon.webp')}" alt="" />
@@ -215,7 +237,9 @@ export function renderTown(ctx: UIContext): string {
         <span class="live">${fmt(tokens)} tokens</span>
       </button>
     </div>
-    <h3 style="margin:1cqw 0 0;font-family:var(--font-title);font-size:3.6cqw">Onboarding quests</h3>
+    <h3 style="margin:1cqw 0 0;font-family:var(--font-title);font-size:3.6cqw">Daily</h3>
+    <div class="sheet-lite">${dailyRow}</div>
+    <h3 style="margin:1cqw 0 0;font-family:var(--font-title);font-size:3.6cqw">Campaign quests</h3>
     <div class="sheet-lite">${quests}</div>
     <button class="chip" data-action="settings" style="align-self:flex-start">Settings</button>
     <div class="tagline">Class locked for the season: ${g.save.heroClass}. Reset season (or save) to re-pick. Clan 4v4 uses your equipped gear and skill bar.</div>

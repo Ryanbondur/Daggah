@@ -3,6 +3,7 @@ import type {
   HeroClass,
   IconPack,
   Item,
+  PlaystyleId,
   RarityId,
   SetId,
   SkillId,
@@ -11,6 +12,7 @@ import type {
   Stats,
 } from './types';
 import { STAT_KEYS } from './types';
+import { playstyleCommitted } from './skills';
 import { heroBaseStats } from './xp';
 
 export const SLOTS: SlotId[] = [
@@ -209,6 +211,8 @@ export interface SetDef {
   name: string;
   act: number;
   favors: string;
+  /** When set, 4/6 bonuses require a committed playstyle loadout (≥3 matching skills). */
+  favorsPlaystyle?: PlaystyleId;
   icon: IconPack;
   bonuses: { pieces: 2 | 4 | 6; text: string }[];
 }
@@ -230,24 +234,26 @@ export const SETS: Record<SetId, SetDef> = {
     id: 'cavern-cleaver',
     name: 'Cavern Cleaver',
     act: 2,
-    favors: 'Warrior Bladestorm',
+    favors: 'Warrior Bladestorm (requires loadout)',
+    favorsPlaystyle: 'bladestorm',
     icon: 'b',
     bonuses: [
-      { pieces: 2, text: '+8% AoE damage' },
-      { pieces: 4, text: 'Whirlwind CD -2s' },
-      { pieces: 6, text: 'Bladestorm cost -15%' },
+      { pieces: 2, text: '+12% AoE (+18% ATK when Bladestorm bar)' },
+      { pieces: 4, text: 'Whirlwind CD -3s · +25% WW dmg (Bladestorm bar)' },
+      { pieces: 6, text: 'Bladestorm cost -20% · +35% ult dmg (Bladestorm bar)' },
     ],
   },
   'cavern-bulwark': {
     id: 'cavern-bulwark',
     name: 'Cavern Bulwark',
     act: 2,
-    favors: 'Warrior Ironclad',
+    favors: 'Warrior Ironclad (requires loadout)',
+    favorsPlaystyle: 'ironclad',
     icon: 'b',
     bonuses: [
-      { pieces: 2, text: '+8% DEF' },
-      { pieces: 4, text: 'Iron Skin +20% absorb' },
-      { pieces: 6, text: 'Rally heals +15%' },
+      { pieces: 2, text: '+12% DEF (+18% HP when Ironclad bar)' },
+      { pieces: 4, text: 'Iron Skin +35% absorb (Ironclad bar)' },
+      { pieces: 6, text: 'Rally heals +25% · +12% DEF (Ironclad bar)' },
     ],
   },
   gravemarch: {
@@ -266,48 +272,52 @@ export const SETS: Record<SetId, SetDef> = {
     id: 'ashen-codex',
     name: 'Ashen Codex',
     act: 4,
-    favors: 'Mage Inferno',
+    favors: 'Mage Inferno (requires loadout)',
+    favorsPlaystyle: 'inferno',
     icon: 'd',
     bonuses: [
-      { pieces: 2, text: '+8% burn damage' },
-      { pieces: 4, text: 'Meteor CD -2s' },
-      { pieces: 6, text: 'Combustion +25%' },
+      { pieces: 2, text: '+12% burn (+15% Skill Power when Inferno bar)' },
+      { pieces: 4, text: 'Meteor CD -3s (Inferno bar)' },
+      { pieces: 6, text: 'Combustion +40% (Inferno bar)' },
     ],
   },
   'rime-circlet': {
     id: 'rime-circlet',
     name: 'Rime Circlet',
     act: 4,
-    favors: 'Mage Frostbind',
+    favors: 'Mage Frostbind (requires loadout)',
+    favorsPlaystyle: 'frostbind',
     icon: 'd',
     bonuses: [
-      { pieces: 2, text: '+8% slow potency' },
-      { pieces: 4, text: 'Nova CD -2s' },
-      { pieces: 6, text: 'Absolute Zero +1s freeze' },
+      { pieces: 2, text: '+12% slow (+12% DEF when Frostbind bar)' },
+      { pieces: 4, text: 'Nova CD -3s (Frostbind bar)' },
+      { pieces: 6, text: 'Absolute Zero +1.5s freeze (Frostbind bar)' },
     ],
   },
   quillstorm: {
     id: 'quillstorm',
     name: 'Quillstorm',
     act: 5,
-    favors: 'Ranger Volley',
+    favors: 'Ranger Volley (requires loadout)',
+    favorsPlaystyle: 'volley',
     icon: 'e',
     bonuses: [
-      { pieces: 2, text: '+8% AoE' },
-      { pieces: 4, text: 'Arrow Rain width +20%' },
-      { pieces: 6, text: 'Storm of Quills +15% dmg' },
+      { pieces: 2, text: '+12% AoE (+15% ATK when Volley bar)' },
+      { pieces: 4, text: 'Arrow Rain width +30% (Volley bar)' },
+      { pieces: 6, text: 'Storm of Quills +30% dmg (Volley bar)' },
     ],
   },
   deadeye: {
     id: 'deadeye',
     name: 'Deadeye',
     act: 5,
-    favors: 'Ranger Marksmanship',
+    favors: 'Ranger Marksmanship (requires loadout)',
+    favorsPlaystyle: 'marksmanship',
     icon: 'e',
     bonuses: [
-      { pieces: 2, text: '+6% Crit Rate' },
-      { pieces: 4, text: 'Mark duration +3s' },
-      { pieces: 6, text: 'Kill Shot threshold 35%' },
+      { pieces: 2, text: '+8% Crit Rate (+12% Crit Dmg when Marksman bar)' },
+      { pieces: 4, text: 'Mark duration +4s (Marksman bar)' },
+      { pieces: 6, text: 'Kill Shot threshold 40% (Marksman bar)' },
     ],
   },
   cinderstride: {
@@ -326,24 +336,26 @@ export const SETS: Record<SetId, SetDef> = {
     id: 'nightfang',
     name: 'Nightfang',
     act: 7,
-    favors: 'Rogue Assassination',
+    favors: 'Rogue Assassination (requires loadout)',
+    favorsPlaystyle: 'assassination',
     icon: 'g',
     bonuses: [
-      { pieces: 2, text: '+10% Crit Dmg' },
-      { pieces: 4, text: 'Ambush +15%' },
-      { pieces: 6, text: 'Death Mark -10% cost' },
+      { pieces: 2, text: '+14% Crit Dmg (+12% ATK when Assassination bar)' },
+      { pieces: 4, text: 'Ambush +30% (Assassination bar)' },
+      { pieces: 6, text: 'Death Mark -15% cost (Assassination bar)' },
     ],
   },
   gloomveil: {
     id: 'gloomveil',
     name: 'Gloomveil',
     act: 7,
-    favors: 'Rogue Shadowdance',
+    favors: 'Rogue Shadowdance (requires loadout)',
+    favorsPlaystyle: 'shadowdance',
     icon: 'g',
     bonuses: [
-      { pieces: 2, text: '+8% Haste' },
-      { pieces: 4, text: 'Shadowstep +1 charge' },
-      { pieces: 6, text: 'Cloak +0.5s' },
+      { pieces: 2, text: '+12% Haste (+10% Energy Regen when Shadowdance bar)' },
+      { pieces: 4, text: 'Shadowstep +1 charge (Shadowdance bar)' },
+      { pieces: 6, text: 'Cloak +1.0s (Shadowdance bar)' },
     ],
   },
   echoplate: {
@@ -479,43 +491,118 @@ export function setCounts(gear: Gear): Partial<Record<SetId, number>> {
   return counts;
 }
 
-export function computeSetEffects(gear: Gear): SetEffects {
+export function computeSetEffects(gear: Gear, loadout?: SkillId[]): SetEffects {
   const fx = emptySetEffects();
   const counts = setCounts(gear);
   const n = (id: SetId) => counts[id] ?? 0;
+  const styleOn = (id: SetId): boolean => {
+    const style = SETS[id].favorsPlaystyle;
+    if (!style) return true;
+    return playstyleCommitted(loadout, style);
+  };
+
   if (n('ember-raider') >= 2) fx.atkPct += 5;
   if (n('ember-raider') >= 4) fx.hpPct += 8;
   if (n('ember-raider') >= 6) fx.energyRegenPct += 10;
-  if (n('cavern-cleaver') >= 2) fx.aoePct += 8;
-  if (n('cavern-cleaver') >= 4) fx.skillCdMinus.whirlwind = 2;
-  if (n('cavern-cleaver') >= 6) fx.skillCostPct.bladestorm = 15;
-  if (n('cavern-bulwark') >= 2) fx.defPct += 8;
-  if (n('cavern-bulwark') >= 4) fx.absorbPct += 20;
-  if (n('cavern-bulwark') >= 6) fx.healPct += 15;
+
+  // Playstyle sets: 2pc baseline always; identity/4/6 require committed loadout (≥3 skills).
+  if (n('cavern-cleaver') >= 2) {
+    fx.aoePct += 8;
+    if (styleOn('cavern-cleaver')) {
+      fx.aoePct += 4;
+      fx.atkPct += 18;
+    }
+  }
+  if (n('cavern-cleaver') >= 4 && styleOn('cavern-cleaver')) {
+    fx.skillCdMinus.whirlwind = 3;
+    fx.skillDmgPct.whirlwind = (fx.skillDmgPct.whirlwind ?? 0) + 25;
+  }
+  if (n('cavern-cleaver') >= 6 && styleOn('cavern-cleaver')) {
+    fx.skillCostPct.bladestorm = 20;
+    fx.ultimateDmgPct += 35;
+  }
+
+  if (n('cavern-bulwark') >= 2) {
+    fx.defPct += 8;
+    if (styleOn('cavern-bulwark')) {
+      fx.defPct += 4;
+      fx.hpPct += 18;
+    }
+  }
+  if (n('cavern-bulwark') >= 4 && styleOn('cavern-bulwark')) fx.absorbPct += 35;
+  if (n('cavern-bulwark') >= 6 && styleOn('cavern-bulwark')) {
+    fx.healPct += 25;
+    fx.defPct += 12;
+  }
+
   if (n('gravemarch') >= 2) fx.defPct += 6;
   if (n('gravemarch') >= 4) fx.hpPct += 8;
   if (n('gravemarch') >= 6) fx.onKillHealPct += 2;
-  if (n('ashen-codex') >= 2) fx.burnPct += 8;
-  if (n('ashen-codex') >= 4) fx.skillCdMinus.meteor = 2;
-  if (n('ashen-codex') >= 6) fx.combustPct += 25;
-  if (n('rime-circlet') >= 2) fx.slowPct += 8;
-  if (n('rime-circlet') >= 4) fx.skillCdMinus['frost-nova'] = 2;
-  if (n('rime-circlet') >= 6) fx.freezeBonus += 1;
-  if (n('quillstorm') >= 2) fx.aoePct += 8;
-  if (n('quillstorm') >= 4) fx.arrowRainWidth += 20;
-  if (n('quillstorm') >= 6) fx.skillDmgPct['storm-of-quills'] = 15;
-  if (n('deadeye') >= 2) fx.critRatePct += 6;
-  if (n('deadeye') >= 4) fx.markDurationBonus += 3;
-  if (n('deadeye') >= 6) fx.executeThreshold = Math.max(fx.executeThreshold, 0.35);
+
+  if (n('ashen-codex') >= 2) {
+    fx.burnPct += 8;
+    if (styleOn('ashen-codex')) {
+      fx.burnPct += 4;
+      fx.skillPowerPct += 15;
+    }
+  }
+  if (n('ashen-codex') >= 4 && styleOn('ashen-codex')) fx.skillCdMinus.meteor = 3;
+  if (n('ashen-codex') >= 6 && styleOn('ashen-codex')) fx.combustPct += 40;
+
+  if (n('rime-circlet') >= 2) {
+    fx.slowPct += 8;
+    if (styleOn('rime-circlet')) {
+      fx.slowPct += 4;
+      fx.defPct += 12;
+    }
+  }
+  if (n('rime-circlet') >= 4 && styleOn('rime-circlet')) fx.skillCdMinus['frost-nova'] = 3;
+  if (n('rime-circlet') >= 6 && styleOn('rime-circlet')) fx.freezeBonus += 1.5;
+
+  if (n('quillstorm') >= 2) {
+    fx.aoePct += 8;
+    if (styleOn('quillstorm')) {
+      fx.aoePct += 4;
+      fx.atkPct += 15;
+    }
+  }
+  if (n('quillstorm') >= 4 && styleOn('quillstorm')) fx.arrowRainWidth += 30;
+  if (n('quillstorm') >= 6 && styleOn('quillstorm')) fx.skillDmgPct['storm-of-quills'] = 30;
+
+  if (n('deadeye') >= 2) {
+    fx.critRatePct += 6;
+    if (styleOn('deadeye')) {
+      fx.critRatePct += 2;
+      fx.critDmgPct += 12;
+    }
+  }
+  if (n('deadeye') >= 4 && styleOn('deadeye')) fx.markDurationBonus += 4;
+  if (n('deadeye') >= 6 && styleOn('deadeye')) fx.executeThreshold = Math.max(fx.executeThreshold, 0.4);
+
   if (n('cinderstride') >= 2) fx.hastePct += 6;
   if (n('cinderstride') >= 4) fx.energyRegenPct += 8;
   if (n('cinderstride') >= 6) fx.globalCdPct += 5;
-  if (n('nightfang') >= 2) fx.critDmgPct += 10;
-  if (n('nightfang') >= 4) fx.skillDmgPct.ambush = 15;
-  if (n('nightfang') >= 6) fx.skillCostPct['death-mark'] = 10;
-  if (n('gloomveil') >= 2) fx.hastePct += 8;
-  if (n('gloomveil') >= 4) fx.shadowstepCharges += 1;
-  if (n('gloomveil') >= 6) fx.cloakDurationBonus += 0.5;
+
+  if (n('nightfang') >= 2) {
+    fx.critDmgPct += 10;
+    if (styleOn('nightfang')) {
+      fx.critDmgPct += 4;
+      fx.atkPct += 12;
+    }
+  }
+  if (n('nightfang') >= 4 && styleOn('nightfang')) fx.skillDmgPct.ambush = 30;
+  if (n('nightfang') >= 6 && styleOn('nightfang')) fx.skillCostPct['death-mark'] = 15;
+
+  if (n('gloomveil') >= 2) {
+    fx.hastePct += 8;
+    if (styleOn('gloomveil')) {
+      fx.hastePct += 4;
+      fx.energyRegenPct += 10;
+    }
+  }
+  if (n('gloomveil') >= 4 && styleOn('gloomveil')) fx.shadowstepCharges += 1;
+  if (n('gloomveil') >= 6 && styleOn('gloomveil')) fx.cloakDurationBonus += 1;
+
   if (n('echoplate') >= 2) fx.atkPct += 7;
   if (n('echoplate') >= 4) fx.skillPowerPct += 7;
   if (n('echoplate') >= 6) {
@@ -560,7 +647,12 @@ export function cpFromStats(s: Stats): number {
   );
 }
 
-export function computeHero(level: number, gear: Gear, heroClass: HeroClass = 'Warrior'): HeroTotals {
+export function computeHero(
+  level: number,
+  gear: Gear,
+  heroClass: HeroClass = 'Warrior',
+  loadout?: SkillId[],
+): HeroTotals {
   const stats = heroBaseStats(level, heroClass);
   for (const slot of SLOTS) {
     const it = gear[slot];
@@ -570,7 +662,7 @@ export function computeHero(level: number, gear: Gear, heroClass: HeroClass = 'W
       if (v) stats[k] += v;
     }
   }
-  const effects = computeSetEffects(gear);
+  const effects = computeSetEffects(gear, loadout);
   stats.atk = Math.round(stats.atk * (1 + effects.atkPct / 100));
   stats.hp = Math.round(stats.hp * (1 + effects.hpPct / 100));
   stats.def = Math.round(stats.def * (1 + effects.defPct / 100));
@@ -588,14 +680,24 @@ export function heroCpWith(
   slot: SlotId,
   item: Item | undefined,
   heroClass: HeroClass = 'Warrior',
+  loadout?: SkillId[],
 ): number {
   const next: Gear = { ...gear, [slot]: item };
-  return computeHero(level, next, heroClass).cp;
+  return computeHero(level, next, heroClass, loadout).cp;
 }
 
-/** CP change if `item` replaced what is in its slot (includes set-bonus changes). */
-export function cpDelta(level: number, gear: Gear, item: Item, heroClass: HeroClass = 'Warrior'): number {
-  return heroCpWith(level, gear, item.slot, item, heroClass) - computeHero(level, gear, heroClass).cp;
+/** CP change if `item` replaced what is in its slot (includes set-bonus / playstyle changes). */
+export function cpDelta(
+  level: number,
+  gear: Gear,
+  item: Item,
+  heroClass: HeroClass = 'Warrior',
+  loadout?: SkillId[],
+): number {
+  return (
+    heroCpWith(level, gear, item.slot, item, heroClass, loadout) -
+    computeHero(level, gear, heroClass, loadout).cp
+  );
 }
 
 let itemCounter = 0;

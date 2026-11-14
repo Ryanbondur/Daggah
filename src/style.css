@@ -2095,3 +2095,215 @@ button {
 .class-card b{font-family:var(--font-title);font-size:4.2cqw;letter-spacing:.02em}
 .class-card span{font-size:2.7cqw;color:#5a5348;line-height:1.25;text-align:center}
 .class-card small{font-size:2.3cqw;color:#8a6a2a;text-transform:capitalize}
+
+/* ---- Gameplay upgrades: tutorial, season, replay, art polish ---- */
+.note.good {
+  color: #1f6b2a;
+  font-weight: 700;
+}
+.tut-chip {
+  font-size: 2.4cqw !important;
+  padding: 1cqw 1.4cqw !important;
+  align-self: center;
+}
+.tutorial-sheet h3 {
+  margin: 0 0 1cqw;
+  font-family: var(--font-title);
+  font-size: 4.2cqw;
+  color: #5a3a12;
+}
+.season-timer {
+  margin-top: 1cqw;
+  height: 1.4cqw;
+  background: #2a241c;
+  border-radius: 1cqw;
+  overflow: hidden;
+  border: 0.25cqw solid #6a5c45;
+}
+.season-timer i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #c89212, #ffe45a);
+}
+.milestone-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1cqw;
+  margin: 1cqw 0 2cqw;
+}
+.milestone {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5cqw;
+  padding: 1.6cqw 2cqw;
+  border: 0.35cqw solid #6a5c45;
+  border-radius: 1.2cqw;
+  background: linear-gradient(180deg, #f2e6c8, #e4d4ae);
+  font: inherit;
+  color: #4d473e;
+  text-align: left;
+  cursor: pointer;
+}
+.milestone:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+.milestone.ready {
+  border-color: #1f6b2a;
+  box-shadow: 0 0 1.2cqw rgba(40, 140, 60, 0.35);
+}
+.milestone.on {
+  color: #1f6b2a;
+  font-weight: 700;
+}
+.milestone em {
+  font-style: normal;
+  opacity: 0.75;
+  font-size: 0.9em;
+}
+.milestone b {
+  white-space: nowrap;
+  font-size: 2.8cqw;
+  color: #8a6a2a;
+}
+.milestone.ready b {
+  color: #1f6b2a;
+}
+
+.replay-strip {
+  display: flex;
+  gap: 1cqw;
+  overflow-x: auto;
+  padding: 1.2cqw 0 1.6cqw;
+  margin-bottom: 1cqw;
+  scrollbar-width: thin;
+}
+.replay-chip {
+  flex: 0 0 auto;
+  min-width: 22cqw;
+  max-width: 34cqw;
+  padding: 1.2cqw 1.4cqw;
+  border-radius: 1cqw;
+  border: 0.3cqw solid #5a4a30;
+  background: #1a1612;
+  color: #f0e6d0;
+  display: grid;
+  gap: 0.2cqw;
+  font-size: 2.4cqw;
+  line-height: 1.2;
+}
+.replay-chip.ally {
+  border-color: #3a7a4a;
+  background: linear-gradient(160deg, #1a2a1c, #101410);
+}
+.replay-chip.foe {
+  border-color: #8a3a2a;
+  background: linear-gradient(160deg, #2a1612, #140c0a);
+}
+.replay-chip.kill {
+  border-style: dashed;
+}
+.replay-chip b {
+  font-family: var(--font-title);
+  font-size: 2.8cqw;
+  color: #ffe9a8;
+}
+.replay-chip span {
+  color: #c8bda8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.replay-chip i {
+  font-style: normal;
+  color: #ff9a1f;
+  font-family: var(--font-num);
+}
+
+.setinfo .sf {
+  font-size: 2.4cqw;
+  color: #8a6a2a;
+  margin: 0.4cqw 0 0.6cqw;
+}
+.setinfo .sf.on {
+  color: #1f6b2a;
+  font-weight: 700;
+}
+
+/* Art/UX: orbs closer to ref — thicker stone rim, brighter liquid meniscus */
+.orb {
+  width: 19.2cqw;
+  height: 19.2cqw;
+}
+.orb .ring {
+  background:
+    radial-gradient(circle at 50% 40%, #121018 50%, #5a5564 53%, #2a2632 61%, #0a090e 70%);
+  box-shadow:
+    inset 0 0 1.6cqw #000,
+    0 0 0 0.55cqw #121018,
+    0 0 0 1.05cqw #7a7584,
+    0 0.7cqw 1.6cqw rgba(0, 0, 0, 0.65);
+}
+.orb.hp .fill {
+  background:
+    radial-gradient(circle at 30% 18%, rgba(255, 236, 220, 1), transparent 30%),
+    radial-gradient(circle at 50% 52%, #ff6a52, #d81820 42%, #7a0a10 72%, #2a0406);
+}
+.orb.en .fill {
+  background:
+    radial-gradient(circle at 30% 18%, rgba(210, 160, 255, 0.45), transparent 30%),
+    radial-gradient(circle at 50% 52%, #3a2860, #180e30 46%, #06030c 78%, #020104);
+}
+.orb .val {
+  font-size: 4cqw;
+  -webkit-text-stroke: 0.65cqw #0e0808;
+}
+
+/* Rarity frames: thicker metallic rims + clearer color language */
+.slot.r-common {
+  --fill: #ccc9c0;
+  --fill-d: #747168;
+  --rim: #4a463c;
+}
+.slot.r-rare {
+  --fill: #6aa0ff;
+  --fill-d: #1a48a8;
+  --rim: #1e48a0;
+  --glow: rgba(80, 140, 255, 0.7);
+  box-shadow:
+    0 0 0 0.28cqw var(--rim),
+    0 0 1.8cqw var(--glow);
+}
+.slot.r-epic {
+  --fill: #c278f0;
+  --fill-d: #6818a0;
+  --rim: #5a2090;
+  --glow: rgba(190, 90, 240, 0.75);
+  box-shadow:
+    0 0 0 0.28cqw var(--rim),
+    0 0 2cqw var(--glow);
+}
+.slot.r-legendary {
+  --fill: #ffe96a;
+  --fill-d: #d4a010;
+  --rim: #c09018;
+  --glow: rgba(255, 220, 60, 1);
+}
+.card .rar[data-rarity='rare'] {
+  color: #3f78d8;
+  font-weight: 800;
+}
+.card .rar[data-rarity='epic'] {
+  color: #9a4bd0;
+  font-weight: 800;
+}
+.card .rar[data-rarity='legendary'] {
+  color: #c89212;
+  font-weight: 800;
+  text-shadow: 0 0 0.8cqw rgba(255, 210, 60, 0.55);
+}
+.card .cp i {
+  font-size: 1.15em;
+  letter-spacing: 0.02em;
+}
