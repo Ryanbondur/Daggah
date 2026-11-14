@@ -2,7 +2,7 @@ import { RARITIES, SETS, computeHero, setCounts } from '../data/gear';
 import type { HeroClass, RarityId, SetId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_LABEL } from '../data/types';
 import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
-import { CLAN_CREATE_COST, TOKEN_DAY_CAP, TOKEN_LOSS, TOKEN_WIN } from '../game/clan';
+import { CLAN_CREATE_COST, TOKEN_DAY_CAP } from '../game/clan';
 import {
   applyCloudSave,
   ensureAccountCode,
@@ -12,6 +12,12 @@ import {
   syncCloudSave,
   unlinkAccountCode,
 } from '../game/cloudSave';
+import {
+  BRACKET_TOKEN_LOSS,
+  BRACKET_TOKEN_WIN,
+  CLAN_BRACKET_LABEL,
+  bracketRangeLabel,
+} from '../game/clanBrackets';
 import { CLAN_VENDOR, type RunResult } from '../game/game';
 import type { PvpResult } from '../game/pvp';
 import { BAG_CAP } from '../game/state';
@@ -679,16 +685,29 @@ export function showClanHall(ctx: UIContext): void {
       const ok = clan.members.some((m) => m.heroClass === c);
       return `<span class="class-pip ${ok ? 'on' : ''}">${c[0]}</span>`;
     }).join('');
+    const bracket = g.clanBracketStatus();
+    const win = BRACKET_TOKEN_WIN[bracket.bracket];
+    const loss = BRACKET_TOKEN_LOSS[bracket.bracket];
+    const floorBlock = !bracket.floorMet
+      ? `<p class="warn">${escapeHtml(bracket.floorMessage)}</p>`
+      : '';
+    const challengeBtn =
+      bracket.canChallengeUp && bracket.nextLabel
+        ? `<button class="btn gold ${g.clanRosterReady() ? '' : 'disabled'}" data-action="clan-queue-challenge">Challenge up → ${escapeHtml(bracket.nextLabel)}</button>`
+        : '';
     body = `<div class="clan-banner"><img src="${asset('ui/clan-hall.webp')}" alt="" /><div><b>${escapeHtml(clan.name)}</b><span>Code ${escapeHtml(clan.code)}</span><div class="class-pips">${classCheck}</div></div></div>
+      <div class="clan-bracket-card"><span class="clan-bracket-pill ${bracket.bracket}">${escapeHtml(bracket.label)}</span><div><b>Team CP ${fmt(bracket.teamCp)}</b><span>${escapeHtml(bracketRangeLabel(bracket.bracket))} · Challenge-up ${bracket.challengeUpLeft}/1 today</span></div></div>
       <p class="ai-banner">AI teammates &amp; rivals until full live multiplayer. Your class stays human.</p>
       <div class="body-scroll">${rows}</div>
       ${missing.length ? `<p class="warn">Missing: ${missing.join(', ')}. Fill AI roster for 4v4.</p>` : '<p>Roster has one of each class — ready to queue (AI practice).</p>'}
+      ${floorBlock}
       <div class="btns" style="flex-wrap:wrap">
         <button class="btn stone" data-action="clan-recruit">Fill AI roster</button>
-        <button class="btn red ${g.clanRosterReady() ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
+        <button class="btn red ${g.clanRosterReady() && bracket.floorMet ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
+        ${challengeBtn}
         <button class="btn tan" data-action="clan-leave">Leave</button>
       </div>
-      <p class="tagline">Win +${TOKEN_WIN} / Loss +${TOKEN_LOSS} tokens (cap ${TOKEN_DAY_CAP}/day). Your gear + skills; allies/rivals are AI.</p>`;
+      <p class="tagline">${escapeHtml(bracket.label)} Win +${win} / Loss +${loss} (cap ${TOKEN_DAY_CAP}/day).</p>`;
   }
   const el = ctx.openModal(
     `<div class="sheet clan-sheet">
@@ -747,6 +766,15 @@ export function showClanHall(ctx: UIContext): void {
       const err = g.queueClanPvp();
       if (err) g.toast(err, 'bad');
       // pvp modal opened via game event
+      return;
+    }
+    if (act === 'clan-queue-challenge') {
+      if (!g.clanRosterReady()) {
+        g.toast('Need one of each class — Fill AI roster', 'bad');
+        return;
+      }
+      const err = g.queueClanPvp({ challengeUp: true });
+      if (err) g.toast(err, 'bad');
       return;
     }
     if (act === 'clan-leave') {
@@ -826,11 +854,16 @@ export function showSeasonBoard(ctx: UIContext): void {
 
 export function showClanArmorer(ctx: UIContext): void {
   const g = ctx.game;
+  const nightscarOk = g.save.clanNightscarUnlocked;
   const offers = CLAN_VENDOR.map((o, i) => {
-    const afford = g.save.clanTokens >= o.cost;
-    return `<button class="vendor-row ${afford ? '' : 'dim'}" data-action="buy" data-i="${i}">
+    const locked = !!o.nightscarOnly && !nightscarOk;
+    const afford = !locked && g.save.clanTokens >= o.cost;
+    const note = locked
+      ? 'Nightscar bracket unlock'
+      : 'Clanforged set · Gear Lv.18–20';
+    return `<button class="vendor-row ${afford ? '' : 'dim'}" data-action="buy" data-i="${i}" ${locked ? 'disabled' : ''}>
       <img src="${asset(`icons/gear-k/${o.slot}.webp`)}" alt="" />
-      <span><b>${o.label}</b><small>Clanforged set · Gear Lv.18–20</small></span>
+      <span><b>${o.label}</b><small>${note}${o.nightscarOnly ? ' · Nightscar exclusive' : ''}</small></span>
       <b class="price"><img src="${asset('ui/clan-token.webp')}" alt="" />${o.cost}</b>
     </button>`;
   }).join('');
@@ -838,8 +871,9 @@ export function showClanArmorer(ctx: UIContext): void {
     `<div class="sheet">
       <h2>Clan Armorer</h2>
       <div class="body">
-        <p>Spend Clan Tokens on endgame <b>Clanforged</b> gear. 2pc +8% PvP CP · 4pc +10% token gains.</p>
+        <p>Spend Clan Tokens on endgame <b>Clanforged</b> gear. 2pc +8% PvP CP · 4pc +10% token gains. Legendaries need a Nightscar-bracket match unlock.</p>
         <div class="row"><span>Your tokens</span><b>${fmt(g.save.clanTokens)}</b></div>
+        <div class="row"><span>Nightscar shop</span><b>${nightscarOk ? 'Unlocked' : 'Locked'}</b></div>
         <div class="vendor-list">${offers}</div>
       </div>
       <div class="btns"><button class="btn gold" data-action="close">Close</button></div>
@@ -885,12 +919,14 @@ export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number)
     .slice(-10)
     .map((e) => `<div class="row"><span>${escapeHtml(e.text)}</span></div>`)
     .join('');
+  const tier = CLAN_BRACKET_LABEL[result.bracket] ?? result.bracket;
   const el = ctx.openModal(
     `<div class="sheet pvp-sheet">
       <h2>${result.won ? 'Clan Victory' : 'Clan Defeat'}</h2>
       <div class="body">
         <div class="pvp-arena" style="background-image:url('${asset('bg/bg-clan-arena.jpg')}')"></div>
         ${result.practiceAi ? '<p class="ai-banner">AI practice match — live multiplayer not online yet.</p>' : ''}
+        <div class="clan-bracket-card"><span class="clan-bracket-pill ${result.bracket}">${escapeHtml(tier)}</span><div><b>Team CP ${fmt(result.teamCp)}</b><span>${result.challengeUp ? 'Challenge-up match' : 'Bracket match'}</span></div></div>
         <div class="row"><span>Score</span><b>${result.allyKills} – ${result.enemyKills}${result.timedOut ? ' (timeout)' : ''}</b></div>
         <div class="row"><span>Duration</span><b>${result.duration}s</b></div>
         <div class="row"><span>Clan Tokens</span><b>+${tokens}</b></div>

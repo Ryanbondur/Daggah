@@ -104,6 +104,7 @@ describe('4v4 auto-battle', () => {
     const game = new Game(memoryStorage(), mulberry32(3));
     game.pickClass('Ranger');
     game.save.crystals = CLAN_CREATE_COST;
+    game.save.stagesCleared = 15;
     game.createClan('Quills');
     game.recruitClanRoster();
     let saw = false;
@@ -112,13 +113,14 @@ describe('4v4 auto-battle', () => {
     });
     expect(game.queueClanPvp()).toBeNull();
     expect(saw).toBe(true);
-    expect(game.save.clanTokens).toBeGreaterThanOrEqual(TOKEN_LOSS);
+    expect(game.save.clanTokens).toBeGreaterThanOrEqual(4); // Scout loss floor (bracket-scaled)
     expect(game.save.clanWins + game.save.clanLosses).toBe(1);
   });
 
   it('queuePractice4v4 creates Practice Hall, fills AI, and queues', () => {
     const game = new Game(memoryStorage(), mulberry32(21));
     game.pickClass('Mage');
+    game.save.stagesCleared = 15;
     expect(game.clan).toBeNull();
     let saw = false;
     game.on((e) => {
@@ -175,7 +177,8 @@ describe('clan armorer + season', () => {
     game.pickClass('Rogue');
     game.save.clanTokens = 80;
     game.save.level = 18;
-    expect(game.buyClanVendor(4)).toBeNull(); // legendary weapon
+    game.save.clanNightscarUnlocked = true;
+    expect(game.buyClanVendor(4)).toBeNull(); // legendary weapon (Nightscar unlock)
     expect(game.save.clanTokens).toBe(0);
     expect(game.save.pending[0]?.setId).toBe('clanforged');
     expect(game.save.pending[0]?.icon).toBe('k');

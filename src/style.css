@@ -2043,6 +2043,50 @@ button {
   font-weight: 700;
   font-size: 3cqw;
 }
+.clan-bracket-card {
+  display: flex;
+  gap: 2cqw;
+  align-items: center;
+  padding: 1.6cqw 2cqw;
+  background: linear-gradient(180deg, rgba(244, 230, 196, 0.55), rgba(210, 190, 150, 0.35));
+  border: 0.25cqw solid rgba(60, 54, 44, 0.35);
+  border-radius: 1.2cqw;
+  text-align: left;
+}
+.clan-bracket-card b {
+  display: block;
+  font-family: var(--font-title);
+  font-size: 3.4cqw;
+  color: #2a241c;
+}
+.clan-bracket-card span:not(.clan-bracket-pill) {
+  display: block;
+  font-size: 2.6cqw;
+  color: #5a5348;
+}
+.clan-bracket-pill {
+  flex: 0 0 auto;
+  min-width: 14cqw;
+  padding: 1cqw 1.6cqw;
+  border-radius: 0.8cqw;
+  font-family: var(--font-title);
+  font-size: 3cqw;
+  font-weight: 700;
+  text-align: center;
+  color: #1a1612;
+  background: #c4b89a;
+  border: 0.25cqw solid rgba(40, 34, 28, 0.35);
+}
+.clan-bracket-pill.scout {
+  background: #b7c4a8;
+}
+.clan-bracket-pill.veteran {
+  background: #c9b07a;
+}
+.clan-bracket-pill.nightscar {
+  background: #8a9bb0;
+  color: #12151a;
+}
 .lb-hero {
   display: flex;
   gap: 2cqw;

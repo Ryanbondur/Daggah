@@ -79,6 +79,10 @@ export interface SaveData {
   clanTokensDayKey: string;
   clanWins: number;
   clanLosses: number;
+  /** Calendar day key when the free challenge-up was spent (empty = unused). */
+  clanChallengeUpDayKey: string;
+  /** Unlocks Nightscar-exclusive Clan Armorer legendaries after a Nightscar match. */
+  clanNightscarUnlocked: boolean;
   clan: ClanData | null;
   season: SeasonData;
   /** First-run tutorial coach. */
@@ -145,6 +149,8 @@ export function defaultSave(now = Date.now()): SaveData {
     clanTokensDayKey: new Date(now).toISOString().slice(0, 10),
     clanWins: 0,
     clanLosses: 0,
+    clanChallengeUpDayKey: '',
+    clanNightscarUnlocked: false,
     clan: null,
     season: defaultSeason(now),
     tutorial: defaultTutorial(),
@@ -250,6 +256,8 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   | 'clanTokensDayKey'
   | 'clanWins'
   | 'clanLosses'
+  | 'clanChallengeUpDayKey'
+  | 'clanNightscarUnlocked'
   | 'clan'
   | 'season'
   | 'tutorial'
@@ -279,6 +287,9 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
       typeof parsed.clanTokensDayKey === 'string' ? parsed.clanTokensDayKey : fresh.clanTokensDayKey,
     clanWins: typeof parsed.clanWins === 'number' ? parsed.clanWins : 0,
     clanLosses: typeof parsed.clanLosses === 'number' ? parsed.clanLosses : 0,
+    clanChallengeUpDayKey:
+      typeof parsed.clanChallengeUpDayKey === 'string' ? parsed.clanChallengeUpDayKey : '',
+    clanNightscarUnlocked: !!parsed.clanNightscarUnlocked,
     clan: parsed.clan ? sanitizeClan(parsed.clan) : null,
     season: parsed.season?.startedAt ? parsed.season : defaultSeason(parsed.createdAt ?? now),
     tutorial,
