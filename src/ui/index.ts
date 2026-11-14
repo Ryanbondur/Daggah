@@ -95,11 +95,13 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
     game,
     tab: 'camp',
     skillStyle: CLASS_PLAYSTYLES[game.save.heroClass][0],
+    skillBarFocus: null,
     get modalOpen() {
       return !!modalEl;
     },
     setTab(tab: Tab) {
       ctx.tab = tab;
+      if (tab !== 'skill') ctx.skillBarFocus = null;
       if (tab === 'skill') game.markSkillsSeen();
       ctx.render();
     },
@@ -380,9 +382,23 @@ export function mountUI(game: Game, root: HTMLElement): { phaserParent: HTMLElem
         ctx.skillStyle = d.id as PlaystyleId;
         ctx.render();
         break;
+      case 'skill-slot': {
+        const i = Number(d.i);
+        if (!Number.isFinite(i) || i < 0 || i >= 4) break;
+        ctx.skillBarFocus = ctx.skillBarFocus === i ? null : i;
+        ctx.render();
+        break;
+      }
       case 'toggle-skill': {
-        const msg = game.toggleSkill(d.id as never);
+        const id = d.id as never;
+        const equipped = game.save.loadout.includes(id);
+        const replace =
+          !equipped && game.save.loadout.length >= 4 && ctx.skillBarFocus !== null
+            ? ctx.skillBarFocus
+            : undefined;
+        const msg = game.toggleSkill(id, replace);
         if (msg) game.toast(msg, 'bad');
+        else ctx.skillBarFocus = null;
         break;
       }
       case 'primary': {

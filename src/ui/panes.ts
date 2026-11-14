@@ -75,11 +75,16 @@ export function renderSkill(ctx: UIContext): string {
   const lvl = g.save.level;
   const loadout = g.save.loadout.filter((id) => isUnlocked(id, lvl));
   const primary = g.save.primary && loadout.includes(g.save.primary) ? g.save.primary : defaultPrimary(loadout);
+  const focus = ctx.skillBarFocus;
+  const barFull = loadout.length >= BAR_SIZE;
   const slots: string[] = [];
   for (let i = 0; i < BAR_SIZE; i++) {
     const id = loadout[i];
+    const focused = focus === i ? ' focus' : '';
     if (!id) {
-      slots.push('<div class="sb-slot empty"></div>');
+      slots.push(
+        `<button type="button" class="sb-slot empty${focused}" data-action="skill-slot" data-i="${i}" aria-label="Empty skill slot ${i + 1}"></button>`,
+      );
       continue;
     }
     const def = SKILL_BY_ID[id];
@@ -87,7 +92,7 @@ export function renderSkill(ctx: UIContext): string {
       ? ''
       : `<span class="pm ${primary === id ? 'on' : ''}" data-action="primary" data-id="${id}">${ICON.star}</span>`;
     slots.push(
-      `<button class="sb-slot" data-action="toggle-skill" data-id="${id}"><img src="${skillIcon(id)}" alt="${def.name}" />${star}<span class="ec">${def.passive ? 'Passive' : def.energy}</span></button>`,
+      `<button type="button" class="sb-slot${focused}" data-action="skill-slot" data-i="${i}" aria-label="${def.name}"><img src="${skillIcon(id)}" alt="${def.name}" />${star}<span class="ec">${def.passive ? 'Passive' : def.energy}</span></button>`,
     );
   }
   const styles = CLASS_PLAYSTYLES[g.save.heroClass];
@@ -98,29 +103,36 @@ export function renderSkill(ctx: UIContext): string {
     .map((s) => {
       const unlocked = isUnlocked(s.id, lvl);
       const equipped = loadout.includes(s.id);
-      const meta = s.passive ? 'Passive' : `${s.energy} Energy  -  ${s.cd}s CD`;
-      return `<div class="skill-card ${unlocked ? '' : 'locked'}">
+      const meta = s.passive ? 'Passive · modifies autos' : `${s.energy} Energy  -  ${s.cd}s CD`;
+      const canSwap = !equipped && barFull && focus !== null;
+      const label = equipped ? 'Unequip' : canSwap ? 'Swap' : 'Equip';
+      return `<div class="skill-card ${unlocked ? '' : 'locked'}${s.passive ? ' passive' : ''}">
         <div class="sicon"><img src="${skillIcon(s.id)}" alt="" />${unlocked ? '' : `<div class="lk">${ICON.lock}</div>`}</div>
         <div class="info">
-          <div class="sn">${s.name}${s.ultimate ? '<small>ULTIMATE</small>' : ''}</div>
+          <div class="sn">${s.name}${s.ultimate ? '<small>ULTIMATE</small>' : ''}${s.passive ? '<small class="pas">PASSIVE</small>' : ''}</div>
           <div class="sd">${s.desc}</div>
           <div class="sm">${unlocked ? meta : `Unlocks at Lv.${s.unlockLevel}`}</div>
         </div>
-        <button class="eq ${equipped ? 'on' : ''}" data-action="toggle-skill" data-id="${s.id}" ${unlocked ? '' : 'disabled style="opacity:.45"'}>${equipped ? 'Unequip' : 'Equip'}</button>
+        <button type="button" class="eq ${equipped ? 'on' : ''} ${canSwap ? 'swap' : ''}" data-action="toggle-skill" data-id="${s.id}" ${unlocked ? '' : 'disabled style="opacity:.45"'}>${label}</button>
       </div>`;
     })
     .join('');
   const tab = (id: PlaystyleId) =>
-    `<button class="tb ${style === id ? 'on' : ''}" data-action="style" data-id="${id}">${PLAYSTYLES[id].name}</button>`;
+    `<button type="button" class="tb ${style === id ? 'on' : ''}" data-action="style" data-id="${id}">${PLAYSTYLES[id].name}</button>`;
   const locked = g.mode !== 'camp' ? '<div class="note">In battle: retreat to camp to swap skills.</div>' : '';
   const committed = playstyleCommitted(loadout, style);
   const identity = committed
     ? `<div class="note good">Playstyle locked in — ${PLAYSTYLES[style].name} set bonuses at full power.</div>`
     : `<div class="note">Equip ≥3 ${PLAYSTYLES[style].name} skills to unlock that set's 4/6 bonuses (beats raw CP).</div>`;
+  const swapHint = barFull
+    ? focus !== null
+      ? `<div class="tagline" style="text-align:center">Slot ${focus + 1} selected — tap Equip/Swap on a skill (including passives) to replace it.</div>`
+      : `<div class="tagline" style="text-align:center">Bar full: tap a slot above, then Equip to swap in a passive or active.</div>`
+    : `<div class="tagline" style="text-align:center">Star = Primary (Battle button). Passives equip on the same 4-slot bar as actives.</div>`;
   return `<div class="pane-inner scroll">
     <div class="tab-title">Skills <small>${g.save.heroClass}  -  ${loadout.length}/${BAR_SIZE} equipped</small></div>
     <div class="skillbar">${slots.join('')}</div>
-    <div class="tagline" style="text-align:center">Star = Primary skill (center Battle button). Loadout swaps beat mismatched high-CP gear.</div>
+    ${swapHint}
     ${identity}
     ${locked}
     <div class="tabs">${styles.map(tab).join('')}</div>
