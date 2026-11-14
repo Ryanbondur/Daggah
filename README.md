@@ -32,8 +32,9 @@ npm run art        # re-slice generated art from art-src/ into public/assets/ (n
 - **Town**: Clan Hall (create/join, roster, 4v4 queue), Season Board (30-day timer + local reset), Clan Armorer (token shop). Blacksmith / Quartermaster still stubbed.
 - **Clans / 4v4 (client-local)**: create (500 crystals) or join by code; **Fill AI roster** for the other three classes (player stays human); queue when roster has one of each class. Enemy clan is AI with endgame/scaled gear. Auto-battle uses your gear + skills; win 20 / loss 5 tokens (200/day cap). Clear AI badges until live multiplayer.
 - **Save**: stable `daggah.save` localStorage key (migrates legacy `daggah.save.v1`–`v3`). Autosaves on change and every 5s. **Settings → Export / Import save code** for a shareable `DAG1.…` backup (survives origin changes).
+- **Cloud sync**: Postgres-backed `GET/PUT /api/daggah-save`. Prefers Cursor identity when verified; otherwise a player **account code** (`DGAC.…`) from Settings → Cloud sync. Debounced auto-push; pull on boot when linked. Export/Import remains.
 
-Out of scope: server seasons / matchmaking / true multiplayer clans.
+Out of scope: clan leaderboard / season standings (DB stubs ready); server matchmaking / true multiplayer clans.
 
 ## Controls
 
@@ -61,3 +62,4 @@ art-src/     raw generated art → public/assets/
 4. Season Board → day timer; optional local season reset → class pick returns, clan kept.
 5. Reload: clan + tokens persist on `daggah.save` (same origin).
 6. Settings → Export save code, then Import on a fresh browser to restore progress.
+7. Settings → Cloud sync → Create / show code → Copy; on another device Paste code to restore → Sync now.

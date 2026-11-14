@@ -71,6 +71,7 @@ import type { PvpResult } from './pvp';
 import { buildOpponentRoster, simulatePvp } from './pvp';
 import type { Rng } from './rng';
 import { defaultRng } from './rng';
+import { scheduleCloudPush } from './cloudSave';
 import { exportSaveCode, importSaveCode } from './saveCode';
 import type { SaveData, Storage } from './state';
 import {
@@ -150,7 +151,7 @@ export class Game {
   paused = false;
   chat: string[] = ['Welcome to Daggah. Tap Battle to begin.'];
   readonly rng: Rng;
-  private storage: Storage | undefined;
+  readonly storage: Storage | undefined;
   private listeners = new Set<Listener>();
   private acc = 0;
   private dungeonCtx: DungeonCtx | null = null;
@@ -178,6 +179,7 @@ export class Game {
 
   persist(): void {
     writeSave(this.storage, this.save);
+    scheduleCloudPush(this.storage, this.save);
   }
 
   /** Shareable single-line save code (localStorage remains the fast cache). */

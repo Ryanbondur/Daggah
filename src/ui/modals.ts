@@ -3,6 +3,15 @@ import type { HeroClass, RarityId, SetId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_LABEL } from '../data/types';
 import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
 import { CLAN_CREATE_COST, TOKEN_DAY_CAP, TOKEN_LOSS, TOKEN_WIN } from '../game/clan';
+import {
+  applyCloudSave,
+  ensureAccountCode,
+  getCloudLinkStatus,
+  linkAccountCode,
+  pushCloudSave,
+  syncCloudSave,
+  unlinkAccountCode,
+} from '../game/cloudSave';
 import { CLAN_VENDOR, type RunResult } from '../game/game';
 import type { PvpResult } from '../game/pvp';
 import { BAG_CAP } from '../game/state';
@@ -290,6 +299,26 @@ export function showSettings(ctx: UIContext): void {
         <h3>Season</h3>
         <p>Local 30-day season stub. Reset keeps clan membership and opens class pick.</p>
         <button class="chip" data-action="season-reset">Reset season (local)</button>
+        <h3>Cloud sync</h3>
+        <p>Link an account code to keep progress across devices, refreshes, and republishes. Cursor sign-in is used automatically when available; otherwise the code is your secret key. Keep Export/Import as a backup.</p>
+        <p class="tagline" id="cloud-sync-status">${escapeHtml(
+          (() => {
+            const st = getCloudLinkStatus(g.storage);
+            if (st.linked) return `Linked · code ends …${(st.accountCode ?? '').slice(-6)}`;
+            return 'Not linked — create or paste a code to sync';
+          })(),
+        )}</p>
+        <div class="chip-row">
+          <button class="chip" data-action="cloud-create">Create / show code</button>
+          <button class="chip" data-action="cloud-copy">Copy code</button>
+          <button class="chip" data-action="cloud-link">Paste code to restore</button>
+          <button class="chip" data-action="cloud-sync-now">Sync now</button>
+          <button class="chip" data-action="cloud-unlink">Unlink</button>
+        </div>
+        <label class="tagline" for="account-code-box">Account code</label>
+        <textarea id="account-code-box" rows="2" spellcheck="false" placeholder="DGAC.…." style="width:100%;box-sizing:border-box;margin:1cqw 0 2cqw;padding:2cqw;font:600 2.8cqw/1.35 ui-monospace,Menlo,Consolas,monospace;border:1px solid #c9c0b2;border-radius:1.2cqw;background:#f7f3ea;color:#2a241c;resize:vertical">${escapeHtml(
+          getCloudLinkStatus(g.storage).accountCode ?? '',
+        )}</textarea>
         <h3>Save</h3>
         <p>Progress autosaves in this browser (survives refresh on the same site). Export a code before switching devices or if a republish ever changes origin.</p>
         <div class="chip-row">
@@ -307,7 +336,20 @@ export function showSettings(ctx: UIContext): void {
   let armed = false;
   let seasonArmed = false;
   let importArmed = false;
+  let unlinkArmed = false;
   const codeBox = () => el.querySelector('#save-code-box') as HTMLTextAreaElement | null;
+  const accountBox = () => el.querySelector('#account-code-box') as HTMLTextAreaElement | null;
+  const refreshCloudStatus = () => {
+    const statusEl = el.querySelector('#cloud-sync-status');
+    const st = getCloudLinkStatus(g.storage);
+    if (statusEl) {
+      statusEl.textContent = st.linked
+        ? `Linked · code ends …${(st.accountCode ?? '').slice(-6)}`
+        : 'Not linked — create or paste a code to sync';
+    }
+    const box = accountBox();
+    if (box && st.accountCode && !box.value.trim()) box.value = st.accountCode;
+  };
   el.addEventListener('click', (ev) => {
     const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
     if (!t) return;
@@ -315,6 +357,134 @@ export function showSettings(ctx: UIContext): void {
       case 'close':
         ctx.closeModal();
         break;
+      case 'cloud-create': {
+        const code = ensureAccountCode(g.storage);
+        const box = accountBox();
+        if (code && box) box.value = code;
+        refreshCloudStatus();
+        g.toast(code ? 'Account code ready — copy it to your other devices' : 'Could not store account code', code ? 'good' : 'bad');
+        break;
+      }
+      case 'cloud-copy': {
+        const box = accountBox();
+        const code = (box?.value.trim() || getCloudLinkStatus(g.storage).accountCode || ensureAccountCode(g.storage) || '');
+        if (!code) {
+          g.toast('Create an account code first', 'info');
+          break;
+        }
+        if (box) box.value = code;
+        const copied = (() => {
+          try {
+            void navigator.clipboard?.writeText(code);
+            return true;
+          } catch {
+            return false;
+          }
+        })();
+        g.toast(copied ? 'Account code copied' : 'Copy from the account code box', copied ? 'good' : 'info');
+        break;
+      }
+      case 'cloud-link': {
+        const box = accountBox();
+        const raw = box?.value ?? '';
+        const linked = linkAccountCode(g.storage, raw);
+        if (!linked) {
+          g.toast('Paste a valid DGAC.… account code', 'bad');
+          break;
+        }
+        refreshCloudStatus();
+        void (async () => {
+          g.toast('Pulling cloud save…', 'info');
+          const { save, result } = await syncCloudSave(g.storage, g.save, Date.now(), { askOnConflict: true });
+          if (result.status === 'conflict') {
+            const cloudNewer = (result.cloud.savedAt ?? 0) >= (result.local.savedAt ?? 0);
+            const takeCloud = window.confirm(
+              cloudNewer
+                ? 'Cloud save is newer. Use cloud progress? (Cancel keeps this device and uploads it.)'
+                : 'This device is newer than cloud. Keep this device and upload? (Cancel downloads cloud.)',
+            );
+            const wantCloud = cloudNewer ? takeCloud : !takeCloud;
+            if (wantCloud) {
+              g.save = applyCloudSave(g.storage, result.cloud);
+              g.emit({ t: 'change' });
+              g.toast('Restored from cloud', 'good');
+            } else {
+              await pushCloudSave(result.local, g.storage, { force: true });
+              g.toast('Uploaded this device to cloud', 'good');
+            }
+            ctx.closeModal();
+            if (!g.save.classPicked) ctx.showClassPick();
+            return;
+          }
+          if (result.status === 'pulled') {
+            g.save = save;
+            g.emit({ t: 'change' });
+            g.toast('Restored from cloud', 'good');
+            ctx.closeModal();
+            if (!g.save.classPicked) ctx.showClassPick();
+            return;
+          }
+          if (result.status === 'pushed') {
+            g.toast('Linked — progress uploaded', 'good');
+            return;
+          }
+          g.toast(`Link saved (${result.status === 'skipped' ? result.reason : result.status})`, 'info');
+        })();
+        break;
+      }
+      case 'cloud-sync-now': {
+        void (async () => {
+          g.persist();
+          const { save, result } = await syncCloudSave(g.storage, g.save, Date.now(), { askOnConflict: true });
+          if (result.status === 'conflict') {
+            const cloudNewer = (result.cloud.savedAt ?? 0) > (result.local.savedAt ?? 0);
+            const takeCloud = window.confirm(
+              cloudNewer
+                ? 'Cloud is newer. Download cloud save? (Cancel keeps local and uploads.)'
+                : 'Local is newer. Keep local and upload? (Cancel downloads cloud.)',
+            );
+            const wantCloud = cloudNewer ? takeCloud : !takeCloud;
+            if (wantCloud) {
+              g.save = applyCloudSave(g.storage, result.cloud);
+              g.emit({ t: 'change' });
+              g.toast('Using cloud save', 'good');
+            } else {
+              await pushCloudSave(result.local, g.storage, { force: true });
+              g.toast('Uploaded local save', 'good');
+            }
+            refreshCloudStatus();
+            return;
+          }
+          if (result.status === 'pulled') {
+            g.save = save;
+            g.emit({ t: 'change' });
+            g.toast('Pulled newer cloud save', 'good');
+          } else if (result.status === 'pushed') {
+            g.toast('Pushed to cloud', 'good');
+          } else if (result.status === 'unchanged') {
+            g.toast('Already in sync', 'info');
+          } else {
+            g.toast(`Sync skipped: ${result.reason}`, 'info');
+          }
+          refreshCloudStatus();
+        })();
+        break;
+      }
+      case 'cloud-unlink': {
+        if (!unlinkArmed) {
+          unlinkArmed = true;
+          t.textContent = 'Tap again to unlink';
+          break;
+        }
+        unlinkAccountCode(g.storage);
+        const box = accountBox();
+        if (box) box.value = '';
+        unlinkArmed = false;
+        t.textContent = 'Unlink';
+        refreshCloudStatus();
+        g.toast('Cloud unlinked on this device', 'info');
+        break;
+      }
       case 'set-mute':
         g.setMuted(!g.save.settings.muted);
         ctx.closeModal();

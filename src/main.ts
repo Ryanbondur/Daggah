@@ -8,7 +8,7 @@ import '@fontsource/inter/800.css';
 import '@fontsource/lilita-one/400.css';
 import Phaser from 'phaser';
 import './style.css';
-import { syncCloudSave } from './game/cloudSave';
+import { getCloudLinkStatus, syncCloudSave } from './game/cloudSave';
 import { Game } from './game/game';
 import { StageScene } from './stage/StageScene';
 import { mountUI } from './ui';
@@ -23,11 +23,23 @@ async function boot(): Promise<void> {
   })();
   const game = new Game(storage);
 
-  // Optional cloud sync: no-ops on public hosts without /api/daggah-save.
-  void syncCloudSave(storage, game.save).then(({ save, result }) => {
+  // Pull on boot when linked (account code) or when identity may be present.
+  const linked = getCloudLinkStatus(storage).linked;
+  void syncCloudSave(storage, game.save, Date.now(), { askOnConflict: linked }).then(({ save, result }) => {
     if (result.status === 'pulled') {
       game.save = save;
       game.emit({ t: 'change' });
+      game.toast('Restored newer cloud save', 'good');
+      return;
+    }
+    if (result.status === 'conflict' && linked) {
+      const cloudNewer = (result.cloud.savedAt ?? 0) > (result.local.savedAt ?? 0);
+      // Newer wins automatically on boot; Settings → Sync now can ask.
+      if (cloudNewer) {
+        game.save = result.cloud;
+        game.emit({ t: 'change' });
+        game.toast('Loaded newer cloud save', 'good');
+      }
     }
   });
 
