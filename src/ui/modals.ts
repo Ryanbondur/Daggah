@@ -12,6 +12,7 @@ import {
   registerAccount,
   shouldShowLoginGate,
 } from '../game/authSession';
+import { normalizeUsername, validatePassword } from '../lib/authValidation';
 import {
   applyCloudSave,
   ensureAccountCode,
@@ -61,13 +62,21 @@ function friendlyAuthError(code: string): string {
     case 'invalid_credentials':
       return 'Wrong username or password';
     case 'invalid_username':
-      return 'Username: 3–24 letters, digits, _ or -';
+      return 'Username: 3–24 letters, digits, _ or - (no spaces)';
     case 'weak_password':
       return 'Password must be at least 8 characters';
     case 'rate_limited':
       return 'Too many tries — wait a minute';
     case 'unreachable':
       return 'Server unreachable — progress stays on this device';
+    case 'database_unavailable':
+    case 'schema_missing':
+      return 'Cloud login is temporarily unavailable. Try guest play for now.';
+    case 'server_error':
+    case 'internal':
+    case 'http_500':
+    case 'http 500':
+      return 'Server error — try again, or continue as guest.';
     default:
       return code.replace(/_/g, ' ');
   }
@@ -125,10 +134,10 @@ export function showLogin(ctx: UIContext, opts: { allowGuest?: boolean } = {}): 
           <button type="button" class="chip" data-action="mode-register" role="tab" aria-selected="false">Register</button>
         </div>
         <label class="tagline" for="login-username">Username</label>
-        <input id="login-username" class="login-input" type="text" autocomplete="username" maxlength="24" spellcheck="false" placeholder="hero_name" />
+        <input id="login-username" class="login-input" type="text" autocomplete="username" maxlength="24" spellcheck="false" placeholder="hero_name (no spaces)" />
         <label class="tagline" for="login-password">Password</label>
         <input id="login-password" class="login-input" type="password" autocomplete="current-password" maxlength="128" placeholder="••••••••" />
-        <p class="tagline login-hint" id="login-hint">At least 8 characters. Never share your password.</p>
+        <p class="tagline login-hint" id="login-hint">Username: letters, digits, _ or -. Password: 8+ characters.</p>
         <p class="login-error" id="login-error" hidden></p>
       </div>
       <div class="btns login-btns">
@@ -182,8 +191,8 @@ export function showLogin(ctx: UIContext, opts: { allowGuest?: boolean } = {}): 
     if (hint) {
       hint.textContent =
         mode === 'register'
-          ? 'Create a username + password (8+ chars). Progress syncs after you sign in.'
-          : 'At least 8 characters. Never share your password.';
+          ? 'Username: 3–24 letters/digits/_/- (no spaces). Password: 8+ chars.'
+          : 'Username: letters, digits, _ or -. Password: 8+ characters.';
     }
     setError(null);
   };
@@ -197,6 +206,16 @@ export function showLogin(ctx: UIContext, opts: { allowGuest?: boolean } = {}): 
     const username = userInput()?.value ?? '';
     const password = passInput()?.value ?? '';
     setError(null);
+    // Validate locally so bad usernames (e.g. spaces) never hit the API as a confusing 500.
+    if (!normalizeUsername(username)) {
+      setError(friendlyAuthError('invalid_username'));
+      return;
+    }
+    const pwErr = validatePassword(password);
+    if (pwErr) {
+      setError(friendlyAuthError('weak_password'));
+      return;
+    }
     const submit = submitBtn();
     if (submit) submit.disabled = true;
     const result =

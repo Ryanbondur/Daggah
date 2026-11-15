@@ -1,16 +1,28 @@
 // server-only — username/password auth for cloud saves
 import { createHash, randomBytes, randomUUID, pbkdf2 as pbkdf2Cb, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
+import {
+  MAX_PASSWORD_LEN,
+  MAX_USERNAME_LEN,
+  MIN_PASSWORD_LEN,
+  MIN_USERNAME_LEN,
+  normalizeUsername,
+  validatePassword,
+} from './authValidation';
 import { sql } from './db';
 
 const pbkdf2 = promisify(pbkdf2Cb);
 
 export const SESSION_HEADER = 'x-daggah-session';
 export const SESSION_DAYS = 30;
-export const MIN_PASSWORD_LEN = 8;
-export const MAX_PASSWORD_LEN = 128;
-export const MIN_USERNAME_LEN = 3;
-export const MAX_USERNAME_LEN = 24;
+export {
+  MAX_PASSWORD_LEN,
+  MAX_USERNAME_LEN,
+  MIN_PASSWORD_LEN,
+  MIN_USERNAME_LEN,
+  normalizeUsername,
+  validatePassword,
+};
 
 /** PBKDF2 params (WebCrypto-compatible algorithm; Node crypto implementation). */
 const PBKDF2_ITERS = 210_000;
@@ -29,22 +41,6 @@ export type SessionUser = {
   id: string;
   username: string;
 };
-
-export function normalizeUsername(raw: string): string | null {
-  const trimmed = String(raw ?? '').trim();
-  if (trimmed.length < MIN_USERNAME_LEN || trimmed.length > MAX_USERNAME_LEN) return null;
-  // Letters, digits, underscore, hyphen — no spaces / HTML / unicode tricks.
-  if (!/^[A-Za-z0-9_-]+$/.test(trimmed)) return null;
-  return trimmed;
-}
-
-export function validatePassword(raw: string): string | null {
-  if (typeof raw !== 'string') return 'Password required';
-  if (!raw.trim()) return 'Password cannot be empty or whitespace-only';
-  if (raw.length < MIN_PASSWORD_LEN) return `Password must be at least ${MIN_PASSWORD_LEN} characters`;
-  if (raw.length > MAX_PASSWORD_LEN) return `Password must be at most ${MAX_PASSWORD_LEN} characters`;
-  return null;
-}
 
 export function hashToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');

@@ -4,6 +4,7 @@
  *
  * Auth: username session (primary), else Cursor identity, else x-daggah-account-code.
  */
+import { isDatabaseUnavailable, isUndefinedTable } from '../src/lib/db';
 import { resolveOwner } from '../src/lib/owner';
 import {
   getSave,
@@ -17,6 +18,35 @@ const NO_STORE = { 'cache-control': 'private, no-store' } as const;
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: NO_STORE });
+}
+
+function internalError(error: unknown, where: string): Response {
+  console.error(`${where} failed`, error instanceof Error ? error.message : 'unknown');
+  if (isDatabaseUnavailable(error)) {
+    return json(
+      {
+        error: 'database_unavailable',
+        hint: 'Cloud sync is temporarily unavailable. Progress stays on this device.',
+      },
+      503,
+    );
+  }
+  if (isUndefinedTable(error)) {
+    return json(
+      {
+        error: 'schema_missing',
+        hint: 'Cloud save tables are not ready yet. Try again in a moment.',
+      },
+      503,
+    );
+  }
+  return json(
+    {
+      error: 'internal',
+      hint: 'Cloud sync failed. Progress stays on this device.',
+    },
+    500,
+  );
 }
 
 async function readBody(request: Request): Promise<unknown> {
@@ -44,8 +74,7 @@ export async function GET(request: Request): Promise<Response> {
       ownerKind: owner.kind,
     });
   } catch (error) {
-    console.error('GET /api/daggah-save failed', error instanceof Error ? error.message : 'unknown');
-    return json({ error: 'internal' }, 500);
+    return internalError(error, 'GET /api/daggah-save');
   }
 }
 
@@ -92,8 +121,7 @@ export async function PUT(request: Request): Promise<Response> {
     await upsertSave(owner.ownerKey, sanitized.payload, sanitized.schemaVersion);
     return new Response(null, { status: 204, headers: NO_STORE });
   } catch (error) {
-    console.error('PUT /api/daggah-save failed', error instanceof Error ? error.message : 'unknown');
-    return json({ error: 'internal' }, 500);
+    return internalError(error, 'PUT /api/daggah-save');
   }
 }
 

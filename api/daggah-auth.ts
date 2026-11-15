@@ -20,11 +20,41 @@ import {
   validatePassword,
   verifyPassword,
 } from '../src/lib/auth';
+import { isDatabaseUnavailable, isUndefinedTable } from '../src/lib/db';
 
 const NO_STORE = { 'cache-control': 'private, no-store' } as const;
 
 function json(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
   return Response.json(data, { status, headers: { ...NO_STORE, ...extraHeaders } });
+}
+
+function internalError(error: unknown, where: string): Response {
+  console.error(`${where} failed`, error instanceof Error ? error.message : 'unknown');
+  if (isDatabaseUnavailable(error)) {
+    return json(
+      {
+        error: 'database_unavailable',
+        hint: 'Cloud login is temporarily unavailable. Play as guest — progress stays on this device.',
+      },
+      503,
+    );
+  }
+  if (isUndefinedTable(error)) {
+    return json(
+      {
+        error: 'schema_missing',
+        hint: 'Account tables are not ready yet. Try again in a moment, or continue as guest.',
+      },
+      503,
+    );
+  }
+  return json(
+    {
+      error: 'internal',
+      hint: 'Something went wrong on the server. Try again, or continue as guest.',
+    },
+    500,
+  );
 }
 
 async function readBody(request: Request): Promise<unknown> {
@@ -49,8 +79,7 @@ export async function GET(request: Request): Promise<Response> {
     const { user } = auth as { user: { id: string; username: string } };
     return json({ username: user.username, userId: user.id });
   } catch (error) {
-    console.error('GET /api/daggah-auth failed', error instanceof Error ? error.message : 'unknown');
-    return json({ error: 'internal' }, 500);
+    return internalError(error, 'GET /api/daggah-auth');
   }
 }
 
@@ -89,7 +118,7 @@ export async function POST(request: Request): Promise<Response> {
         return json(
           {
             error: 'invalid_username',
-            hint: '3–24 chars: letters, digits, _ or -',
+            hint: '3–24 chars: letters, digits, _ or - (no spaces)',
           },
           400,
         );
@@ -184,8 +213,7 @@ export async function POST(request: Request): Promise<Response> {
 
     return json({ error: 'unknown_action' }, 400);
   } catch (error) {
-    console.error('POST /api/daggah-auth failed', error instanceof Error ? error.message : 'unknown');
-    return json({ error: 'internal' }, 500);
+    return internalError(error, 'POST /api/daggah-auth');
   }
 }
 

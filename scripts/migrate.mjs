@@ -5,10 +5,15 @@ const url = process.env.DATABASE_URL?.trim() ?? "";
 const files = (await readdir("migrations").catch(() => []))
   .filter((f) => f.endsWith(".sql"))
   .sort();
-if (url === "" || files.length === 0) {
-  console.log("migrate: nothing to do");
+if (url === "") {
+  console.log("migrate: skip (DATABASE_URL unset)");
   process.exit(0);
 }
+if (files.length === 0) {
+  console.log("migrate: nothing to do (no migrations/*.sql)");
+  process.exit(0);
+}
+console.log(`migrate: ${files.length} file(s) under migrations/`);
 // The session lock needs a direct connection: DATABASE_URL may go through a
 // transaction pooler, which would keep the lock after this script exits.
 const client = new pg.Client({
@@ -24,7 +29,11 @@ try {
   const done = new Set(
     (await client.query("select name from schema_migrations")).rows.map((r) => r.name),
   );
-  for (const file of files.filter((f) => !done.has(f))) {
+  const pending = files.filter((f) => !done.has(f));
+  if (pending.length === 0) {
+    console.log("migrate: already up to date");
+  }
+  for (const file of pending) {
     await client.query("begin");
     try {
       await client.query(await readFile(`migrations/${file}`, "utf8"));
