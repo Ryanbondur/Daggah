@@ -15,7 +15,8 @@ GitHub Pages (optional): **https://ryanbondur.github.io/Daggah/** — workflow b
 ```bash
 npm install
 npm run dev        # http://localhost:5173 (open in a phone-sized window or devtools mobile view)
-npm run build      # typecheck + production build into dist/
+npm run build      # typecheck + bundle api/*.js + production build into dist/
+npm run bundle:api # rebuild self-contained api/daggah-auth.js + daggah-save.js
 npm run preview    # serve the production build
 npm test           # unit tests + headless balance simulation
 npm run art        # re-slice generated art from art-src/ into public/assets/ (needs python3 + Pillow/numpy/scipy)
@@ -46,11 +47,13 @@ Out of scope: clan leaderboard / season standings (DB stubs ready); server match
 ## Project layout
 
 ```
+api/         hosted routes: ping*.ts (probes) + daggah-auth.js / daggah-save.js (bundled)
+api/_lib/    auth/save/db source (edit here, then npm run bundle:api)
 src/data/    types, XP, skills (all classes), gear/sets/CP, acts 1-10 + enemies, quests
 src/game/    combat engine, clan/PvP, Game controller, save, tests
 src/stage/   Phaser StageScene
 src/ui/      DOM panes, modals (clan/season/vendor/PvP), HUD
-scripts/     process-art.py
+scripts/     process-art.py, bundle-api.mjs, migrate.mjs
 art-src/     raw generated art → public/assets/
 ```
 

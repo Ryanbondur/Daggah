@@ -3,8 +3,8 @@ import {
   GET as authGet,
   OPTIONS as authOptions,
   POST as authPost,
-} from '../../api/daggah-auth';
-import { GET, OPTIONS, PUT } from '../../api/daggah-save';
+} from '../../api/_lib/authApi';
+import { GET, OPTIONS, PUT } from '../../api/_lib/saveApi';
 import { GET as pingGet } from '../../api/ping';
 import { GET as pingCryptoGet } from '../../api/ping-crypto';
 import { GET as pingDbGet } from '../../api/ping-db';

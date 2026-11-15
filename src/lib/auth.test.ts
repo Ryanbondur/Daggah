@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { GET as authGet, POST as authPost } from '../../api/daggah-auth';
-import { GET as saveGet, PUT as savePut } from '../../api/daggah-save';
+import { GET as authGet, POST as authPost } from '../../api/_lib/authApi';
+import { GET as saveGet, PUT as savePut } from '../../api/_lib/saveApi';
 import {
   SESSION_HEADER,
   hashPassword,
