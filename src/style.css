@@ -75,7 +75,19 @@ button {
     Portrait bands tuned for phone HUD fit (DG-55):
     stage ~34%, HUD ~15% (chat row + orbs), parchment ~40%, nav ~11% (≥44px taps on SE).
   */
-  grid-template-rows: 34% 15% 40% 11%;
+  --band-stage: 34%;
+  --band-hud: 15%;
+  --band-pane: 40%;
+  --band-nav: 11%;
+  /*
+    Mid-chrome (DG-89): chat + fight/retreat float into the stage/HUD seam.
+    --mid-chrome-clearance pushes #pane.wide below those 44px controls;
+    --z-mid-chrome keeps them (and the crystal wallet) tappable above the parchment.
+  */
+  /* Covers .hud-btn dip into the HUD band (worst on SE: ~23px) plus a small gap */
+  --mid-chrome-clearance: max(36px, 8cqw);
+  --z-mid-chrome: 12;
+  grid-template-rows: var(--band-stage) var(--band-hud) var(--band-pane) var(--band-nav);
   background: var(--stone-0);
   overflow: hidden;
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
@@ -284,7 +296,10 @@ button {
     var(--tex-stone);
   background-size: cover;
   border-top: 0.5cqw solid #07060b;
-  z-index: 3;
+  /*
+    Do not set z-index here — a stacking context would trap .hud-btn under
+    #pane.wide. Chat/fight use --z-mid-chrome at the #frame level (DG-89).
+  */
 }
 #hud::before {
   content: '';
@@ -308,7 +323,8 @@ button {
   box-shadow: 0 0 0 0.3cqw #4a4654;
   display: grid;
   place-items: center;
-  z-index: 6;
+  /* Above Skill/Adventure/Clan parchments — same layer as .crystal-wallet */
+  z-index: var(--z-mid-chrome);
 }
 .hud-btn svg {
   width: 62%;
@@ -536,7 +552,7 @@ button {
 /*
   Persistent crystal count — always screen top-right (DG-69).
   #app already pads env(safe-area-inset-*), so offsets are inside the safe frame.
-  z-index above #pane.wide so Skill/Adventure/Clan never cover the chip.
+  Mid-chrome (--z-mid-chrome): above #pane.wide with chat/fight (DG-89).
 */
 .crystal-wallet {
   position: absolute;
@@ -544,7 +560,7 @@ button {
   right: max(1.4cqw, 8px);
   left: auto;
   transform: none;
-  z-index: 12;
+  z-index: var(--z-mid-chrome);
   display: inline-flex;
   align-items: center;
   gap: 1.2cqw;
@@ -594,10 +610,17 @@ button {
   position: absolute;
   left: 0;
   right: 0;
-  /* Keep in sync with #frame grid bands (stage 34% / nav 11%) */
-  top: 34%;
-  bottom: 11%;
+  /*
+    Start below floating chat/fight (DG-89). Bands from #frame --band-*.
+    z-index below --z-mid-chrome so mid-chrome still wins if they overlap.
+  */
+  top: calc(var(--band-stage) + var(--mid-chrome-clearance));
+  bottom: var(--band-nav);
   z-index: 7;
+}
+/* Wide panes used to cover the HUD log; keep it hidden in the clearance strip. */
+#frame:has(#pane.wide) .chat-log {
+  visibility: hidden;
 }
 .pane-inner {
   position: absolute;
