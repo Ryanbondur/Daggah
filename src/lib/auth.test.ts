@@ -9,7 +9,8 @@ import {
   validatePassword,
   verifyPassword,
 } from './auth';
-import { dbMode, resetLocalDbForTests, sql } from './db';
+import { dbMode, sql } from './db';
+import { resetPgliteForTests } from './dbPglite';
 
 function sampleSave(overrides: Record<string, unknown> = {}) {
   return {
@@ -46,14 +47,14 @@ describe('auth helpers', () => {
 
 describe('register / login / save roundtrip (PGlite)', () => {
   beforeEach(() => {
-    resetLocalDbForTests();
+    resetPgliteForTests();
     resetRateLimitsForTests();
     process.env.CURSOR_APP_ID = 'daggah-test';
     process.env.CURSOR_APP_IDENTITY_ISSUER = 'https://example.invalid';
   });
 
   afterEach(() => {
-    resetLocalDbForTests();
+    resetPgliteForTests();
     resetRateLimitsForTests();
     delete process.env.CURSOR_APP_ID;
     delete process.env.CURSOR_APP_IDENTITY_ISSUER;

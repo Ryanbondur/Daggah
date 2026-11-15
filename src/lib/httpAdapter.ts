@@ -5,6 +5,7 @@ import {
   POST as authPost,
 } from '../../api/daggah-auth';
 import { GET, OPTIONS, PUT } from '../../api/daggah-save';
+import { GET as pingGet } from '../../api/ping';
 
 /** Convert a Node IncomingMessage into a web Request for local Vite / start adapters. */
 export async function nodeToWebRequest(req: IncomingMessage): Promise<Request> {
@@ -46,6 +47,21 @@ export async function handleDaggahSaveApi(
   res: ServerResponse,
 ): Promise<boolean> {
   const path = (req.url ?? '/').split('?')[0];
+
+  if (path === '/api/ping') {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      await writeWebResponse(res, await pingGet());
+      return true;
+    }
+    await writeWebResponse(
+      res,
+      Response.json(
+        { error: 'method_not_allowed' },
+        { status: 405, headers: { allow: 'GET', 'cache-control': 'private, no-store' } },
+      ),
+    );
+    return true;
+  }
 
   if (path === '/api/daggah-auth') {
     const request = await nodeToWebRequest(req);
