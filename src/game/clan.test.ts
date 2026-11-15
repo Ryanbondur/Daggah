@@ -213,12 +213,12 @@ describe('clan armorer + season', () => {
     expect(game.save.season.seasonId).toBe(2);
   });
 
-  it('migrates v2 saves to v3 with clan defaults', () => {
+  it('migrates v2 saves to current schema with clan defaults', () => {
     const store = memoryStorage();
     const v2 = { ...defaultSave(), version: 2, classPicked: true, heroClass: 'Mage' as const, level: 5 };
     store.setItem('daggah.save.v2', JSON.stringify(v2));
     const loaded = loadSave(store);
-    expect(loaded.version).toBe(3);
+    expect(loaded.version).toBe(4);
     expect(loaded.heroClass).toBe('Mage');
     expect(loaded.clanTokens).toBe(0);
     expect(loaded.season.seasonId).toBe(1);

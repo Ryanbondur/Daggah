@@ -68,7 +68,6 @@ export type SlotId =
   | 'gloves'
   | 'bracers'
   | 'shoulders'
-  | 'legs'
   | 'boots'
   | 'amulet'
   | 'medal'

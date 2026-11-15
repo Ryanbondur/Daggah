@@ -1,10 +1,10 @@
 import type { Gear } from '../data/gear';
-import { SLOTS, starterGear } from '../data/gear';
+import { cpFromStats, SLOTS, starterGear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import { defaultTutorial, TUTORIAL_STEPS, type TutorialState } from '../data/tutorial';
 import { APP_CONTENT_VERSION } from '../data/whatsNew';
-import type { HeroClass, Item, RarityId, SkillId, SlotId } from '../data/types';
-import { HERO_CLASSES } from '../data/types';
+import type { HeroClass, Item, RarityId, SkillId, SlotId, Stats } from '../data/types';
+import { emptyStats, HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { sanitizeDomId, sanitizePlainText } from '../util/text';
 import type { ClanData, SeasonData } from './clan';
 import {
@@ -26,7 +26,10 @@ export const SAVE_KEY = 'daggah.save';
 /** Older keys still read + migrated on load. */
 export const LEGACY_SAVE_KEYS = ['daggah.save.v3', 'daggah.save.v2', 'daggah.save.v1'] as const;
 export const SAVE_BACKUP_KEY = 'daggah.save.bak';
-export const SAVE_VERSION = 3;
+/** v4: collapsed legacy `legs` + `boots` into a single Boots slot. */
+export const SAVE_VERSION = 4;
+/** Pre-v4 footwear slot that maps onto `boots`. */
+export const LEGACY_LEGS_SLOT = 'legs';
 export const BAG_CAP = 24;
 export const KEY_CAP = 8;
 export const KEY_REGEN_MS = 30 * 60 * 1000;
@@ -216,13 +219,73 @@ function isSlotId(v: unknown): v is SlotId {
   return typeof v === 'string' && (SLOTS as string[]).includes(v);
 }
 
+/** Map legacy `legs` → `boots`; unknown slots fall back to weapon. */
+export function coerceSlotId(v: unknown): SlotId {
+  if (v === LEGACY_LEGS_SLOT) return 'boots';
+  if (isSlotId(v)) return v;
+  return 'weapon';
+}
+
+/** Item-only CP used when picking which footwear piece to keep equipped. */
+export function itemPieceCp(item: Pick<Item, 'stats'>): number {
+  const s: Stats = emptyStats();
+  for (const k of STAT_KEYS) {
+    const v = item.stats?.[k];
+    if (typeof v === 'number') s[k] += v;
+  }
+  return cpFromStats(s);
+}
+
+function asItemRecord(value: unknown): Item | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  return value as Item;
+}
+
+/**
+ * Collapse legacy `legs` into `boots`. When both are filled, keep the higher-CP
+ * piece equipped and push the other into `bag` (remapped to boots).
+ */
+export function collapseLegsIntoBoots(
+  gearIn: Record<string, unknown> | Gear | undefined,
+  bagIn: unknown[] | Item[] | undefined,
+): { gear: Record<string, unknown>; bag: unknown[] } {
+  const gear: Record<string, unknown> = { ...(gearIn ?? {}) };
+  const bag: unknown[] = Array.isArray(bagIn) ? [...bagIn] : [];
+  const legs = asItemRecord(gear[LEGACY_LEGS_SLOT]);
+  const boots = asItemRecord(gear.boots);
+  delete gear[LEGACY_LEGS_SLOT];
+
+  if (legs) {
+    const legsAsBoots: Item = { ...legs, slot: 'boots' };
+    if (boots) {
+      if (itemPieceCp(legsAsBoots) > itemPieceCp(boots)) {
+        bag.push({ ...boots, slot: 'boots' });
+        gear.boots = legsAsBoots;
+      } else {
+        bag.push(legsAsBoots);
+      }
+    } else {
+      gear.boots = legsAsBoots;
+    }
+  }
+
+  for (let i = 0; i < bag.length; i++) {
+    const it = asItemRecord(bag[i]);
+    if (it && (it.slot as string) === LEGACY_LEGS_SLOT) {
+      bag[i] = { ...it, slot: 'boots' };
+    }
+  }
+
+  return { gear, bag };
+}
+
 /** Harden item display strings / ids from save or import blobs. */
 export function sanitizeItem(item: Item): Item {
   return {
     ...item,
     id: sanitizeDomId(typeof item.id === 'string' ? item.id : 'id', 80),
     name: sanitizePlainText(typeof item.name === 'string' ? item.name : '', 64) || 'Unknown Item',
-    slot: isSlotId(item.slot) ? item.slot : 'weapon',
+    slot: coerceSlotId(item.slot),
     rarity: isRarityId(item.rarity) ? item.rarity : 'common',
   };
 }
@@ -233,7 +296,8 @@ function sanitizeItemList(list: Item[] | undefined): Item[] {
 }
 
 function sanitizeGear(gear: Gear | undefined, fallback: Gear): Gear {
-  const base = { ...fallback, ...(gear ?? {}) };
+  const collapsed = collapseLegsIntoBoots(gear as Record<string, unknown> | undefined, []);
+  const base = { ...fallback, ...(collapsed.gear as Gear) };
   const out: Gear = {};
   for (const slot of SLOTS) {
     const piece = base[slot];
@@ -341,6 +405,30 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   };
 }
 
+/** Collapse legs→boots on gear/bag/pending before sanitize. */
+function migrateFootwearSlots(parsed: Partial<SaveData>): {
+  gear: Gear;
+  bag: Item[];
+  pending: Item[];
+} {
+  const pendingRaw = Array.isArray(parsed.pending) ? [...parsed.pending] : [];
+  for (let i = 0; i < pendingRaw.length; i++) {
+    const it = asItemRecord(pendingRaw[i]);
+    if (it && (it.slot as string) === LEGACY_LEGS_SLOT) {
+      pendingRaw[i] = { ...it, slot: 'boots' };
+    }
+  }
+  const collapsed = collapseLegsIntoBoots(
+    parsed.gear as Record<string, unknown> | undefined,
+    parsed.bag,
+  );
+  return {
+    gear: collapsed.gear as Gear,
+    bag: sanitizeItemList(collapsed.bag as Item[]),
+    pending: sanitizeItemList(pendingRaw as Item[]),
+  };
+}
+
 /** Normalize a parsed partial save blob, or null if unusable. */
 export function normalizeParsedSave(
   parsed: Partial<SaveData> & { version?: number },
@@ -351,17 +439,18 @@ export function normalizeParsedSave(
 
   // Warrior-only v1 era.
   if (parsed.version === 1 && parsed.heroClass === 'Warrior') {
+    const footwear = migrateFootwearSlots(parsed);
     return {
       ...fresh,
       ...parsed,
       version: SAVE_VERSION,
       heroClass: 'Warrior',
       classPicked: true,
-      gear: sanitizeGear({ ...fresh.gear, ...(parsed.gear ?? {}) }, fresh.gear),
+      gear: sanitizeGear({ ...fresh.gear, ...footwear.gear }, fresh.gear),
       settings: normalizeSettings(parsed.settings, fresh.settings),
       dungeons: parsed.dungeons ?? {},
-      bag: sanitizeItemList(parsed.bag),
-      pending: sanitizeItemList(parsed.pending),
+      bag: footwear.bag,
+      pending: footwear.pending,
       loadout: parsed.loadout?.length ? parsed.loadout : fresh.loadout,
       seenSkills: parsed.seenSkills ?? fresh.seenSkills,
       ...migrateClanFields(parsed, fresh, now),
@@ -373,17 +462,18 @@ export function normalizeParsedSave(
   // Accept current + future schema versions with a known class (forward-compatible).
   // Unknown fields are dropped by the explicit shape; missing fields fill from fresh.
   if (typeof parsed.version === 'number' && parsed.version >= 2 && isHeroClass(parsed.heroClass)) {
+    const footwear = migrateFootwearSlots(parsed);
     return {
       ...fresh,
       ...parsed,
       version: SAVE_VERSION,
       heroClass: parsed.heroClass,
       classPicked: parsed.classPicked !== false,
-      gear: sanitizeGear({ ...fresh.gear, ...(parsed.gear ?? {}) }, fresh.gear),
+      gear: sanitizeGear({ ...fresh.gear, ...footwear.gear }, fresh.gear),
       settings: normalizeSettings(parsed.settings, fresh.settings),
       dungeons: parsed.dungeons ?? {},
-      bag: sanitizeItemList(parsed.bag),
-      pending: sanitizeItemList(parsed.pending),
+      bag: footwear.bag,
+      pending: footwear.pending,
       loadout: parsed.loadout?.length ? parsed.loadout : [...DEFAULT_LOADOUT[parsed.heroClass]],
       seenSkills: parsed.seenSkills ?? [...DEFAULT_LOADOUT[parsed.heroClass]],
       ...migrateClanFields(parsed, fresh, now),
