@@ -78,6 +78,8 @@ function friendlyAuthError(code: string): string {
     case 'http 500':
       return 'Server error — try again, or continue as guest.';
     default:
+      // Hints are already human sentences; codes become spaced words.
+      if (code.includes(' ') || code.includes('—')) return code;
       return code.replace(/_/g, ' ');
   }
 }
