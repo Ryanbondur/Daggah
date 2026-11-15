@@ -2,12 +2,14 @@ import type { HeroClass } from '../data/types';
 import { HERO_X } from '../game/combat';
 
 /**
- * Enemy / boss sprites are authored facing right (same convention as heroes).
- * In PvE they spawn on the right and approach the hero on the left, so they
- * must be flipped to face the hero. Without this they appear to walk in backwards.
+ * Enemy / boss sprites are authored facing **left** (toward the usual hero side).
+ * Heroes face right. PvE spawns enemies on the right walking left — leave them
+ * unflipped so they look toward the hero. Only flip when an enemy is left of the
+ * hero (needs to look right). PR #56 assumed right-facing art and flipped the
+ * common case, which made mobs approach backwards.
  */
 export function enemyFlipX(enemyX: number, heroX = HERO_X): boolean {
-  return enemyX >= heroX;
+  return enemyX < heroX;
 }
 
 /**
