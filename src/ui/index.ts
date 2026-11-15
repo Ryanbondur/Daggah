@@ -1,6 +1,6 @@
 import { SKILL_BY_ID } from '../data/skills';
 import { defaultPrimary } from '../data/skills';
-import type { NodeType } from '../data/acts';
+import { getDungeon, type NodeType } from '../data/acts';
 import { xpToNext } from '../data/xp';
 import { playSfx, unlockAudio } from '../game/audio';
 import type { Game, RunResult } from '../game/game';
@@ -16,6 +16,7 @@ import {
   showClanArmorer,
   showClassPick,
   showCompare,
+  showDungeonKeyBuy,
   showHero,
   showItemInfo,
   showLogin,
@@ -526,14 +527,32 @@ export function mountUI(
         }
         break;
       }
-      case 'dungeon-enter':
-        void withStage(() => {
-          if (game.startDungeon(d.id!)) ctx.setTab('camp');
-        });
+      case 'dungeon-enter': {
+        const id = d.id!;
+        const dungeon = getDungeon(id);
+        if (game.canAffordDungeonKeys(dungeon.actId)) {
+          void withStage(() => {
+            if (game.startDungeon(id)) ctx.setTab('camp');
+          });
+        } else {
+          showDungeonKeyBuy(ctx, { dungeonId: id, intent: 'enter' });
+        }
         break;
-      case 'dungeon-sweep':
-        game.sweepDungeon(d.id!);
+      }
+      case 'dungeon-sweep': {
+        const id = d.id!;
+        const dungeon = getDungeon(id);
+        if (!game.dungeonSweepUnlocked(dungeon)) {
+          game.sweepDungeon(id);
+          break;
+        }
+        if (game.canAffordDungeonKeys(dungeon.actId)) {
+          game.sweepDungeon(id);
+        } else {
+          showDungeonKeyBuy(ctx, { dungeonId: id, intent: 'sweep' });
+        }
         break;
+      }
       case 'camp-pane': {
         const paneId = d.pane as CampPane;
         if (paneId === 'gear' || paneId === 'shop') {

@@ -95,6 +95,7 @@ import { buildDailyOffers, hashDayKey } from './shop';
 import type { SaveData, Storage } from './state';
 import {
   BAG_CAP,
+  DUNGEON_CRYSTAL_COST_PER_KEY,
   KEY_CAP,
   KEY_REGEN_MS,
   dungeonKeyCost,
@@ -827,6 +828,38 @@ export class Game {
     return this.save.keys >= dungeonKeyCost(actId);
   }
 
+  /** How many more keys fit under the pouch cap. */
+  dungeonKeyRoom(): number {
+    this.refreshKeys();
+    return Math.max(0, KEY_CAP - this.save.keys);
+  }
+
+  /** Crystal cost to buy `count` dungeon keys (explicit purchase — never a silent bypass). */
+  crystalCostForDungeonKeys(count: number): number {
+    return Math.max(0, Math.floor(count)) * DUNGEON_CRYSTAL_COST_PER_KEY;
+  }
+
+  /**
+   * Buy dungeon keys with Crystals. Keys only — does not enter/sweep.
+   * Returns an error string, or null on success.
+   */
+  buyDungeonKeys(count: number): string | null {
+    this.refreshKeys();
+    const n = Math.floor(count);
+    if (n < 1) return 'Pick at least 1 Key to buy.';
+    const room = this.dungeonKeyRoom();
+    if (n > room) return `Key pouch full (${this.save.keys}/${KEY_CAP}).`;
+    const cost = this.crystalCostForDungeonKeys(n);
+    if (this.save.crystals < cost) {
+      return `Need ${cost} Crystals (you have ${this.save.crystals}).`;
+    }
+    this.save.crystals -= cost;
+    this.save.keys += n;
+    this.toast(`Bought ${formatDungeonKeyCost(n)} for ${cost} Crystals`, 'good');
+    this.changed();
+    return null;
+  }
+
   refreshKeys(now = Date.now()): void {
     const s = this.save;
     if (s.keys >= KEY_CAP) {
@@ -844,6 +877,7 @@ export class Game {
     return msUntilNextKey(this.save.keys, this.save.keysAt, now);
   }
 
+  /** Spend keys only — crystals never bypass; buy keys via `buyDungeonKeys` first. */
   private payDungeonEntry(actId: number): boolean {
     this.refreshKeys();
     const keysNeeded = dungeonKeyCost(actId);

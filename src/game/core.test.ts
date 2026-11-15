@@ -522,7 +522,7 @@ describe('dungeon key cost by act', () => {
     expect(game.save.keys).toBe(2);
   });
 
-  it('refuses enter and sweep when keys are short even with crystals', () => {
+  it('refuses enter and sweep when keys are short even with crystals (no silent bypass)', () => {
     const game = new Game(memoryStorage(), mulberry32(11));
     game.pickClass('Warrior');
     game.devUnlockThroughAct(10);
@@ -540,6 +540,49 @@ describe('dungeon key cost by act', () => {
     expect(game.save.keys).toBe(0);
     expect(game.save.crystals).toBe(999);
     expect(toasts.some((t) => /Need 1 Key/i.test(t))).toBe(true);
+  });
+
+  it('buys keys with crystals explicitly and then allows enter/sweep', () => {
+    const game = new Game(memoryStorage(), mulberry32(12));
+    game.pickClass('Warrior');
+    game.devUnlockThroughAct(10);
+    game.save.keys = 0;
+    game.save.crystals = 400;
+    game.save.dungeons['hollow-crypt'] = { cleared: true, clears: SWEEP_UNLOCK_CLEARS };
+    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: SWEEP_UNLOCK_CLEARS };
+
+    expect(game.crystalCostForDungeonKeys(3)).toBe(150);
+    expect(game.buyDungeonKeys(0)).toMatch(/at least 1/i);
+    expect(game.buyDungeonKeys(3)).toBeNull();
+    expect(game.save.keys).toBe(3);
+    expect(game.save.crystals).toBe(250);
+
+    expect(game.sweepDungeon('hollow-crypt')).toBe(true); // 1 key
+    expect(game.save.keys).toBe(2);
+
+    // Bulk remaining room toward Nightscar (needs 4) — still short until more buy
+    expect(game.sweepDungeon('nightscar-apex')).toBe(false);
+    expect(game.buyDungeonKeys(2)).toBeNull();
+    expect(game.save.keys).toBe(4);
+    expect(game.save.crystals).toBe(150);
+    expect(game.sweepDungeon('nightscar-apex')).toBe(true);
+    expect(game.save.keys).toBe(0);
+  });
+
+  it('blocks crystal key buy when unaffordable or pouch is full', () => {
+    const game = new Game(memoryStorage(), mulberry32(14));
+    game.pickClass('Warrior');
+    game.save.keys = 0;
+    game.save.crystals = 40;
+    expect(game.buyDungeonKeys(1)).toMatch(/Need 50 Crystals/i);
+    expect(game.save.keys).toBe(0);
+    expect(game.save.crystals).toBe(40);
+
+    game.save.crystals = 500;
+    game.save.keys = KEY_CAP;
+    expect(game.dungeonKeyRoom()).toBe(0);
+    expect(game.buyDungeonKeys(1)).toMatch(/full/i);
+    expect(game.save.crystals).toBe(500);
   });
 
   it('refuses entry when keys do not cover the tier cost', () => {

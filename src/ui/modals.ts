@@ -1,3 +1,4 @@
+import { getDungeon } from '../data/acts';
 import { RARITIES, SETS, computeHero, lootCompareHighlight, setCounts } from '../data/gear';
 import type { HeroClass, RarityId, SetId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_LABEL } from '../data/types';
@@ -30,13 +31,20 @@ import {
 } from '../game/clanBrackets';
 import { CLAN_VENDOR, type RunResult } from '../game/game';
 import type { PvpResult } from '../game/pvp';
-import { BAG_CAP } from '../game/state';
+import {
+  BAG_CAP,
+  DUNGEON_CRYSTAL_COST_PER_KEY,
+  KEY_CAP,
+  dungeonCrystalCost,
+  dungeonKeyCost,
+  formatDungeonKeyCost,
+} from '../game/state';
 import { formatStat } from '../data/gear';
 import { CLASS_PLAYSTYLES } from '../data/skills';
 import type { UIContext } from './context';
 import { fmt } from './context';
 import { CHECK_SVG, cardHtml, slotHtml } from './items';
-import { asset, heroSprite } from './assets';
+import { asset, heroSprite, navIcon } from './assets';
 import { escapeHtml } from './escape';
 import { copyTextToClipboard } from './clipboard';
 import { SEASON_MILESTONES } from '../data/season';
@@ -959,6 +967,146 @@ export function showChat(ctx: UIContext): void {
   ).addEventListener('click', (ev) => {
     if ((ev.target as HTMLElement).closest('[data-action="close"]')) ctx.closeModal();
   });
+}
+
+export type DungeonKeyBuyIntent = 'enter' | 'sweep';
+
+/**
+ * Confirm spending Crystals to buy dungeon Keys when Enter/Sweep is short on keys.
+ * Bulk qty buys multiple Keys into the pouch (capped); then optionally continues Enter/Sweep once.
+ */
+export function showDungeonKeyBuy(
+  ctx: UIContext,
+  opts: { dungeonId: string; intent: DungeonKeyBuyIntent },
+): void {
+  const g = ctx.game;
+  const d = getDungeon(opts.dungeonId);
+  const keysNeeded = dungeonKeyCost(d.actId);
+  const runCrystalCost = dungeonCrystalCost(d.actId);
+  const actionLabel = opts.intent === 'sweep' ? 'Sweep' : 'Enter';
+
+  const paint = (qty: number): void => {
+    g.refreshKeys();
+    const s = g.save;
+    const room = g.dungeonKeyRoom();
+    const shortfall = Math.max(0, keysNeeded - s.keys);
+    const qtyMax = Math.max(0, room);
+    const q = qtyMax === 0 ? 0 : Math.max(1, Math.min(qtyMax, Math.floor(qty)));
+    const cost = g.crystalCostForDungeonKeys(q);
+    const canAfford = q >= 1 && q <= room && s.crystals >= cost;
+    const afterPreview = s.keys + q;
+    const runsAfter = keysNeeded > 0 ? Math.floor(afterPreview / keysNeeded) : 0;
+
+    const presetNums: number[] = [];
+    const addPreset = (n: number) => {
+      if (n >= 1 && n <= room && !presetNums.includes(n)) presetNums.push(n);
+    };
+    addPreset(1);
+    addPreset(shortfall);
+    for (const runs of [1, 2, 3, 5]) addPreset(runs * keysNeeded);
+    addPreset(room);
+    const presetChips = presetNums
+      .slice(0, 6)
+      .map((n) => {
+        const label =
+          n === shortfall && shortfall > 0
+            ? `${n} · cover ${actionLabel}`
+            : n % keysNeeded === 0
+              ? `${n} · ${n / keysNeeded} run${n / keysNeeded === 1 ? '' : 's'}`
+              : n === room
+                ? `Max ${n}`
+                : `${n}`;
+        return `<button type="button" class="chip key-buy-preset ${n === q ? 'on' : ''}" data-action="qty-set" data-n="${n}">${escapeHtml(label)}</button>`;
+      })
+      .join('');
+
+    const warn =
+      room === 0
+        ? `<p class="key-buy-warn">Key pouch is full (${s.keys}/${KEY_CAP}).</p>`
+        : !canAfford
+          ? `<p class="key-buy-warn">Need ${fmt(cost)} Crystals (you have ${fmt(s.crystals)}).</p>`
+          : '';
+
+    const confirmLabel = canAfford
+      ? `Confirm — spend ${fmt(cost)} Crystals`
+      : `Can't afford (${fmt(cost)} Crystals)`;
+
+    const html = `<div class="sheet key-buy-sheet" role="dialog" aria-labelledby="key-buy-title">
+      <h2 id="key-buy-title">Buy Keys with Crystals</h2>
+      <div class="body">
+        <p class="key-buy-lead"><b>This spends Crystals.</b> ${escapeHtml(actionLabel)} is not free — you are buying Keys for <b>${escapeHtml(d.name)}</b>.</p>
+        <div class="row"><span>${escapeHtml(actionLabel)} cost</span><b>${escapeHtml(formatDungeonKeyCost(keysNeeded))} <small>(${fmt(runCrystalCost)} Crystals / run)</small></b></div>
+        <div class="row"><span>Your Keys</span><b><img class="inline-ico" src="${navIcon('key')}" alt="" /> ${s.keys}/${KEY_CAP}</b></div>
+        <div class="row"><span>Your Crystals</span><b><img class="inline-ico" src="${navIcon('crystal')}" alt="" /> ${fmt(s.crystals)}</b></div>
+        <h3>How many Keys?</h3>
+        <div class="key-buy-stepper">
+          <button type="button" class="btn stone key-buy-step" data-action="qty-dec" ${q <= 1 ? 'disabled' : ''} aria-label="Fewer keys">−</button>
+          <b class="key-buy-qty" aria-live="polite">${q}</b>
+          <button type="button" class="btn stone key-buy-step" data-action="qty-inc" ${q >= qtyMax ? 'disabled' : ''} aria-label="More keys">+</button>
+        </div>
+        <div class="key-buy-presets">${presetChips}</div>
+        <div class="row on"><span>Total Crystal cost</span><b><img class="inline-ico" src="${navIcon('crystal')}" alt="" /> ${fmt(cost)}</b></div>
+        <div class="row"><span>After purchase</span><b>${afterPreview}/${KEY_CAP} Keys · ${runsAfter} ${actionLabel}${runsAfter === 1 ? '' : 's'}</b></div>
+        <p class="tagline">${DUNGEON_CRYSTAL_COST_PER_KEY} Crystals per Key. Bulk buys fill your pouch; ${escapeHtml(actionLabel)} still spends Keys after Confirm.</p>
+        ${warn}
+      </div>
+      <div class="btns">
+        <button type="button" class="btn stone" data-action="cancel">Cancel</button>
+        <button type="button" class="btn gold ${canAfford ? '' : 'disabled'}" data-action="confirm" ${canAfford ? '' : 'disabled aria-disabled="true"'}>${escapeHtml(confirmLabel)}</button>
+      </div>
+    </div>`;
+
+    // Re-open in place so qty changes keep a single dim layer.
+    const el = ctx.openModal(html, { onDismiss: () => ctx.closeModal() });
+    el.addEventListener('click', (ev) => {
+      const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+      if (!t) return;
+      const action = t.dataset.action;
+      if (action === 'cancel') {
+        ctx.closeModal();
+        return;
+      }
+      if (action === 'qty-dec') {
+        paint(q - 1);
+        return;
+      }
+      if (action === 'qty-inc') {
+        paint(q + 1);
+        return;
+      }
+      if (action === 'qty-set') {
+        paint(Number(t.dataset.n));
+        return;
+      }
+      if (action === 'confirm') {
+        if (!canAfford) {
+          g.toast(`Need ${fmt(cost)} Crystals to buy Keys`, 'bad');
+          return;
+        }
+        const err = g.buyDungeonKeys(q);
+        if (err) {
+          g.toast(err, 'bad');
+          paint(q);
+          return;
+        }
+        ctx.closeModal();
+        if (opts.intent === 'enter' && g.canAffordDungeonKeys(d.actId)) {
+          void ctx.ensureStage().then(() => {
+            if (g.startDungeon(opts.dungeonId)) ctx.setTab('camp');
+          });
+        } else if (opts.intent === 'sweep' && g.canAffordDungeonKeys(d.actId)) {
+          g.sweepDungeon(opts.dungeonId);
+        } else {
+          ctx.render();
+        }
+      }
+    });
+  };
+
+  g.refreshKeys();
+  const shortfall0 = Math.max(0, keysNeeded - g.save.keys);
+  const room0 = g.dungeonKeyRoom();
+  paint(room0 === 0 ? 0 : Math.max(1, Math.min(Math.max(shortfall0, 1), room0)));
 }
 
 export function showClanHall(ctx: UIContext): void {
