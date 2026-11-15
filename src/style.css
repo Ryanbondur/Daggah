@@ -520,14 +520,18 @@ button {
   z-index: 6;
 }
 
-/* Persistent crystal count — HUD mid-band between orbs (above wide panes) */
+/*
+  Persistent crystal count — always screen top-right (DG-69).
+  #app already pads env(safe-area-inset-*), so offsets are inside the safe frame.
+  z-index above #pane.wide so Skill/Adventure/Clan never cover the chip.
+*/
 .crystal-wallet {
   position: absolute;
-  left: 50%;
-  /* Sit in the HUD band under the chat strip, clear of XP; still above #pane.wide */
-  top: calc(37% + 7.6cqw);
-  transform: translateX(-50%);
-  z-index: 9;
+  top: max(1.2cqw, 8px);
+  right: max(1.4cqw, 8px);
+  left: auto;
+  transform: none;
+  z-index: 12;
   display: inline-flex;
   align-items: center;
   gap: 1.2cqw;
@@ -560,13 +564,6 @@ button {
   letter-spacing: 0.02em;
   min-width: 2ch;
   text-align: left;
-}
-/* Wide tabs cover the HUD — pin chip to parchment top-right chrome (clear of titles/res-bars) */
-#frame:has(#pane.wide) .crystal-wallet {
-  left: auto;
-  right: 2.2cqw;
-  top: calc(37% + 1.2cqw);
-  transform: none;
 }
 
 /* ------------------------------------------------------------------- pane */
