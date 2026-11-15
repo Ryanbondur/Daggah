@@ -2332,6 +2332,86 @@ button {
   font-size: 3cqw;
   min-width: 16cqw;
 }
+.dg.ascended {
+  margin-top: 1.2cqw;
+  background: linear-gradient(110deg, rgba(58, 26, 40, 0.92), rgba(30, 24, 38, 0.88));
+  border-color: #5a2038;
+}
+.dg.ascended .dn b {
+  color: #f0c27a;
+  display: flex;
+  align-items: center;
+  gap: 1.2cqw;
+}
+.dg.ascended .dn b svg {
+  width: 4.2cqw;
+  height: 4.2cqw;
+  flex: none;
+}
+.dg .btn.ascended-btn {
+  min-width: 20cqw;
+  font-size: 2.6cqw;
+}
+.res-seals {
+  gap: 0.6cqw;
+}
+.res-seals svg {
+  width: 3.6cqw;
+  height: 3.6cqw;
+}
+.res-seals .seal-frags {
+  font-size: 2.2cqw;
+  color: #b9b2a3;
+  font-weight: 600;
+}
+.seal-panel {
+  display: flex;
+  align-items: center;
+  gap: 2cqw;
+  padding: 1.8cqw 2.2cqw;
+  background: rgba(40, 22, 30, 0.88);
+  border: 0.4cqw solid #3a1a28;
+  color: #e9e4d6;
+}
+.seal-panel-head {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 1.6cqw;
+  text-align: left;
+}
+.seal-panel-head .seal-ico svg,
+.clan-raid-head .seal-ico svg {
+  width: 5.2cqw;
+  height: 5.2cqw;
+  display: block;
+}
+.seal-panel-head b,
+.clan-raid-head b {
+  display: block;
+  font-family: var(--font-title);
+  font-size: 3.4cqw;
+  color: #f0c27a;
+}
+.seal-panel-head span,
+.clan-raid-head span {
+  font-size: 2.5cqw;
+  color: #b9b2a3;
+}
+.clan-raid-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4cqw;
+  padding: 2cqw;
+  background: linear-gradient(135deg, rgba(58, 26, 40, 0.9), rgba(24, 20, 32, 0.92));
+  border: 0.4cqw solid #5a2038;
+}
+.clan-raid-head {
+  display: flex;
+  align-items: center;
+  gap: 1.6cqw;
+  text-align: left;
+}
 .diff-row {
   display: flex;
   gap: 1.4cqw;

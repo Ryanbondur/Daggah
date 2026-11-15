@@ -3,7 +3,7 @@
  * Bump this string on meaningful publishes so returning players see the notes once.
  * Independent of SaveData.version (schema).
  */
-export const APP_CONTENT_VERSION = '2026.11.14';
+export const APP_CONTENT_VERSION = '2026.11.15-ascended';
 
 export interface WhatsNewEntry {
   version: string;
@@ -16,10 +16,9 @@ export const WHATS_NEW: WhatsNewEntry = {
   version: APP_CONTENT_VERSION,
   title: "What's new",
   bullets: [
-    'Clan tab — Hall, leaderboard, and Town services in one place.',
-    'Dual passives — two playstyle passives per class; swap on Skill.',
-    'Export / import — back up progress with a save code in Settings.',
-    'AI clan fillers — fill missing classes for solo 4v4 practice.',
+    'Ascended Nightscar — harder Apex (6 Keys + 1 Seal) with better BiS odds.',
+    'Clan Raid — weekly boss drops Ascended Seals or Fragments only.',
+    'Craft Fragments → Seals in Adventure (5 → 1). Seal count on the currency strip.',
   ],
 };
 

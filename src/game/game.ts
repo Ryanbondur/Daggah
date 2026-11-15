@@ -10,6 +10,25 @@ import {
   stageTier,
   stageTitle,
 } from '../data/acts';
+import {
+  ASCENDED_NIGHTSCAR,
+  ASCENDED_NIGHTSCAR_KEY_COST,
+  ASCENDED_NIGHTSCAR_SEAL_COST,
+  ASCENDED_SEAL_FRAGMENTS_PER_SEAL,
+  ASCENDED_TIER_BUMP,
+  formatAscendedEntryCost,
+  isAscendedDungeon,
+  sealsCraftableFrom,
+} from './ascended';
+import {
+  CLAN_RAID_DUNGEON,
+  CLAN_RAID_STAGE_FLOOR,
+  CLAN_RAID_WEEKLY_ATTEMPTS,
+  clanRaidWeekKey,
+  formatClanRaidReward,
+  isClanRaidDungeon,
+  rollClanRaidReward,
+} from './clanRaid';
 import type { DropSource } from '../data/gear';
 import {
   DROP_SET_IDS,
@@ -116,7 +135,7 @@ export { OFFLINE_CAP_MS, OFFLINE_MIN_MS, formatOfflineToast } from './offline';
 export type Mode = 'camp' | 'stage' | 'dungeon' | 'pvp';
 
 export interface RunResult {
-  kind: 'dungeon' | 'actClear' | 'stageFailed';
+  kind: 'dungeon' | 'actClear' | 'stageFailed' | 'clanRaid';
   title: string;
   success: boolean;
   loot: Item[];
@@ -127,6 +146,9 @@ export interface RunResult {
   recCp?: number;
   /** Clear “farm gear → retry” nudge after wipe. */
   farmHint?: string;
+  /** Clan Raid / seal craft spoils (never gear). */
+  ascendedSeals?: number;
+  ascendedSealFragments?: number;
 }
 
 /** Live fighter state while the Phaser stage replays a resolved 4v4. */
@@ -219,6 +241,10 @@ interface DungeonCtx {
   dungeon: DungeonDef;
   loot: Item[];
   xp: number;
+  /** Ascended Nightscar run (premium seal cost + ascended tables). */
+  ascended?: boolean;
+  /** Clan Raid boss — seals/fragments only, no gear drops. */
+  clanRaid?: boolean;
 }
 
 export interface CompareInfo {
@@ -429,8 +455,10 @@ export class Game {
   get title(): string {
     if (this.mode === 'pvp') return 'Clan 4v4';
     if (this.mode === 'dungeon' && this.dungeonCtx) {
+      if (this.dungeonCtx.clanRaid) return 'Clan Raid';
       const floor = this.battle ? this.battle.nodeIndex + 1 : 1;
-      return `${this.dungeonCtx.dungeon.name} F${Math.min(10, floor)}`;
+      const maxF = this.dungeonCtx.dungeon.floors;
+      return `${this.dungeonCtx.dungeon.name} F${Math.min(maxF, floor)}`;
     }
     return stageTitle(this.currentAct, this.currentStageNo);
   }
@@ -519,12 +547,15 @@ export class Game {
       this.persist();
     } else if (this.mode === 'dungeon' && this.dungeonCtx && type !== 'camp') {
       const ctx = this.dungeonCtx;
-      const source = this.dungeonDropSource(ctx.dungeon, type);
-      const drops = type === 'boss' ? 2 : 1;
-      for (let i = 0; i < drops; i++) {
-        ctx.loot.push(this.rollDungeonItem(ctx.dungeon, index + 1, source));
+      // Clan Raid: no gear — seals/fragments award on clear only.
+      if (!ctx.clanRaid) {
+        const source = this.dungeonDropSource(ctx.dungeon, type);
+        const drops = type === 'boss' ? 2 : 1;
+        for (let i = 0; i < drops; i++) {
+          ctx.loot.push(this.rollDungeonItem(ctx.dungeon, index + 1, source));
+        }
       }
-      this.say(`Floor ${index + 1} cleared.`);
+      this.say(ctx.clanRaid ? 'Raid boss staggered…' : `Floor ${index + 1} cleared.`);
     }
   }
 
@@ -544,17 +575,31 @@ export class Game {
       const ctx = this.dungeonCtx;
       this.dungeonCtx = null;
       this.endRun();
-      this.emit({
-        t: 'result',
-        result: {
-          kind: 'dungeon',
-          title: `${ctx.dungeon.name} - Failed`,
-          success: false,
-          loot: ctx.loot,
-          xp: ctx.xp,
-          note: 'You ran out of lives. Loot gathered so far is yours.',
-        },
-      });
+      if (ctx.clanRaid) {
+        this.emit({
+          t: 'result',
+          result: {
+            kind: 'clanRaid',
+            title: 'Clan Raid - Failed',
+            success: false,
+            loot: [],
+            xp: ctx.xp,
+            note: 'Out of lives. No seals this attempt.',
+          },
+        });
+      } else {
+        this.emit({
+          t: 'result',
+          result: {
+            kind: 'dungeon',
+            title: `${ctx.dungeon.name} - Failed`,
+            success: false,
+            loot: ctx.loot,
+            xp: ctx.xp,
+            note: 'You ran out of lives. Loot gathered so far is yours.',
+          },
+        });
+      }
     } else {
       const act = this.currentAct;
       const stage = this.currentStageNo;
@@ -635,6 +680,10 @@ export class Game {
   private onDungeonClear(): void {
     const ctx = this.dungeonCtx;
     if (!ctx) return;
+    if (ctx.clanRaid) {
+      this.onClanRaidClear(ctx);
+      return;
+    }
     const rec = this.save.dungeons[ctx.dungeon.id] ?? { cleared: false, clears: 0 };
     rec.cleared = true;
     rec.clears += 1;
@@ -645,6 +694,9 @@ export class Game {
     this.dungeonCtx = null;
     this.endRun();
     this.say(`${ctx.dungeon.name} cleared!`);
+    const entryNote = isAscendedDungeon(ctx.dungeon)
+      ? formatAscendedEntryCost()
+      : formatDungeonKeyCost(dungeonKeyCost(ctx.dungeon.actId));
     this.emit({
       t: 'result',
       result: {
@@ -655,10 +707,35 @@ export class Game {
         xp: ctx.xp,
         note:
           rec.clears === SWEEP_UNLOCK_CLEARS
-            ? `Sweep unlocked: loot instantly for ${formatDungeonKeyCost(dungeonKeyCost(ctx.dungeon.actId))}.`
+            ? `Sweep unlocked: loot instantly for ${entryNote}.`
             : rec.clears < SWEEP_UNLOCK_CLEARS
               ? `Sweep unlocks after ${SWEEP_UNLOCK_CLEARS} clears (${rec.clears}/${SWEEP_UNLOCK_CLEARS}).`
               : undefined,
+      },
+    });
+    this.changed();
+  }
+
+  private onClanRaidClear(ctx: DungeonCtx): void {
+    const reward = rollClanRaidReward(this.rng);
+    this.save.ascendedSeals += reward.ascendedSeals;
+    this.save.ascendedSealFragments += reward.ascendedSealFragments;
+    this.dungeonCtx = null;
+    this.endRun();
+    const label = formatClanRaidReward(reward);
+    this.say(`Clan Raid cleared! ${label}.`);
+    this.toast(label, 'good');
+    this.emit({
+      t: 'result',
+      result: {
+        kind: 'clanRaid',
+        title: 'Clan Raid - Cleared',
+        success: true,
+        loot: [],
+        xp: ctx.xp,
+        ascendedSeals: reward.ascendedSeals,
+        ascendedSealFragments: reward.ascendedSealFragments,
+        note: `${label}. Craft fragments into Seals in Adventure (5 → 1).`,
       },
     });
     this.changed();
@@ -728,25 +805,30 @@ export class Game {
 
   buildDungeonRun(d: DungeonDef): RunDef {
     const a = getAct(d.actId);
-    const baseTier = stageTier(d.actId, 5) + 0.3;
+    const ascended = isAscendedDungeon(d);
+    const raid = isClanRaidDungeon(d);
+    const bump = ascended ? ASCENDED_TIER_BUMP : raid ? 3.2 : 0;
+    const baseTier = stageTier(d.actId, 5) + 0.3 + bump;
     const rec = stageRecLevel(d.actId, 5);
-    const nodes = Array.from({ length: d.floors }, (_, i) => {
-      const floor = i + 1;
-      const type: NodeType = floor === d.floors ? 'boss' : floor === 5 ? 'miniboss' : 'trash';
-      return { type, tier: baseTier + i * 0.12, recLevel: rec };
-    });
+    const nodes = raid
+      ? ([{ type: 'boss' as const, tier: baseTier + 1.2, recLevel: rec }] as const)
+      : Array.from({ length: d.floors }, (_, i) => {
+          const floor = i + 1;
+          const type: NodeType = floor === d.floors ? 'boss' : floor === 5 ? 'miniboss' : 'trash';
+          return { type, tier: baseTier + i * 0.12, recLevel: rec };
+        });
     return {
       kind: 'dungeon',
       title: d.name,
       bg: a.bg,
       actId: d.actId,
-      nodes,
+      nodes: [...nodes],
       trash: a.trash,
       elite: a.elite,
       boss: a.boss,
       startNode: 0,
       startEnergy: 1,
-      walkTime: 1.3,
+      walkTime: raid ? 0.8 : 1.3,
     };
   }
 
@@ -860,6 +942,19 @@ export class Game {
     return null;
   }
 
+  /** Ascended Nightscar: keys + seals. */
+  canAffordAscendedEntry(): boolean {
+    this.refreshKeys();
+    return (
+      this.save.keys >= ASCENDED_NIGHTSCAR_KEY_COST &&
+      this.save.ascendedSeals >= ASCENDED_NIGHTSCAR_SEAL_COST
+    );
+  }
+
+  ascendedUnlocked(): boolean {
+    return this.dungeonUnlocked(getDungeon('nightscar-apex'));
+  }
+
   refreshKeys(now = Date.now()): void {
     const s = this.save;
     if (s.keys >= KEY_CAP) {
@@ -889,7 +984,25 @@ export class Game {
     return false;
   }
 
+  private payAscendedEntry(): boolean {
+    this.refreshKeys();
+    const cost = formatAscendedEntryCost();
+    if (this.save.keys < ASCENDED_NIGHTSCAR_KEY_COST) {
+      this.toast(`Need ${cost} (you have ${this.save.keys} keys)`, 'bad');
+      return false;
+    }
+    if (this.save.ascendedSeals < ASCENDED_NIGHTSCAR_SEAL_COST) {
+      this.toast(`Need ${cost} (you have ${this.save.ascendedSeals} seals)`, 'bad');
+      return false;
+    }
+    this.save.keys -= ASCENDED_NIGHTSCAR_KEY_COST;
+    this.save.ascendedSeals -= ASCENDED_NIGHTSCAR_SEAL_COST;
+    return true;
+  }
+
   startDungeon(id: string): boolean {
+    if (id === ASCENDED_NIGHTSCAR.id) return this.startAscendedDungeon();
+    if (isClanRaidDungeon({ id })) return this.startClanRaid() === null;
     const d = getDungeon(id);
     if (!this.dungeonUnlocked(d)) {
       this.toast(`Clear Act ${d.actId} to unlock ${d.name}`, 'bad');
@@ -909,7 +1022,32 @@ export class Game {
     return true;
   }
 
+  /** Ascended Nightscar Enter — 6 Keys + 1 Seal. */
+  startAscendedDungeon(): boolean {
+    const d = ASCENDED_NIGHTSCAR;
+    if (!this.ascendedUnlocked()) {
+      this.toast('Clear Nightscar Depths to unlock Ascended Nightscar', 'bad');
+      return false;
+    }
+    if (this.mode === 'dungeon' || this.mode === 'pvp') return false;
+    if (this.battle) {
+      this.toast('Retreat to camp first', 'bad');
+      return false;
+    }
+    if (!this.payAscendedEntry()) return false;
+    this.dungeonCtx = { dungeon: d, loot: [], xp: 0, ascended: true };
+    this.battle = new Battle(this.buildDungeonRun(d), this.heroInput(), this.rng);
+    this.mode = 'dungeon';
+    this.lives = MAX_LIVES;
+    this.acc = 0;
+    this.say(`Entering Ascended Nightscar (−${formatAscendedEntryCost()}).`);
+    this.emit({ t: 'run' });
+    this.changed();
+    return true;
+  }
+
   sweepDungeon(id: string): boolean {
+    if (id === ASCENDED_NIGHTSCAR.id) return this.sweepAscendedDungeon();
     const d = getDungeon(id);
     if (!this.dungeonSweepUnlocked(d)) {
       const n = this.dungeonClearCount(d);
@@ -952,6 +1090,52 @@ export class Game {
     return true;
   }
 
+  /** Ascended Nightscar Sweep — same premium cost as Enter. */
+  sweepAscendedDungeon(): boolean {
+    const d = ASCENDED_NIGHTSCAR;
+    if (!this.dungeonSweepUnlocked(d)) {
+      const n = this.dungeonClearCount(d);
+      this.toast(
+        `Clear Ascended Nightscar ${SWEEP_UNLOCK_CLEARS} times to unlock Sweep (${n}/${SWEEP_UNLOCK_CLEARS})`,
+        'bad',
+      );
+      return false;
+    }
+    if (this.mode === 'dungeon' || this.mode === 'pvp' || this.battle) return false;
+    if (!this.payAscendedEntry()) return false;
+    const loot: Item[] = [];
+    let xp = 0;
+    const baseTier = stageTier(d.actId, 5) + 0.3 + ASCENDED_TIER_BUMP;
+    for (let floor = 1; floor <= d.floors; floor++) {
+      const type: NodeType = floor === d.floors ? 'boss' : floor === 5 ? 'miniboss' : 'trash';
+      const source = this.dungeonDropSource(d, type);
+      const drops = type === 'boss' ? 2 : 1;
+      for (let i = 0; i < drops; i++) loot.push(this.rollDungeonItem(d, floor, source));
+      const tier = baseTier + (floor - 1) * 0.12;
+      const sc = (role: 'trash' | 'elite' | 'boss') => enemyScale(tier, role).xp;
+      xp +=
+        type === 'boss'
+          ? sc('boss') + 2 * sc('trash') * 0.8
+          : type === 'miniboss'
+            ? sc('elite') + 3 * sc('trash')
+            : 4 * sc('trash');
+    }
+    xp = Math.round(xp);
+    const dc = this.save.dungeons[d.id] ?? { cleared: true, clears: 0 };
+    dc.cleared = true;
+    dc.clears += 1;
+    this.save.dungeons[d.id] = dc;
+    this.resolveNightscarPity(d, loot);
+    this.gainXp(xp);
+    this.say(`Swept Ascended Nightscar.`);
+    this.emit({
+      t: 'result',
+      result: { kind: 'dungeon', title: `${d.name} - Sweep`, success: true, loot, xp },
+    });
+    this.changed();
+    return true;
+  }
+
   // ---- loot ---------------------------------------------------------------
 
   private stageGearLevel(): number {
@@ -969,6 +1153,9 @@ export class Game {
   }
 
   private dungeonDropSource(d: DungeonDef, type: NodeType): DropSource {
+    if (isAscendedDungeon(d)) {
+      return type === 'boss' ? 'ascended-boss' : type === 'miniboss' ? 'ascended-mini' : 'ascended-floor';
+    }
     if (d.endgame) {
       return type === 'boss' ? 'nightscar-boss' : type === 'miniboss' ? 'nightscar-mini' : 'nightscar-floor';
     }
@@ -977,8 +1164,12 @@ export class Game {
 
   private rollDungeonItem(d: DungeonDef, floor: number, source: DropSource): Item {
     const [lo, hi] = d.glBand;
-    const gl = Math.round(lo + ((hi - lo) * (floor - 1)) / (d.floors - 1));
-    const pity = d.endgame ? this.save.nightscarPity : 0;
+    const gl = Math.round(lo + ((hi - lo) * (floor - 1)) / Math.max(1, d.floors - 1));
+    const pity = isAscendedDungeon(d)
+      ? this.save.ascendedPity
+      : d.endgame
+        ? this.save.nightscarPity
+        : 0;
     const setPool = filterSetsForClass(d.sets, this.save.heroClass);
     return rollItem(this.rng, {
       gearLevel: gl,
@@ -988,8 +1179,12 @@ export class Game {
     });
   }
 
-  /** Soft pity only tracks successful Nightscar Apex clears/sweeps. */
+  /** Soft pity tracks successful Nightscar / Ascended clears/sweeps separately. */
   private resolveNightscarPity(d: DungeonDef, loot: Item[]): void {
+    if (isAscendedDungeon(d)) {
+      this.save.ascendedPity = nextNightscarPity(this.save.ascendedPity, loot);
+      return;
+    }
     if (!d.endgame) return;
     this.save.nightscarPity = nextNightscarPity(this.save.nightscarPity, loot);
   }
@@ -1621,6 +1816,99 @@ export class Game {
     return this.queueClanPvp(opts);
   }
 
+  // ---- Ascended Seals / Clan Raid -----------------------------------------
+
+  refreshClanRaidWeek(now = Date.now()): void {
+    const week = clanRaidWeekKey(now);
+    if (this.save.clanRaidWeekKey !== week) {
+      this.save.clanRaidWeekKey = week;
+      this.save.clanRaidAttemptsUsed = 0;
+    }
+  }
+
+  clanRaidAttemptsLeft(now = Date.now()): number {
+    this.refreshClanRaidWeek(now);
+    return Math.max(0, CLAN_RAID_WEEKLY_ATTEMPTS - this.save.clanRaidAttemptsUsed);
+  }
+
+  clanRaidUnlocked(): boolean {
+    return !!this.save.clan && this.save.stagesCleared >= CLAN_RAID_STAGE_FLOOR;
+  }
+
+  clanRaidStatus(now = Date.now()): {
+    unlocked: boolean;
+    attemptsLeft: number;
+    attemptsMax: number;
+    seals: number;
+    fragments: number;
+    weekKey: string;
+  } {
+    this.refreshClanRaidWeek(now);
+    return {
+      unlocked: this.clanRaidUnlocked(),
+      attemptsLeft: this.clanRaidAttemptsLeft(now),
+      attemptsMax: CLAN_RAID_WEEKLY_ATTEMPTS,
+      seals: this.save.ascendedSeals,
+      fragments: this.save.ascendedSealFragments,
+      weekKey: this.save.clanRaidWeekKey,
+    };
+  }
+
+  /**
+   * Start weekly Clan Raid boss on the Phaser stage.
+   * Rewards: Ascended Seal or Fragments only (no marks / chests / bracket bonus).
+   * Shared multiplayer HP is stubbed — solo AI boss.
+   */
+  startClanRaid(): string | null {
+    if (this.mode === 'pvp' || this.mode === 'dungeon') return 'Finish your current fight first.';
+    if (this.battle) return 'Retreat to camp before starting Clan Raid.';
+    if (!this.save.clan) return 'Join a clan first.';
+    if (this.save.stagesCleared < CLAN_RAID_STAGE_FLOOR) {
+      return 'Clear Nightscar Depths (Act 10) to unlock Clan Raid.';
+    }
+    this.refreshClanRaidWeek();
+    if (this.save.clanRaidAttemptsUsed >= CLAN_RAID_WEEKLY_ATTEMPTS) {
+      return `No Clan Raid attempts left this week (${CLAN_RAID_WEEKLY_ATTEMPTS}/${CLAN_RAID_WEEKLY_ATTEMPTS}).`;
+    }
+    this.save.clanRaidAttemptsUsed += 1;
+    const d = CLAN_RAID_DUNGEON;
+    this.dungeonCtx = { dungeon: d, loot: [], xp: 0, clanRaid: true };
+    this.battle = new Battle(this.buildDungeonRun(d), this.heroInput(), this.rng);
+    this.mode = 'dungeon';
+    this.lives = MAX_LIVES;
+    this.acc = 0;
+    this.say(
+      `Clan Raid begun (${this.clanRaidAttemptsLeft()}/${CLAN_RAID_WEEKLY_ATTEMPTS} left). Seals & fragments only.`,
+    );
+    this.emit({ t: 'run' });
+    this.changed();
+    return null;
+  }
+
+  /** Craft Ascended Seals from fragments (inventory). Returns seals crafted or error. */
+  craftAscendedSeals(count = 1): string | null {
+    const n = Math.max(1, Math.floor(count));
+    const need = n * ASCENDED_SEAL_FRAGMENTS_PER_SEAL;
+    if (this.save.ascendedSealFragments < need) {
+      const have = this.save.ascendedSealFragments;
+      return `Need ${need} fragments (have ${have}). ${ASCENDED_SEAL_FRAGMENTS_PER_SEAL} → 1 Seal.`;
+    }
+    this.save.ascendedSealFragments -= need;
+    this.save.ascendedSeals += n;
+    this.toast(`Crafted ${n} Ascended Seal${n > 1 ? 's' : ''}`, 'good');
+    this.changed();
+    return null;
+  }
+
+  /** Craft as many seals as fragments allow. */
+  craftAllAscendedSeals(): string | null {
+    const n = sealsCraftableFrom(this.save.ascendedSealFragments);
+    if (n <= 0) {
+      return `Need ${ASCENDED_SEAL_FRAGMENTS_PER_SEAL} fragments per Seal (have ${this.save.ascendedSealFragments}).`;
+    }
+    return this.craftAscendedSeals(n);
+  }
+
   /**
    * Queue local 4v4 auto-battle.
    * Sim + rewards resolve immediately; Phaser stage plays the log, then emits `pvp` for the breakdown modal.
@@ -1880,6 +2168,11 @@ export class Game {
     this.save.dungeons = {};
     this.save.questIndex = 0;
     this.save.nightscarPity = 0;
+    this.save.ascendedPity = 0;
+    this.save.ascendedSeals = 0;
+    this.save.ascendedSealFragments = 0;
+    this.save.clanRaidAttemptsUsed = 0;
+    this.save.clanRaidWeekKey = clanRaidWeekKey();
   }
 
   // ---- settings & dev -----------------------------------------------------
@@ -1935,6 +2228,8 @@ export class Game {
     this.save.dust += 200;
     this.save.gold += 1000;
     this.save.clanTokens += 100;
+    this.save.ascendedSeals += 3;
+    this.save.ascendedSealFragments += 5;
     this.changed();
   }
 

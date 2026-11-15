@@ -18,4 +18,6 @@ export const ICON = {
   droplet: `<svg viewBox="0 0 32 32"><path d="M16 3c5 7 9 11 9 16a9 9 0 0 1-18 0c0-5 4-9 9-16z" fill="#8a4bff" stroke="#2a0e63" stroke-width="2.4"/><path d="M12 18a4 4 0 0 0 3 4" stroke="#d9bfff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`,
   hex: `<svg viewBox="0 0 32 32"><path d="M16 2l12 7v14l-12 7L4 23V9z" fill="#4d4a56" stroke="#14110f" stroke-width="2.4"/><path d="M16 5.500l9 5.200v10.600l-9 5.200-9-5.200V10.700z" fill="#2c2a33"/></svg>`,
   wings: `<svg viewBox="0 0 120 40"><path d="M60 22c-8-12-26-16-50-12 8 3 12 8 14 12-6 0-12 2-18 6 14-2 26 0 36 6 4-6 10-9 18-12z" fill="#7d7766" opacity=".55"/><path d="M60 22c8-12 26-16 50-12-8 3-12 8-14 12 6 0 12 2 18 6-14-2-26 0-36 6-4-6-10-9-18-12z" fill="#7d7766" opacity=".55"/></svg>`,
+  /** Ascended Seal — wax/obsidian stamp for Nightscar premium entry. */
+  seal: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#3a1a28" stroke="#14110f" stroke-width="2.2"/><circle cx="16" cy="16" r="8.5" fill="#8b1e3d" stroke="#f0c27a" stroke-width="1.6"/><path d="M16 9.5l1.6 4.2 4.4.2-3.4 2.9 1.1 4.3L16 18.8l-3.7 2.3 1.1-4.3-3.4-2.9 4.4-.2z" fill="#f0c27a"/></svg>`,
 };

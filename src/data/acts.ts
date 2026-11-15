@@ -472,6 +472,8 @@ export interface DungeonDef {
   floors: number;
   /** Nightscar Apex: stingy endgame drop tables (GDD §5.4 / §6.8). */
   endgame?: boolean;
+  /** Ascended Nightscar: harder Apex variant with premium seal cost. */
+  ascended?: boolean;
 }
 
 export interface ActDef {
@@ -698,7 +700,31 @@ export function getAct(id: number): ActDef {
   return act;
 }
 
+/** Ascended Nightscar — harder Apex; not listed as an act dungeon row. */
+export const ASCENDED_NIGHTSCAR_DEF: DungeonDef = {
+  id: 'nightscar-ascended',
+  name: 'Ascended Nightscar',
+  actId: 10,
+  glBand: [18, 20],
+  sets: ['nightscar-regalia'],
+  floors: 10,
+  endgame: true,
+  ascended: true,
+};
+
+/** Clan Raid boss stub (single floor); rewards are seals/fragments only. */
+export const CLAN_RAID_DEF: DungeonDef = {
+  id: 'clan-raid',
+  name: 'Clan Raid',
+  actId: 10,
+  glBand: [18, 20],
+  sets: [],
+  floors: 1,
+};
+
 export function getDungeon(id: string): DungeonDef {
+  if (id === ASCENDED_NIGHTSCAR_DEF.id) return ASCENDED_NIGHTSCAR_DEF;
+  if (id === CLAN_RAID_DEF.id) return CLAN_RAID_DEF;
   for (const a of ACTS) if (a.dungeon?.id === id) return a.dungeon;
   throw new Error(`Unknown dungeon ${id}`);
 }
