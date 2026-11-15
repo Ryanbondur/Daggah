@@ -636,15 +636,21 @@ button {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   grid-template-rows: repeat(4, 1fr);
-  /* Single Boots slot (DG-68); gloves/bracers absorb the old legs columns. */
+  /* Single Boots slot (DG-68 / DG-75): footwear sits in the old legs columns
+     so the Boots slot stays visible beside the cape; top row keeps jewelry. */
   grid-template-areas:
-    'weapon weapon chest chest helmet helmet shoulders shoulders boots boots amulet amulet'
-    'weapon weapon chest chest helmet helmet shoulders shoulders boots boots medal ring'
-    'weapon weapon chest chest gloves gloves bracers bracers wing wing wing wing'
-    'weapon weapon belt belt gloves gloves bracers bracers wing wing wing wing';
+    'weapon weapon chest chest helmet helmet shoulders shoulders amulet amulet medal ring'
+    'weapon weapon chest chest helmet helmet shoulders shoulders amulet amulet medal ring'
+    'weapon weapon chest chest gloves gloves bracers bracers boots boots wing wing'
+    'weapon weapon belt belt gloves gloves bracers bracers boots boots wing wing';
   gap: 0.7cqw;
   flex: 1 1 auto;
   min-height: 0;
+}
+.slot.empty-slot {
+  /* Empty gear cells (esp. Boots after legs collapse) must stay readable on parchment. */
+  opacity: 0.48;
+  pointer-events: none;
 }
 .slot {
   position: relative;

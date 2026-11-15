@@ -21,7 +21,9 @@ export function slotHtml(
 ): string {
   const area = opts.area ? `grid-area:${opts.area};` : '';
   if (!item) {
-    return `<div class="slot" style="${area}opacity:.25"></div>`;
+    const slotAttr = opts.slot ? ` data-slot="${escapeHtml(opts.slot)}"` : '';
+    const label = opts.slot ? escapeHtml(opts.slot) : 'Empty slot';
+    return `<div class="slot empty-slot" style="${area}"${slotAttr} aria-label="${label}"></div>`;
   }
   const bis = opts.bisBadge ? true : false;
   const cls = [
