@@ -1,5 +1,5 @@
-import { DROP_SET_IDS, SETS, rollItem, sellValue } from '../data/gear';
-import type { Item, RarityId, SetId } from '../data/types';
+import { DROP_SET_IDS, SETS, filterSetsForClass, rollItem, sellValue } from '../data/gear';
+import type { HeroClass, Item, RarityId, SetId } from '../data/types';
 import type { EnemyRole } from '../data/acts';
 import type { Rng } from './rng';
 import { mulberry32 } from './rng';
@@ -94,15 +94,25 @@ function rollShopRarity(rng: Rng): RarityId {
 /**
  * Build today's merchant slate from a seed.
  * Occasional set pieces (~22%); gear level tracks hero progress.
+ * Class-favored sets are filtered to `heroClass` (universal / Any sets stay).
  */
 export function buildDailyOffers(
   seed: number,
-  opts: { level: number; stagesCleared: number; purchased?: readonly number[] },
+  opts: {
+    level: number;
+    stagesCleared: number;
+    heroClass?: HeroClass;
+    purchased?: readonly number[];
+  },
 ): DailyShopOffer[] {
   const rng = mulberry32(seed);
   const gl = Math.max(1, Math.min(20, opts.level + rng.int(0, 1)));
   const actUnlocked = Math.max(1, Math.min(10, Math.floor(opts.stagesCleared / 5) + 1));
-  const pool = DROP_SET_IDS.filter((id) => SETS[id].act <= actUnlocked);
+  const heroClass = opts.heroClass ?? 'Warrior';
+  const pool = filterSetsForClass(
+    DROP_SET_IDS.filter((id) => SETS[id].act <= actUnlocked),
+    heroClass,
+  );
   const offers: DailyShopOffer[] = [];
   const bought = new Set(opts.purchased ?? []);
 

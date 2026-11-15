@@ -13,7 +13,7 @@ import type {
   Stats,
 } from './types';
 import { STAT_KEYS } from './types';
-import { playstyleCommitted } from './skills';
+import { PLAYSTYLES, playstyleCommitted } from './skills';
 import { heroBaseStats } from './xp';
 
 export const SLOTS: SlotId[] = [
@@ -733,8 +733,12 @@ export function lootCompareHighlight(
   heroClass: HeroClass = 'Warrior',
   loadout?: SkillId[],
 ): LootCompareHighlight {
-  const delta = cpDelta(level, gear, item, heroClass, loadout);
   const levelOk = item.gearLevel <= level;
+  // Wrong-class set pieces are never BiS upgrades for this hero.
+  if (!itemAllowedForClass(item, heroClass)) {
+    return { upgrade: false, cpDelta: 0, levelOk, badge: null };
+  }
+  const delta = cpDelta(level, gear, item, heroClass, loadout);
   const upgrade = delta > 0 && levelOk;
   let badge: string | null = null;
   if (upgrade) {
@@ -826,6 +830,58 @@ export function starterGear(heroClass: HeroClass = 'Warrior'): Gear {
 export const ALL_SET_IDS = Object.keys(SETS) as SetId[];
 /** Act/dungeon drop pool — Clanforged is vendor-only. */
 export const DROP_SET_IDS = ALL_SET_IDS.filter((id) => id !== 'clanforged');
+
+/**
+ * Class lock for a set, if any.
+ * Sets with `favorsPlaystyle` are locked to that playstyle's class;
+ * "Any" / endgame / Clanforged sets return null (usable by every class).
+ */
+export function setLockedHeroClass(setId: SetId): HeroClass | null {
+  const style = SETS[setId].favorsPlaystyle;
+  return style ? PLAYSTYLES[style].heroClass : null;
+}
+
+/** True when `heroClass` may receive / equip pieces of this set. */
+export function setAllowedForClass(setId: SetId, heroClass: HeroClass): boolean {
+  const locked = setLockedHeroClass(setId);
+  return locked == null || locked === heroClass;
+}
+
+/** Plain (non-set) gear is always allowed; set pieces follow `setAllowedForClass`. */
+export function itemAllowedForClass(
+  item: Pick<Item, 'setId'>,
+  heroClass: HeroClass,
+): boolean {
+  if (!item.setId) return true;
+  return setAllowedForClass(item.setId, heroClass);
+}
+
+/** Filter a dungeon/shop set pool to pieces this class may receive. */
+export function filterSetsForClass(sets: readonly SetId[], heroClass: HeroClass): SetId[] {
+  return sets.filter((id) => setAllowedForClass(id, heroClass));
+}
+
+/**
+ * Unequip wrong-class set pieces into the bag (keep for salvage; cannot re-equip).
+ * Used on save load / import so legacy equipped Quillstorm-on-Warrior etc. clears.
+ */
+export function unequipWrongClassGear(
+  gear: Gear,
+  bag: Item[],
+  heroClass: HeroClass,
+): { gear: Gear; bag: Item[]; moved: Item[] } {
+  const nextGear: Gear = { ...gear };
+  const nextBag = [...bag];
+  const moved: Item[] = [];
+  for (const slot of SLOTS) {
+    const it = nextGear[slot];
+    if (!it || itemAllowedForClass(it, heroClass)) continue;
+    delete nextGear[slot];
+    moved.push(it);
+    nextBag.push(it);
+  }
+  return { gear: nextGear, bag: nextBag, moved };
+}
 
 export function salvageValue(item: Item): { dust: number; crystals: number } {
   return RARITIES[item.rarity].salvage;

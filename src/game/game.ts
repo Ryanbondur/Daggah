@@ -16,6 +16,8 @@ import {
   RARITIES,
   cpDelta,
   computeHero,
+  filterSetsForClass,
+  itemAllowedForClass,
   lootCompareHighlight,
   rarityAtMost,
   rarityBelow,
@@ -24,6 +26,7 @@ import {
   salvageValue,
   sellValue,
   starterGear,
+  unequipWrongClassGear,
 } from '../data/gear';
 import { QUESTS, dailyCounterKey, dailyQuestForDay } from '../data/quests';
 import type { QuestDef } from '../data/quests';
@@ -248,6 +251,7 @@ export class Game {
     this.storage = storage;
     this.rng = rng;
     this.save = loadSave(storage);
+    this.stripWrongClassEquipped();
     this.refreshKeys();
     this.refreshDaily();
     this.refreshShop();
@@ -255,6 +259,23 @@ export class Game {
     if (!availableSpeeds(this.save.level).includes(this.save.settings.speed)) {
       this.save.settings.speed = 1;
     }
+  }
+
+  /**
+   * Legacy / bad drops may leave wrong-class set pieces equipped.
+   * Auto-unequip into bag on load (cannot re-equip); keeps salvage option.
+   */
+  private stripWrongClassEquipped(): void {
+    if (!this.save.classPicked) return;
+    const { gear, bag, moved } = unequipWrongClassGear(
+      this.save.gear,
+      this.save.bag,
+      this.save.heroClass,
+    );
+    if (!moved.length) return;
+    this.save.gear = gear;
+    this.save.bag = bag;
+    writeSave(this.storage, this.save);
   }
 
   on(fn: Listener): () => void {
@@ -285,6 +306,7 @@ export class Game {
     const result = importSaveCode(code);
     if (!result.ok) return result.error;
     this.save = result.save;
+    this.stripWrongClassEquipped();
     this.battle = null;
     this.pvpPlayback = null;
     this.mode = 'camp';
@@ -907,10 +929,12 @@ export class Game {
     const [lo, hi] = d.glBand;
     const gl = Math.round(lo + ((hi - lo) * (floor - 1)) / (d.floors - 1));
     const pity = d.endgame ? this.save.nightscarPity : 0;
+    const setPool = filterSetsForClass(d.sets, this.save.heroClass);
     return rollItem(this.rng, {
       gearLevel: gl,
       rarity: rollRarity(this.rng, source, pity),
-      setId: this.rng.pick(d.sets),
+      // Wrong-class set pools (e.g. Warrior in Quillstorm dungeon) → plain gear.
+      setId: setPool.length ? this.rng.pick(setPool) : undefined,
     });
   }
 
@@ -1025,6 +1049,10 @@ export class Game {
   equip(item: Item, autoSalvageOld: boolean): boolean {
     if (item.gearLevel > this.save.level) {
       this.toast(`Requires hero Lv.${item.gearLevel}`, 'bad');
+      return false;
+    }
+    if (!itemAllowedForClass(item, this.save.heroClass)) {
+      this.toast('Wrong class for this set', 'bad');
       return false;
     }
     this.removeFromQueues(item);
@@ -1229,6 +1257,7 @@ export class Game {
     return buildDailyOffers(this.save.shop.seed, {
       level: this.save.level,
       stagesCleared: this.save.stagesCleared,
+      heroClass: this.save.heroClass,
       purchased: this.save.shop.purchased,
     });
   }
@@ -1239,6 +1268,9 @@ export class Game {
     const offer = offers[index];
     if (!offer) return 'Unknown offer.';
     if (offer.purchased || this.save.shop.purchased.includes(index)) return 'Already purchased today.';
+    if (!itemAllowedForClass(offer.item, this.save.heroClass)) {
+      return 'Wrong class for this set.';
+    }
     if (this.save.gold < offer.price) return `Need ${offer.price} gold.`;
     this.save.gold -= offer.price;
     this.save.shop.purchased = [...this.save.shop.purchased, index];
@@ -1863,12 +1895,13 @@ export class Game {
 
   devRollLoot(count = 5): void {
     const items: Item[] = [];
+    const setPool = filterSetsForClass(DROP_SET_IDS, this.save.heroClass);
     for (let i = 0; i < count; i++) {
       items.push(
         rollItem(this.rng, {
           gearLevel: Math.max(1, Math.min(this.save.level, this.rng.int(1, 8))),
           rarity: rollRarity(this.rng, 'dungeon-floor'),
-          setId: this.rng.pick(DROP_SET_IDS),
+          setId: setPool.length ? this.rng.pick(setPool) : undefined,
         }),
       );
     }

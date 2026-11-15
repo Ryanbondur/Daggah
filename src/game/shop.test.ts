@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { rollItem } from '../data/gear';
+import { itemAllowedForClass, rollItem } from '../data/gear';
 import type { RarityId } from '../data/types';
 import { mulberry32 } from './rng';
 import { Game } from './game';
 import {
   DAILY_SHOP_SIZE,
+  buildDailyOffers,
   goldFromKill,
   hashDayKey,
   rarityPriceRank,
@@ -119,6 +120,21 @@ describe('daily shop refresh', () => {
     };
     expect(raw.shop.dayKey).toBe('2026-11-15');
     expect(raw.shop.purchased).toEqual([]);
+  });
+
+  it('never offers wrong-class set pieces for the hero', () => {
+    const offers = buildDailyOffers(4242, {
+      level: 18,
+      stagesCleared: 45,
+      heroClass: 'Warrior',
+    });
+    expect(offers).toHaveLength(DAILY_SHOP_SIZE);
+    for (const o of offers) {
+      expect(itemAllowedForClass(o.item, 'Warrior')).toBe(true);
+      expect(o.item.setId === 'quillstorm' || o.item.setId === 'deadeye').toBe(false);
+      expect(o.item.setId === 'ashen-codex' || o.item.setId === 'rime-circlet').toBe(false);
+      expect(o.item.setId === 'nightfang' || o.item.setId === 'gloomveil').toBe(false);
+    }
   });
 
   it('migrates missing shop field on load', () => {
