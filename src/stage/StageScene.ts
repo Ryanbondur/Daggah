@@ -7,6 +7,7 @@ import type { Game, PvpPlaybackFighter } from '../game/game';
 import type { PvpEvent } from '../game/pvp';
 import { ENEMY_SPRITES, SKILL_IDS, asset, heroSprite, skillIcon } from '../ui/assets';
 import type { HeroClass } from '../data/types';
+import { campHeroVisual, enemyFlipX } from './visual';
 
 const GROUND = 0.86;
 const BG_GROUND_LINE = 0.765;
@@ -104,7 +105,9 @@ export class StageScene extends Phaser.Scene {
 
     this.campProps = this.add.image(0, 0, 'camp').setOrigin(0.5, 1).setDepth(1);
     this.fireGlow = this.add.circle(0, 0, 40, 0xff8a24, 0.35).setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
-    this.heroSleep = this.add.image(0, 0, 'hero-sleep').setOrigin(0.5, 1).setDepth(6);
+    const campHero = campHeroVisual(this.game_.save.heroClass);
+    const sleepKey = this.textures.exists(campHero.key) ? campHero.key : 'hero-sleep';
+    this.heroSleep = this.add.image(0, 0, sleepKey).setOrigin(0.5, 1).setDepth(6);
     this.bubble = this.add.circle(0, 0, 10, 0xcfe9ff, 0.55).setDepth(7);
     this.bubble.setStrokeStyle(2, 0xffffff, 0.7);
     this.hero = this.add.image(0, 0, this.heroKey).setOrigin(0.5, 1).setDepth(6);
@@ -266,8 +269,12 @@ export class StageScene extends Phaser.Scene {
     this.embers.emitting = true;
 
     const sh = H * 0.34;
+    const campHero = campHeroVisual(this.game_.save.heroClass);
+    if (this.textures.exists(campHero.key) && this.heroSleep.texture.key !== campHero.key) {
+      this.heroSleep.setTexture(campHero.key);
+    }
     this.heroSleep.setVisible(true);
-    this.heroSleep.setDisplaySize(sh * (203 / 360), sh);
+    this.heroSleep.setDisplaySize(sh * campHero.aspect, sh);
     const hx = W * 0.28;
     this.heroSleep.setPosition(hx, groundY + H * 0.008);
     this.heroSleep.y += Math.sin(this.clock * 1.6) * 0.8;
@@ -490,6 +497,8 @@ export class StageScene extends Phaser.Scene {
       let view = this.enemyViews.get(e.id);
       if (!view) {
         const sprite = this.add.image(0, 0, e.def.sprite).setOrigin(0.5, 1).setDepth(5);
+        // Art faces right; flip so they look toward the hero while approaching from the right.
+        sprite.setFlipX(enemyFlipX(e.x));
         sprite.preFX?.addGlow(0xffe0b0, 1.6, 0, false, 0.1, 6);
         const bar = this.add.graphics().setDepth(11);
         view = { sprite, bar };
@@ -521,6 +530,7 @@ export class StageScene extends Phaser.Scene {
     const s = view.sprite;
     s.setDisplaySize(w, h);
     s.setPosition(x, y);
+    s.setFlipX(enemyFlipX(e.x));
     if (e.dead) {
       const p = Math.min(1, e.deathT / 0.7);
       s.setAlpha(1 - p);
