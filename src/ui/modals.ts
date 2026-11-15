@@ -861,11 +861,13 @@ export function showClanArmorer(ctx: UIContext): void {
     const note = locked
       ? 'Nightscar bracket unlock'
       : 'Clanforged set · Gear Lv.18–20';
-    return `<button class="vendor-row ${afford ? '' : 'dim'}" data-action="buy" data-i="${i}" ${locked ? 'disabled' : ''}>
+    // Avoid class "dim" (modal overlay). Use is-dim for unaffordable rows.
+    return `<div class="vendor-row${afford ? '' : ' is-dim'}${locked ? ' locked' : ''}" role="button" tabindex="${locked ? '-1' : '0'}"
+      data-action="buy" data-i="${i}" ${locked ? 'aria-disabled="true"' : ''}>
       <img src="${asset(`icons/gear-k/${o.slot}.webp`)}" alt="" />
-      <span><b>${o.label}</b><small>${note}${o.nightscarOnly ? ' · Nightscar exclusive' : ''}</small></span>
+      <span><b>${escapeHtml(o.label)}</b><small>${escapeHtml(note)}${o.nightscarOnly ? ' · Nightscar exclusive' : ''}</small></span>
       <b class="price"><img src="${asset('ui/clan-token.webp')}" alt="" />${o.cost}</b>
-    </button>`;
+    </div>`;
   }).join('');
   const el = ctx.openModal(
     `<div class="sheet">
