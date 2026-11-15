@@ -1,11 +1,8 @@
 /**
  * Username/password auth API for cloud saves.
- * POST /api/daggah-auth  body: { action: 'register'|'login'|'logout'|'change-password', ... }
- * GET  /api/daggah-auth  → current session (me)
- *
- * Static re-export so the hosted bundler inlines src/lib into this function.
- * Dynamic import('../src/lib/...') fails at runtime: /var/task has no separate src modules.
+ * Handlers live in api/_lib so the host packs them with this function
+ * (imports from ../src/lib are not available under /var/task).
  */
 export const runtime = 'nodejs';
 
-export { GET, POST, OPTIONS } from '../src/lib/authApi';
+export { GET, POST, OPTIONS } from './_lib/authApi';
