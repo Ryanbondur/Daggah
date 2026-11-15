@@ -115,36 +115,42 @@ function renderCampShop(ctx: UIContext): string {
   const g = ctx.game;
   const offers = g.dailyShopOffers();
   const left = offers.filter((o) => !o.purchased).length;
-  const rows = offers
+  const cards = offers
     .map((o) => {
       const rarity = RARITIES[o.item.rarity];
       const setLabel = o.item.setId ? ` · ${SETS[o.item.setId].name}` : '';
-      const dim = o.purchased || g.save.gold < o.price ? 'dim' : '';
-      const sold = o.purchased ? '<span class="sold">Sold</span>' : '';
-      return `<button type="button" class="vendor-row shop-offer ${dim}" data-action="shop-buy" data-i="${o.index}" ${o.purchased ? 'disabled' : ''}>
-        <img src="${itemIcon(o.item)}" alt="" />
-        <span>
-          <b style="color:${rarity.color}">${escapeHtml(o.item.name)}</b>
-          <small>${rarity.label}${setLabel} · Lv.${o.item.gearLevel}</small>
-        </span>
-        ${sold || `<b class="price"><img src="${navIcon('gold')}" alt="" />${fmt(o.price)}</b>`}
-      </button>`;
+      // Never use class "dim" here — that is the full-screen modal overlay
+      // (position:absolute; inset:0) and stacks every unaffordable offer on top of the pane.
+      const unaffordable = o.purchased || g.save.gold < o.price;
+      const sold = o.purchased;
+      const priceHtml = sold
+        ? '<span class="sold">Sold</span>'
+        : `<span class="shop-offer-price"><img src="${navIcon('gold')}" alt="" />${fmt(o.price)}</span>`;
+      return `<div class="shop-offer-cell" role="listitem">
+        <div class="shop-offer${unaffordable ? ' is-dim' : ''}${sold ? ' sold-out' : ''}" role="button" tabindex="${sold ? '-1' : '0'}"
+          data-action="shop-buy" data-i="${o.index}" ${sold ? 'aria-disabled="true"' : ''}>
+          <img class="shop-offer-icon" src="${itemIcon(o.item)}" alt="" />
+          <b class="shop-offer-name" style="color:${rarity.color}">${escapeHtml(o.item.name)}</b>
+          <small class="shop-offer-meta">${escapeHtml(rarity.label)}${escapeHtml(setLabel)} · Lv.${o.item.gearLevel}</small>
+          ${priceHtml}
+        </div>
+      </div>`;
     })
     .join('');
   return `<div class="camp-shop">
     ${currencyStrip(ctx, { dust: false, keyTimer: false })}
     <div class="shop-hero">
       <b>Daily Merchant</b>
-      <span>Fresh slate each calendar day · Gold only · ${left}/${DAILY_SHOP_SIZE} left</span>
+      <span>${left}/${DAILY_SHOP_SIZE} left · gold · resets midnight</span>
     </div>
-    <div class="vendor-list shop-list">${rows}</div>
-    <p class="tagline">Prices climb with rarity. Set pieces cost a premium. Resets at midnight.</p>
+    <div class="shop-list" role="list">${cards}</div>
   </div>`;
 }
 
 export function renderCamp(ctx: UIContext): string {
   const shop = ctx.campPane === 'shop';
-  return `<div class="pane-inner ${shop ? 'scroll' : ''}">
+  // Shop scrolls inside .shop-list so Gear/Shop tabs stay pinned; gear keeps pane scroll.
+  return `<div class="pane-inner${shop ? ' pane-shop' : ' scroll'}">
     ${campSubTabs(ctx.campPane)}
     ${shop ? renderCampShop(ctx) : renderCampGear(ctx)}
   </div>`;
