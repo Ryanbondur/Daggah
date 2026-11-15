@@ -542,7 +542,7 @@ export function showSettings(ctx: UIContext): void {
         </div>
         <p class="tagline">AI fillers keep solo 4v4 playable until live multiplayer. Practice queue opens a free Practice Hall if needed.</p>
         <h3>Season</h3>
-        <p>Local 30-day season stub. Reset keeps clan membership and opens class pick.</p>
+        <p>Local 30-day season stub. Reset wipes level, gear, currencies, acts, and dungeon progress; keeps clan membership and opens class pick.</p>
         <button class="chip" data-action="season-reset">Reset season (local)</button>
         <h3>Account</h3>
         ${
@@ -1132,7 +1132,7 @@ export function showSeasonBoard(ctx: UIContext): void {
         <div class="row"><span>Login days</span><b>${g.save.seasonLoginDays.length}</b></div>
         <h3>Local milestones</h3>
         <div class="milestone-list">${miles}</div>
-        <p>Local reset wipes level, gear, and currencies; keeps clan membership and re-opens class pick.</p>
+        <p>Local reset wipes level, gear, currencies, acts, and dungeon progress; keeps clan membership and re-opens class pick.</p>
         <button class="chip" data-action="season-reset" style="color:#8a281f">Reset season (local)</button>
       </div>
       <div class="btns"><button class="btn gold" data-action="close">Close</button></div>

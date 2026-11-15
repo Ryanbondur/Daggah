@@ -235,9 +235,14 @@ describe('clan armorer + season', () => {
     game.save.crystals = CLAN_CREATE_COST;
     game.createClan('Persist');
     game.save.level = 10;
+    game.devUnlockThroughAct(4);
+    game.save.dungeons['rime-vault'] = { cleared: true, clears: 3 };
     game.resetSeasonLocal();
     expect(game.save.classPicked).toBe(false);
     expect(game.save.level).toBe(1);
+    expect(game.save.stagesCleared).toBe(0);
+    expect(game.save.currentStage).toBe(0);
+    expect(game.save.dungeons).toEqual({});
     expect(game.clan?.name).toBe('Persist');
     expect(game.save.season.seasonId).toBe(2);
   });

@@ -59,6 +59,9 @@ export function formatDungeonKeyCost(keys: number): string {
   return keys === 1 ? '1 Key' : `${keys} Keys`;
 }
 
+/** Full clears of a dungeon required before Sweep unlocks. */
+export const SWEEP_UNLOCK_CLEARS = 5;
+
 /** Ms until the next dungeon key regenerates; 0 when already at cap. */
 export function msUntilNextKey(keys: number, keysAt: number, now: number): number {
   if (keys >= KEY_CAP) return 0;

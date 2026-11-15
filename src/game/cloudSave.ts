@@ -268,6 +268,24 @@ export function scheduleCloudPush(storage: Storage | undefined, save: SaveData, 
   }, delayMs);
 }
 
+/**
+ * Immediately push the pending (or provided) save with force.
+ * Used after local/season reset so a later boot pull cannot revive wiped acts.
+ */
+export function flushCloudPush(
+  storage: Storage | undefined,
+  save: SaveData,
+): void {
+  if (cloudDisabled()) return;
+  if (pushTimer) {
+    clearTimeout(pushTimer);
+    pushTimer = null;
+  }
+  pendingSave = null;
+  pendingStorage = undefined;
+  void pushCloudSave(save, storage, { force: true });
+}
+
 export function applyCloudSave(
   storage: Storage | undefined,
   save: SaveData,

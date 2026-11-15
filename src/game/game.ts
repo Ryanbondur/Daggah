@@ -87,7 +87,7 @@ import { buildOpponentRoster, simulatePvp } from './pvp';
 import { nextNightscarPity } from './nightscarPity';
 import type { Rng } from './rng';
 import { defaultRng } from './rng';
-import { scheduleCloudPush } from './cloudSave';
+import { flushCloudPush, scheduleCloudPush } from './cloudSave';
 import { exportSaveCode, importSaveCode } from './saveCode';
 import { applyOfflineProgress, type OfflineSummary } from './offline';
 import type { DailyShopOffer } from './shop';
@@ -97,12 +97,12 @@ import {
   BAG_CAP,
   KEY_CAP,
   KEY_REGEN_MS,
-  dungeonCrystalCost,
   dungeonKeyCost,
   formatDungeonKeyCost,
   msUntilNextKey,
   PLAYABLE_STAGES,
   STAGES_PER_ACT,
+  SWEEP_UNLOCK_CLEARS,
   clearSave,
   defaultSave,
   loadSave,
@@ -652,7 +652,12 @@ export class Game {
         success: true,
         loot: ctx.loot,
         xp: ctx.xp,
-        note: rec.clears === 1 ? 'Sweep unlocked: loot instantly for one key.' : undefined,
+        note:
+          rec.clears === SWEEP_UNLOCK_CLEARS
+            ? `Sweep unlocked: loot instantly for ${formatDungeonKeyCost(dungeonKeyCost(ctx.dungeon.actId))}.`
+            : rec.clears < SWEEP_UNLOCK_CLEARS
+              ? `Sweep unlocks after ${SWEEP_UNLOCK_CLEARS} clears (${rec.clears}/${SWEEP_UNLOCK_CLEARS}).`
+              : undefined,
       },
     });
     this.changed();
@@ -807,6 +812,21 @@ export class Game {
     return !!this.save.dungeons[d.id]?.cleared;
   }
 
+  /** Sweep unlocks only after this dungeon has been fully cleared N times. */
+  dungeonSweepUnlocked(d: DungeonDef): boolean {
+    return (this.save.dungeons[d.id]?.clears ?? 0) >= SWEEP_UNLOCK_CLEARS;
+  }
+
+  dungeonClearCount(d: DungeonDef): number {
+    return this.save.dungeons[d.id]?.clears ?? 0;
+  }
+
+  /** True when the player has enough dungeon keys for this act’s Enter/Sweep cost. */
+  canAffordDungeonKeys(actId: number): boolean {
+    this.refreshKeys();
+    return this.save.keys >= dungeonKeyCost(actId);
+  }
+
   refreshKeys(now = Date.now()): void {
     const s = this.save;
     if (s.keys >= KEY_CAP) {
@@ -827,19 +847,11 @@ export class Game {
   private payDungeonEntry(actId: number): boolean {
     this.refreshKeys();
     const keysNeeded = dungeonKeyCost(actId);
-    const crystalCost = dungeonCrystalCost(actId);
     if (this.save.keys >= keysNeeded) {
       this.save.keys -= keysNeeded;
       return true;
     }
-    if (this.save.crystals >= crystalCost) {
-      this.save.crystals -= crystalCost;
-      return true;
-    }
-    this.toast(
-      `Need ${formatDungeonKeyCost(keysNeeded)} or ${crystalCost} Crystals`,
-      'bad',
-    );
+    this.toast(`Need ${formatDungeonKeyCost(keysNeeded)} to enter or Sweep`, 'bad');
     return false;
   }
 
@@ -865,8 +877,12 @@ export class Game {
 
   sweepDungeon(id: string): boolean {
     const d = getDungeon(id);
-    if (!this.dungeonCleared(d)) {
-      this.toast('Clear the dungeon once to unlock Sweep', 'bad');
+    if (!this.dungeonSweepUnlocked(d)) {
+      const n = this.dungeonClearCount(d);
+      this.toast(
+        `Clear this dungeon ${SWEEP_UNLOCK_CLEARS} times to unlock Sweep (${n}/${SWEEP_UNLOCK_CLEARS})`,
+        'bad',
+      );
       return false;
     }
     if (this.mode === 'dungeon') return false;
@@ -1781,6 +1797,7 @@ export class Game {
     const everTut = this.save.tutorial.everCompleted;
     const lastSeen = this.save.lastSeenContentVersion;
     this.save = defaultSave();
+    this.wipeActProgress();
     this.save.tutorial.everCompleted = everTut;
     this.save.tutorial.step = everTut ? TUTORIAL_STEPS.length : 0;
     this.save.tutorial.skipped = false;
@@ -1818,6 +1835,17 @@ export class Game {
     this.say(`Season ${seasonId} begins. Re-pick your class.`);
     this.emit({ t: 'run' });
     this.changed();
+    flushCloudPush(this.storage, this.save);
+  }
+
+  /** Zero stage / act / dungeon unlock progress so a new run starts locked. */
+  private wipeActProgress(): void {
+    this.save.stagesCleared = 0;
+    this.save.currentStage = 0;
+    this.save.nodeProgress = 0;
+    this.save.dungeons = {};
+    this.save.questIndex = 0;
+    this.save.nightscarPity = 0;
   }
 
   // ---- settings & dev -----------------------------------------------------
@@ -1911,11 +1939,14 @@ export class Game {
   resetSave(): void {
     clearSave(this.storage);
     this.save = defaultSave();
+    this.wipeActProgress();
     this.battle = null;
+    this.pvpPlayback = null;
     this.mode = 'camp';
     this.dungeonCtx = null;
     this.lives = MAX_LIVES;
     this.emit({ t: 'run' });
     this.changed();
+    flushCloudPush(this.storage, this.save);
   }
 }

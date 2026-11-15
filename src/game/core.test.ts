@@ -13,12 +13,13 @@ import { HERO_CLASSES } from '../data/types';
 import { addXp, availableSpeeds, heroBaseStats, maxEnergy, xpToNext } from '../data/xp';
 import { Game } from './game';
 import { mulberry32 } from './rng';
-import { ACTS } from '../data/acts';
+import { ACTS, getDungeon } from '../data/acts';
 import {
   DUNGEON_CRYSTAL_COST_PER_KEY,
   KEY_CAP,
   KEY_REGEN_MS,
   SAVE_KEY,
+  SWEEP_UNLOCK_CLEARS,
   defaultSave,
   dungeonCrystalCost,
   dungeonKeyCost,
@@ -512,8 +513,8 @@ describe('dungeon key cost by act', () => {
     game.pickClass('Warrior');
     game.devUnlockThroughAct(10);
     game.save.keys = 8;
-    game.save.dungeons['cinder-forge'] = { cleared: true, clears: 1 };
-    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: 1 };
+    game.save.dungeons['cinder-forge'] = { cleared: true, clears: SWEEP_UNLOCK_CLEARS };
+    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: SWEEP_UNLOCK_CLEARS };
 
     expect(game.sweepDungeon('cinder-forge')).toBe(true); // Act 6 → 2 keys
     expect(game.save.keys).toBe(6);
@@ -521,26 +522,33 @@ describe('dungeon key cost by act', () => {
     expect(game.save.keys).toBe(2);
   });
 
-  it('falls back to scaled crystal buy-in when keys are short', () => {
+  it('refuses enter and sweep when keys are short even with crystals', () => {
     const game = new Game(memoryStorage(), mulberry32(11));
     game.pickClass('Warrior');
     game.devUnlockThroughAct(10);
-    game.save.keys = 1;
-    game.save.crystals = 250;
-    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: 1 };
+    game.save.keys = 0;
+    game.save.crystals = 999;
+    game.save.dungeons['hollow-crypt'] = { cleared: true, clears: SWEEP_UNLOCK_CLEARS };
+    const toasts: string[] = [];
+    game.on((e) => {
+      if (e.t === 'toast') toasts.push(e.text);
+    });
 
-    expect(game.sweepDungeon('nightscar-apex')).toBe(true);
-    expect(game.save.keys).toBe(1);
-    expect(game.save.crystals).toBe(50);
+    expect(game.canAffordDungeonKeys(1)).toBe(false);
+    expect(game.startDungeon('hollow-crypt')).toBe(false);
+    expect(game.sweepDungeon('hollow-crypt')).toBe(false);
+    expect(game.save.keys).toBe(0);
+    expect(game.save.crystals).toBe(999);
+    expect(toasts.some((t) => /Need 1 Key/i.test(t))).toBe(true);
   });
 
-  it('refuses entry when neither keys nor crystals cover the tier cost', () => {
+  it('refuses entry when keys do not cover the tier cost', () => {
     const game = new Game(memoryStorage(), mulberry32(13));
     game.pickClass('Warrior');
     game.devUnlockThroughAct(10);
     game.save.keys = 3;
     game.save.crystals = 100;
-    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: 1 };
+    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: SWEEP_UNLOCK_CLEARS };
     const toasts: string[] = [];
     game.on((e) => {
       if (e.t === 'toast') toasts.push(e.text);
@@ -548,7 +556,56 @@ describe('dungeon key cost by act', () => {
 
     expect(game.sweepDungeon('nightscar-apex')).toBe(false);
     expect(game.save.keys).toBe(3);
-    expect(game.save.crystals).toBe(100);
-    expect(toasts.some((t) => /4 Keys|200 Crystals/i.test(t))).toBe(true);
+    expect(toasts.some((t) => /4 Keys/i.test(t))).toBe(true);
+  });
+
+  it('unlocks Sweep only after 5 clears of that dungeon', () => {
+    const game = new Game(memoryStorage(), mulberry32(17));
+    game.pickClass('Warrior');
+    game.devUnlockThroughAct(1);
+    game.save.keys = 8;
+    game.save.dungeons['hollow-crypt'] = { cleared: true, clears: 4 };
+    const toasts: string[] = [];
+    game.on((e) => {
+      if (e.t === 'toast') toasts.push(e.text);
+    });
+
+    expect(game.dungeonSweepUnlocked(getDungeon('hollow-crypt'))).toBe(false);
+    expect(game.sweepDungeon('hollow-crypt')).toBe(false);
+    expect(game.save.keys).toBe(8);
+    expect(toasts.some((t) => /5 times/i.test(t))).toBe(true);
+
+    game.save.dungeons['hollow-crypt'] = { cleared: true, clears: SWEEP_UNLOCK_CLEARS };
+    expect(game.dungeonSweepUnlocked(getDungeon('hollow-crypt'))).toBe(true);
+    expect(game.sweepDungeon('hollow-crypt')).toBe(true);
+    expect(game.save.keys).toBe(7);
+  });
+
+  it('resetSave and resetSeasonLocal wipe act unlocks and dungeon progress', () => {
+    const store = memoryStorage();
+    const game = new Game(store, mulberry32(19));
+    game.pickClass('Warrior');
+    game.devUnlockThroughAct(6);
+    game.save.dungeons['cinder-forge'] = { cleared: true, clears: 9 };
+    game.save.currentStage = 20;
+    game.save.nodeProgress = 3;
+    game.save.crystals = 100;
+
+    game.resetSeasonLocal();
+    expect(game.save.stagesCleared).toBe(0);
+    expect(game.save.currentStage).toBe(0);
+    expect(game.save.nodeProgress).toBe(0);
+    expect(game.save.dungeons).toEqual({});
+    expect(game.save.classPicked).toBe(false);
+
+    game.pickClass('Mage');
+    game.devUnlockThroughAct(3);
+    game.save.dungeons['ossuary'] = { cleared: true, clears: 2 };
+    game.resetSave();
+    expect(game.save.stagesCleared).toBe(0);
+    expect(game.save.currentStage).toBe(0);
+    expect(game.save.nodeProgress).toBe(0);
+    expect(game.save.dungeons).toEqual({});
+    expect(game.save.classPicked).toBe(false);
   });
 });
