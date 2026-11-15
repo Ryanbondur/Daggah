@@ -317,8 +317,9 @@ button {
 }
 .chat-log {
   position: absolute;
-  left: 14cqw;
-  right: 14cqw;
+  /* Clear chat/fight 44px buttons on SE-width frames (DG-71); was 14cqw → clipped under bubble */
+  left: max(16.5cqw, calc(1.2cqw + max(44px, 9.2cqw) + 2.8cqw));
+  right: max(16.5cqw, calc(1.2cqw + max(44px, 9.2cqw) + 2.8cqw));
   top: 0.4cqw;
   height: min(7.5cqw, 28cqh);
   overflow: hidden;
@@ -332,6 +333,7 @@ button {
   -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%);
   mask-image: linear-gradient(to bottom, transparent, #000 35%);
   pointer-events: none;
+  z-index: 5;
 }
 .chat-log > div {
   white-space: nowrap;
@@ -426,23 +428,25 @@ button {
   color: #fff;
   -webkit-text-stroke: 0.55cqw #120a0a;
   paint-order: stroke fill;
-  z-index: 3;
+  /* Above guard sprites so HP/EN digits stay fully readable (DG-71) */
+  z-index: 6;
   pointer-events: none;
   opacity: 0.95;
 }
 .orb img.guard {
   position: absolute;
   bottom: -2.8cqw;
-  width: 15.5cqw;
-  z-index: 5;
+  /* Slightly tighter so sprites stay beside the orb face, not over the number */
+  width: 14.2cqw;
+  z-index: 3;
   pointer-events: none;
   filter: drop-shadow(0 0.6cqw 0.7cqw rgba(0, 0, 0, 0.8));
 }
 .orb.hp img.guard {
-  left: -9.2cqw;
+  left: -10cqw;
 }
 .orb.en img.guard {
-  right: -9.2cqw;
+  right: -10cqw;
 }
 .xpbar {
   position: absolute;
