@@ -45,8 +45,9 @@ export const ENEMIES: Record<string, EnemyDef> = {
     sprite: 'boss-hollow-king',
     role: 'boss',
     size: 0.46,
-    hpMul: 1,
-    atkMul: 1,
+    // Slightly softer so Act 1 boss clears at GDD Lv2–3 without overlevel wipe-farm.
+    hpMul: 0.9,
+    atkMul: 0.95,
     atkInterval: 2.4,
     speed: 0.2,
   },
@@ -408,8 +409,9 @@ export const ENEMIES: Record<string, EnemyDef> = {
     sprite: 'enemy-nightscar-shade',
     role: 'trash',
     size: 0.18,
-    hpMul: 0.9,
-    atkMul: 1.12,
+    // Softened vs early drafts so Apex clears on a full non-BiS (epic) set.
+    hpMul: 0.85,
+    atkMul: 1.05,
     atkInterval: 1.45,
     speed: 0.34,
   },
@@ -419,8 +421,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
     sprite: 'enemy-abyss-crawler',
     role: 'trash',
     size: 0.19,
-    hpMul: 1.05,
-    atkMul: 1.05,
+    hpMul: 1.0,
+    atkMul: 1.0,
     atkInterval: 1.65,
     speed: 0.26,
   },
@@ -430,8 +432,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
     sprite: 'enemy-nightscar-champion',
     role: 'elite',
     size: 0.38,
-    hpMul: 1.1,
-    atkMul: 1.18,
+    hpMul: 1.0,
+    atkMul: 1.08,
     atkInterval: 2.05,
     speed: 0.18,
   },
@@ -441,8 +443,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
     sprite: 'boss-daggah-hungering',
     role: 'boss',
     size: 0.55,
-    hpMul: 1.05,
-    atkMul: 1.15,
+    hpMul: 0.95,
+    atkMul: 1.08,
     atkInterval: 2.3,
     speed: 0.16,
   },
@@ -733,18 +735,27 @@ export interface EnemyScale {
   xp: number;
 }
 
+/**
+ * Kill XP base/growth. Tuned so stage clears track GDD §7.1:
+ * Act 4 ≈ Lv7 (stages), mid teens in Acts 7–8 with light dungeon farm,
+ * Lv20 near Act 10 / Nightscar — not mid-campaign.
+ * Previous 2.0×1.2^tier overshot (~Lv15 by Act 4 stages alone).
+ */
+export const ENEMY_XP_BASE = 1.5;
+export const ENEMY_XP_GROWTH = 1.055;
+
 /** Enemy stats for a given tier and role. Tuned against hero progression in game/sim.test.ts. */
 export function enemyScale(tier: number, role: EnemyRole): EnemyScale {
-  // Soften after Act 2, 4, 6, then 8 so Acts 9-10 stay clearable with set farming.
-  // Softened further past Act 6 so act-scaled key costs (2–4) still allow set-farm clears.
+  // Soften after Act 2, 4, 6, then 8 so mid/late acts clear on act gear at GDD levels
+  // (not overleveled). Acts 9–10 stay clearable on a full non-BiS set (BiS = speed/CP).
   const growth =
-    tier <= 9 ? 1.22 : tier <= 19 ? 1.175 : tier <= 29 ? 1.13 : tier <= 39 ? 1.09 : 1.07;
+    tier <= 9 ? 1.22 : tier <= 19 ? 1.16 : tier <= 29 ? 1.12 : tier <= 39 ? 1.08 : 1.055;
   const atkGrowth =
-    tier <= 9 ? 1.15 : tier <= 19 ? 1.12 : tier <= 29 ? 1.095 : tier <= 39 ? 1.07 : 1.05;
+    tier <= 9 ? 1.15 : tier <= 19 ? 1.105 : tier <= 29 ? 1.085 : tier <= 39 ? 1.055 : 1.035;
   const hp = 55 * Math.pow(growth, tier);
   const atk = 9 * Math.pow(atkGrowth, tier);
   const def = 2 + tier * 2.0;
-  const xp = 2.0 * Math.pow(1.2, tier);
+  const xp = ENEMY_XP_BASE * Math.pow(ENEMY_XP_GROWTH, tier);
   const mul =
     role === 'trash'
       ? { hp: 1, atk: 1, xp: 1 }
@@ -752,4 +763,45 @@ export function enemyScale(tier: number, role: EnemyRole): EnemyScale {
         ? { hp: 3.2, atk: 1.45, xp: 4 }
         : { hp: 8.2, atk: 1.8, xp: 10 };
   return { hp: hp * mul.hp, atk: atk * mul.atk, def: def * (role === 'trash' ? 1 : 1.35), xp: xp * mul.xp };
+}
+
+/** Average trash pack size used for XP pacing projections (combat rolls 3–5). */
+export const XP_PACING_TRASH_AVG = 4;
+
+/** Projected XP from one stage clear (camp skipped; elite brings 2 trash adds). */
+export function projectedStageXp(actId: number, stage: number, trashAvg = XP_PACING_TRASH_AVG): number {
+  const tier = stageTier(actId, stage);
+  let xp = 0;
+  for (const type of STAGE_NODES) {
+    if (type === 'camp') continue;
+    if (type === 'trash') {
+      xp += trashAvg * enemyScale(tier, 'trash').xp;
+    } else if (type === 'elite') {
+      xp += enemyScale(tier, 'elite').xp + 2 * enemyScale(tier, 'trash').xp;
+    } else if (type === 'boss') {
+      xp += enemyScale(tier, 'boss').xp;
+    }
+  }
+  return xp;
+}
+
+/**
+ * Projected XP from one dungeon clear/sweep (matches Game.sweepDungeon kill model:
+ * 4 trash / floor, miniboss = elite + 3 trash, boss = boss + 1.6 trash).
+ */
+export function projectedDungeonXp(actId: number, floors = 10): number {
+  const baseTier = stageTier(actId, 5) + 0.3;
+  let xp = 0;
+  for (let floor = 1; floor <= floors; floor++) {
+    const type: NodeType = floor === floors ? 'boss' : floor === 5 ? 'miniboss' : 'trash';
+    const tier = baseTier + (floor - 1) * 0.12;
+    const sc = (role: EnemyRole) => enemyScale(tier, role).xp;
+    xp +=
+      type === 'boss'
+        ? sc('boss') + 2 * sc('trash') * 0.8
+        : type === 'miniboss'
+          ? sc('elite') + 3 * sc('trash')
+          : 4 * sc('trash');
+  }
+  return xp;
 }

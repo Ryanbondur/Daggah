@@ -107,10 +107,11 @@ const DROP_WEIGHTS: Record<DropSource, Record<RarityId, number>> = {
   'dungeon-floor': { common: 55, rare: 30, epic: 13, legendary: 2 },
   'dungeon-mini': { common: 45, rare: 35, epic: 16, legendary: 4 },
   'dungeon-boss': { common: 35, rare: 40, epic: 20, legendary: 5 },
-  // Intentionally stingy floors; boss chase table from GDD §6.8.
-  'nightscar-floor': { common: 65, rare: 28, epic: 6, legendary: 1 },
-  'nightscar-mini': { common: 50, rare: 35, epic: 12, legendary: 3 },
-  'nightscar-boss': { common: 20, rare: 40, epic: 28, legendary: 12 },
+  // Floors lean Epic enough to assemble a full non-BiS clear set; Legendary stays
+  // a lucky seasonal BiS chase (speed + clan CP), not a clear gate. GDD §6.8.
+  'nightscar-floor': { common: 60, rare: 28, epic: 11, legendary: 1 },
+  'nightscar-mini': { common: 46, rare: 34, epic: 17, legendary: 3 },
+  'nightscar-boss': { common: 22, rare: 42, epic: 28, legendary: 8 },
 };
 
 /** Base drop weights for a source (before Nightscar soft pity). */
