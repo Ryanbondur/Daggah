@@ -1616,6 +1616,59 @@ button {
   gap: 2cqw;
   margin-top: 2.4cqw;
 }
+.key-buy-lead {
+  font-size: 3.3cqw;
+  color: #3a342c;
+}
+.key-buy-lead b {
+  color: #8a281f;
+}
+.key-buy-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3cqw;
+  margin: 1.5cqw 0 2cqw;
+}
+.key-buy-step {
+  width: 11cqw;
+  min-width: 11cqw;
+  height: 9cqw;
+  padding: 0;
+  font-size: 5cqw;
+  font-weight: 800;
+}
+.key-buy-qty {
+  min-width: 10cqw;
+  text-align: center;
+  font-size: 6cqw;
+  font-weight: 900;
+  color: #26211d;
+}
+.key-buy-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4cqw;
+  justify-content: center;
+  margin: 0 0 2cqw;
+}
+.key-buy-presets .chip {
+  font-size: 2.8cqw;
+  padding: 1.2cqw 2cqw;
+}
+.key-buy-warn {
+  margin: 1.2cqw 0 0;
+  font-size: 3.1cqw;
+  font-weight: 700;
+  color: #8a281f;
+}
+.sheet .row b .inline-ico,
+.inline-ico {
+  width: 3.6cqw;
+  height: 3.6cqw;
+  vertical-align: -0.6cqw;
+  margin-right: 0.6cqw;
+}
 .bag-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

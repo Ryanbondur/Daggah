@@ -278,15 +278,16 @@ export function renderAdventure(ctx: UIContext): string {
       : '';
     const enterTitle = keysOk
       ? `Enter for ${keyCostLabel}`
-      : `Need ${keyCostLabel} (you have ${s.keys})`;
+      : `Out of Keys — buy with Crystals (${keyCostLabel}; you have ${s.keys})`;
     const sweepTitle = !sweepReady
       ? `Clear ${SWEEP_UNLOCK_CLEARS} times to unlock Sweep (${clears}/${SWEEP_UNLOCK_CLEARS})`
       : keysOk
         ? `Sweep for ${keyCostLabel}`
-        : `Need ${keyCostLabel} (you have ${s.keys})`;
+        : `Out of Keys — buy with Crystals (${keyCostLabel}; you have ${s.keys})`;
+    // Enter stays clickable when short on keys (opens crystal buy confirm). Sweep stays locked until unlock.
     const buttons = open
-      ? `<button class="btn red ${keysOk ? '' : 'disabled'}" data-action="dungeon-enter" data-id="${d.id}" title="${escapeHtml(enterTitle)}" ${keysOk ? '' : 'aria-disabled="true"'}>Enter<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>
-         <button class="btn gold ${sweepReady && keysOk ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}" title="${escapeHtml(sweepTitle)}" ${sweepReady && keysOk ? '' : 'aria-disabled="true"'}>Sweep<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>`
+      ? `<button class="btn red" data-action="dungeon-enter" data-id="${d.id}" title="${escapeHtml(enterTitle)}">Enter<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>
+         <button class="btn gold ${sweepReady ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}" title="${escapeHtml(sweepTitle)}" ${sweepReady ? '' : 'aria-disabled="true"'}>Sweep<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>`
       : `<div style="width:9cqw;height:9cqw">${ICON.lock}</div>`;
     return `<div class="act-card">
       <div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></div>
