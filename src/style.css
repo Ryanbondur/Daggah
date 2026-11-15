@@ -1801,65 +1801,6 @@ button {
   background: linear-gradient(180deg, #f4e6c4, #e2cfa0);
   border-color: #a87828;
 }
-.camp-gear {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
-  gap: 1.2cqw;
-}
-.camp-gear .gear-grid {
-  flex: 1 1 auto;
-}
-.camp-gear .bottom-row {
-  flex: none;
-}
-.shop-cta {
-  display: grid;
-  grid-template-columns: 7cqw 1fr auto;
-  gap: 1.6cqw;
-  align-items: center;
-  width: 100%;
-  padding: 1.4cqw 2cqw;
-  text-align: left;
-  font: inherit;
-  color: #2c261c;
-  cursor: pointer;
-  background:
-    linear-gradient(180deg, rgba(255, 236, 180, 0.55), rgba(232, 200, 120, 0.35)),
-    rgba(60, 48, 28, 0.12);
-  border: 0.4cqw solid #a87828;
-  border-radius: 1.4cqw;
-  box-shadow: inset 0 0 0 0.25cqw rgba(255, 248, 220, 0.35);
-  flex: none;
-}
-.shop-cta img {
-  width: 7cqw;
-  height: 7cqw;
-  object-fit: contain;
-}
-.shop-cta b {
-  display: block;
-  font-family: var(--font-title);
-  font-size: 3.4cqw;
-  font-weight: 800;
-}
-.shop-cta small {
-  display: block;
-  font-size: 2.5cqw;
-  color: #6b655a;
-  margin-top: 0.2cqw;
-}
-.shop-cta i {
-  font-style: normal;
-  font-weight: 800;
-  font-size: 2.8cqw;
-  color: #6a3a12;
-  padding: 1cqw 1.8cqw;
-  background: linear-gradient(180deg, #f4e6c4, #e2cfa0);
-  border: 0.3cqw solid #a87828;
-  border-radius: 1cqw;
-}
 .camp-shop {
   display: flex;
   flex-direction: column;
