@@ -10,7 +10,7 @@ import { dropWeightsFor, rollItem, SLOTS, type Gear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import type { RarityId } from '../data/types';
 import { addXp, MAX_LEVEL, XP_TO_NEXT } from '../data/xp';
-import { Game } from './game';
+import { Game, type RunResult } from './game';
 import { mulberry32 } from './rng';
 import type { Storage } from './state';
 
@@ -93,7 +93,6 @@ describe('Nightscar clearability without BiS', () => {
         rarity,
         gearLevel: level,
         setId: setId as 'nightscar-regalia',
-        heroClass: 'Warrior',
       });
     }
     game.save.gear = gear;
@@ -106,9 +105,9 @@ describe('Nightscar clearability without BiS', () => {
     game.devUnlockThroughAct(10);
     equipFull(game, level, rarity, 'nightscar-regalia', seed + 99);
     game.save.keys = 8;
-    let result: { success: boolean } | null = null;
+    const box: { result: RunResult | null } = { result: null };
     game.on((e) => {
-      if (e.t === 'result' && e.result.kind === 'dungeon') result = e.result;
+      if (e.t === 'result' && e.result.kind === 'dungeon') box.result = e.result;
     });
     expect(game.startDungeon('nightscar-apex')).toBe(true);
     let t = 0;
@@ -117,7 +116,7 @@ describe('Nightscar clearability without BiS', () => {
       game.tick(dt);
       t += dt;
     }
-    return { success: !!result?.success, seconds: t, cp: game.cp, timedOut: !!game.battle };
+    return { success: !!box.result?.success, seconds: t, cp: game.cp, timedOut: !!game.battle };
   }
 
   it('keeps Legendary rarer than Epic on Apex boss (BiS is lucky, not required)', () => {
