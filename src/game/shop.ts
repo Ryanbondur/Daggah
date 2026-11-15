@@ -8,16 +8,23 @@ import { dayKey } from './clan';
 /** Offers shown in the Town/Camp daily merchant each calendar day. */
 export const DAILY_SHOP_SIZE = 5;
 
-/** Gold price multipliers by rarity (vs sellValue baseline). Prefer Gold sink. */
+/**
+ * Gold price multipliers by rarity (vs sellValue baseline).
+ * Steeper at Epic/Legendary so endgame AFK piles (~30k+/hr) meet a real sink;
+ * Common/Rare stay reachable early via gear-level scaling below.
+ */
 const RARITY_PRICE_MULT: Record<RarityId, number> = {
-  common: 4,
-  rare: 7,
-  epic: 12,
-  legendary: 20,
+  common: 5,
+  rare: 12,
+  epic: 35,
+  legendary: 80,
 };
 
 /** Set pieces cost more than plain gear of the same rarity. */
-const SET_PRICE_MULT = 1.45;
+const SET_PRICE_MULT = 1.55;
+
+/** Per gear-level step above 1 — shop tracks hero power, not flat junk prices. */
+const GEAR_LEVEL_PRICE_STEP = 0.11;
 
 export interface DailyShopSave {
   dayKey: string;
@@ -63,11 +70,14 @@ export function goldFromKill(tier: number, role: EnemyRole): number {
   return Math.max(1, Math.round(base * roleMul * actMul));
 }
 
-/** Vendor buy price — Gold only, rarity-scaled (set pieces premium). */
+/** Vendor buy price — Gold only, rarity- + gear-level-scaled (set pieces premium). */
 export function shopPrice(item: Pick<Item, 'rarity' | 'setId' | 'gearLevel' | 'stats'> & Partial<Item>): number {
   const salvageGold = sellValue(item as Item);
-  const floor = 12 + item.gearLevel * 8;
-  let price = Math.max(floor, Math.round(salvageGold * RARITY_PRICE_MULT[item.rarity]));
+  const gl = Math.max(1, item.gearLevel || 1);
+  const floor = 18 + gl * 14;
+  const rarityBase = Math.max(floor, Math.round(salvageGold * RARITY_PRICE_MULT[item.rarity]));
+  const glMult = 1 + (gl - 1) * GEAR_LEVEL_PRICE_STEP;
+  let price = Math.round(rarityBase * glMult);
   if (item.setId) price = Math.round(price * SET_PRICE_MULT);
   return price;
 }
