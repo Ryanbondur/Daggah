@@ -48,7 +48,7 @@ describe('migrations + save roundtrip (PGlite)', () => {
   });
 
   it('applies migrations and round-trips a save row', async () => {
-    const ownerKey = `ac:${hashAccountCode(validAccountCode())}`;
+    const ownerKey = `ac:${await hashAccountCode(validAccountCode())}`;
     const payload = JSON.stringify(sampleSave());
     const written = await upsertSave(ownerKey, payload, 3);
     expect(written.owner_key).toBe(ownerKey);

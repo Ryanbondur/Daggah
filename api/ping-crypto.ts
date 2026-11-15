@@ -1,10 +1,15 @@
-/** Probe: does node:crypto load on the hosted runtime? */
+/** Probe: Web Crypto (no node:crypto) on the hosted runtime. */
+export const runtime = 'nodejs';
+
 export async function GET(): Promise<Response> {
   try {
-    const { createHash } = await import('node:crypto');
-    const digest = createHash('sha256').update('daggah').digest('hex').slice(0, 8);
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('daggah'));
+    const hex = [...new Uint8Array(digest)]
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .slice(0, 8);
     return Response.json(
-      { ok: true, probe: 'crypto', digest },
+      { ok: true, probe: 'crypto', digest: hex },
       { status: 200, headers: { 'cache-control': 'private, no-store' } },
     );
   } catch (error) {
