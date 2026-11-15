@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite';
 import { handleDaggahSaveApi } from './src/lib/httpAdapter';
 
-/** Local-dev + preview middleware: /api/daggah-save → web Request handlers. */
+/** Local-dev + preview middleware: /api/daggah-save + /api/daggah-auth → web Request handlers. */
 export function daggahApiPlugin(): Plugin {
   return {
     name: 'daggah-api',

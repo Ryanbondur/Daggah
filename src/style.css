@@ -2698,6 +2698,70 @@ button {
 }
 
 .pane-inner .row,
+/* ----------------------------------------------------------------- login */
+.dim.login-dim {
+  background:
+    radial-gradient(ellipse at 50% 28%, rgba(70, 58, 42, 0.35), transparent 55%),
+    rgba(3, 3, 8, 0.82);
+}
+.login-sheet {
+  width: 88cqw;
+  max-width: 88cqw;
+}
+.login-stone-bar {
+  height: 1.6cqw;
+  margin: -1cqw -1cqw 2.4cqw;
+  border-radius: 0.4cqw;
+  background:
+    linear-gradient(90deg, transparent, rgba(233, 180, 76, 0.35), transparent),
+    var(--tex-stone);
+  background-size: auto, cover;
+  box-shadow: inset 0 0 0 0.25cqw rgba(20, 16, 12, 0.35);
+}
+.login-sheet .login-tag {
+  text-align: center;
+  margin: -0.4cqw 0 2cqw;
+  font-size: 3.1cqw;
+  color: #5a5348;
+}
+.login-tabs {
+  display: flex;
+  gap: 1.4cqw;
+  margin-bottom: 2cqw;
+}
+.login-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.6cqw 0 1.8cqw;
+  padding: 2.2cqw 2.4cqw;
+  font: 600 3.2cqw/1.3 var(--font-ui);
+  color: #2a241c;
+  background: #f7f3ea;
+  border: 1px solid #c9c0b2;
+  border-radius: 1.2cqw;
+  outline: none;
+}
+.login-input:focus {
+  border-color: #a8883a;
+  box-shadow: 0 0 0 0.4cqw rgba(233, 180, 76, 0.28);
+}
+.login-hint {
+  margin-top: -0.4cqw !important;
+}
+.login-error {
+  margin: 0 0 1.4cqw;
+  font-size: 3cqw;
+  font-weight: 700;
+  color: #8a281f;
+}
+.login-btns {
+  flex-direction: column;
+}
+.login-btns .btn {
+  width: 100%;
+}
+
 .sheet-lite .row {
   display: flex;
   justify-content: space-between;

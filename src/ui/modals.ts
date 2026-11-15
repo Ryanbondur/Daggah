@@ -4,6 +4,15 @@ import { HERO_CLASSES, STAT_LABEL } from '../data/types';
 import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
 import { CLAN_CREATE_COST, TOKEN_DAY_CAP } from '../game/clan';
 import {
+  changePassword,
+  loginAccount,
+  logoutAccount,
+  markGuestPlay,
+  readAuthSession,
+  registerAccount,
+  shouldShowLoginGate,
+} from '../game/authSession';
+import {
   applyCloudSave,
   ensureAccountCode,
   getCloudLinkStatus,
@@ -44,6 +53,213 @@ const STAT_ORDER: StatKey[] = [
   'haste',
   'energyRegen',
 ];
+
+function friendlyAuthError(code: string): string {
+  switch (code) {
+    case 'username_taken':
+      return 'That username is taken';
+    case 'invalid_credentials':
+      return 'Wrong username or password';
+    case 'invalid_username':
+      return 'Username: 3–24 letters, digits, _ or -';
+    case 'weak_password':
+      return 'Password must be at least 8 characters';
+    case 'rate_limited':
+      return 'Too many tries — wait a minute';
+    case 'unreachable':
+      return 'Server unreachable — progress stays on this device';
+    default:
+      return code.replace(/_/g, ' ');
+  }
+}
+
+async function afterAuthSync(ctx: UIContext): Promise<void> {
+  const g = ctx.game;
+  g.persist();
+  g.toast('Syncing cloud save…', 'info');
+  const { save, result } = await syncCloudSave(g.storage, g.save, Date.now(), { askOnConflict: true });
+  if (result.status === 'conflict') {
+    const cloudNewer = (result.cloud.savedAt ?? 0) >= (result.local.savedAt ?? 0);
+    const takeCloud = window.confirm(
+      cloudNewer
+        ? 'Cloud save is newer. Use cloud progress? (Cancel keeps this device and uploads it.)'
+        : 'This device is newer than cloud. Keep this device and upload? (Cancel downloads cloud.)',
+    );
+    const wantCloud = cloudNewer ? takeCloud : !takeCloud;
+    if (wantCloud) {
+      g.save = applyCloudSave(g.storage, result.cloud);
+      g.emit({ t: 'change' });
+      g.toast('Restored from cloud', 'good');
+    } else {
+      await pushCloudSave(result.local, g.storage, { force: true });
+      g.toast('Uploaded this device to cloud', 'good');
+    }
+  } else if (result.status === 'pulled') {
+    g.save = save;
+    g.emit({ t: 'change' });
+    g.toast('Restored from cloud', 'good');
+  } else if (result.status === 'pushed') {
+    g.toast('Progress linked to your account', 'good');
+  } else if (result.status === 'skipped') {
+    g.toast(`Cloud sync: ${result.reason}`, 'info');
+  }
+}
+
+/**
+ * Portrait parchment login/register gate over Camp.
+ * Guest skip stays local-only until they register or link an account code.
+ */
+export function showLogin(ctx: UIContext, opts: { allowGuest?: boolean } = {}): void {
+  const allowGuest = opts.allowGuest !== false;
+  const g = ctx.game;
+  let mode: 'login' | 'register' = 'login';
+
+  const el = ctx.openModal(
+    `<div class="sheet login-sheet" role="dialog" aria-labelledby="login-title">
+      <div class="login-stone-bar" aria-hidden="true"></div>
+      <h2 id="login-title">Daggah</h2>
+      <p class="login-tag">Save progress to your account across devices.</p>
+      <div class="body">
+        <div class="login-tabs" role="tablist">
+          <button type="button" class="chip on" data-action="mode-login" role="tab" aria-selected="true">Log in</button>
+          <button type="button" class="chip" data-action="mode-register" role="tab" aria-selected="false">Register</button>
+        </div>
+        <label class="tagline" for="login-username">Username</label>
+        <input id="login-username" class="login-input" type="text" autocomplete="username" maxlength="24" spellcheck="false" placeholder="hero_name" />
+        <label class="tagline" for="login-password">Password</label>
+        <input id="login-password" class="login-input" type="password" autocomplete="current-password" maxlength="128" placeholder="••••••••" />
+        <p class="tagline login-hint" id="login-hint">At least 8 characters. Never share your password.</p>
+        <p class="login-error" id="login-error" hidden></p>
+      </div>
+      <div class="btns login-btns">
+        <button type="button" class="btn gold" data-action="submit" id="login-submit">Log in</button>
+        ${
+          allowGuest
+            ? `<button type="button" class="btn stone" data-action="guest">Continue as guest</button>`
+            : `<button type="button" class="btn stone" data-action="close">Close</button>`
+        }
+      </div>
+    </div>`,
+    {
+      className: 'login-dim',
+      // Block dim-tap dismiss on the boot gate so guests must choose explicitly.
+      onDismiss: allowGuest ? undefined : () => ctx.closeModal(),
+    },
+  );
+
+  const errEl = () => el.querySelector('#login-error') as HTMLElement | null;
+  const hintEl = () => el.querySelector('#login-hint') as HTMLElement | null;
+  const submitBtn = () => el.querySelector('#login-submit') as HTMLButtonElement | null;
+  const userInput = () => el.querySelector('#login-username') as HTMLInputElement | null;
+  const passInput = () => el.querySelector('#login-password') as HTMLInputElement | null;
+
+  const setError = (msg: string | null) => {
+    const node = errEl();
+    if (!node) return;
+    if (!msg) {
+      node.hidden = true;
+      node.textContent = '';
+      return;
+    }
+    node.hidden = false;
+    node.textContent = msg;
+  };
+
+  const refreshMode = () => {
+    el.querySelectorAll('.login-tabs .chip').forEach((chip) => {
+      const btn = chip as HTMLElement;
+      const on =
+        (btn.dataset.action === 'mode-login' && mode === 'login') ||
+        (btn.dataset.action === 'mode-register' && mode === 'register');
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    const submit = submitBtn();
+    if (submit) submit.textContent = mode === 'login' ? 'Log in' : 'Create account';
+    const pass = passInput();
+    if (pass) pass.autocomplete = mode === 'login' ? 'current-password' : 'new-password';
+    const hint = hintEl();
+    if (hint) {
+      hint.textContent =
+        mode === 'register'
+          ? 'Create a username + password (8+ chars). Progress syncs after you sign in.'
+          : 'At least 8 characters. Never share your password.';
+    }
+    setError(null);
+  };
+
+  const finishGate = () => {
+    ctx.closeModal();
+    if (!g.save.classPicked) ctx.showClassPick();
+  };
+
+  const runAuth = async () => {
+    const username = userInput()?.value ?? '';
+    const password = passInput()?.value ?? '';
+    setError(null);
+    const submit = submitBtn();
+    if (submit) submit.disabled = true;
+    const result =
+      mode === 'register'
+        ? await registerAccount(g.storage, username, password)
+        : await loginAccount(g.storage, username, password);
+    if (submit) submit.disabled = false;
+    if (!result.ok) {
+      setError(friendlyAuthError(result.error));
+      return;
+    }
+    g.toast(mode === 'register' ? `Welcome, ${result.session.username}` : `Signed in as ${result.session.username}`, 'good');
+    ctx.closeModal();
+    await afterAuthSync(ctx);
+    if (!g.save.classPicked) ctx.showClassPick();
+  };
+
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    switch (t.dataset.action) {
+      case 'mode-login':
+        mode = 'login';
+        refreshMode();
+        break;
+      case 'mode-register':
+        mode = 'register';
+        refreshMode();
+        break;
+      case 'submit':
+        void runAuth();
+        break;
+      case 'guest':
+        markGuestPlay(g.storage);
+        g.toast('Playing as guest — progress stays on this device until you log in', 'info');
+        finishGate();
+        break;
+      case 'close':
+        ctx.closeModal();
+        break;
+      default:
+        break;
+    }
+  });
+
+  el.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter') return;
+    const target = ev.target as HTMLElement;
+    if (target.tagName === 'INPUT') {
+      ev.preventDefault();
+      void runAuth();
+    }
+  });
+
+  queueMicrotask(() => userInput()?.focus());
+}
+
+/** Show the boot login gate when appropriate; returns true if shown. */
+export function maybeShowLoginGate(ctx: UIContext): boolean {
+  if (!shouldShowLoginGate(ctx.game.storage)) return false;
+  showLogin(ctx, { allowGuest: true });
+  return true;
+}
 
 export function showClassPick(ctx: UIContext): void {
   const cards = HERO_CLASSES.map((c: HeroClass) => {
@@ -307,21 +523,47 @@ export function showSettings(ctx: UIContext): void {
         <h3>Season</h3>
         <p>Local 30-day season stub. Reset keeps clan membership and opens class pick.</p>
         <button class="chip" data-action="season-reset">Reset season (local)</button>
-        <h3>Cloud sync</h3>
-        <p>Link an account code to keep progress across devices, refreshes, and republishes. Cursor sign-in is used automatically when available; otherwise the code is your secret key. Keep Export/Import as a backup.</p>
+        <h3>Account</h3>
+        ${
+          (() => {
+            const session = readAuthSession(g.storage);
+            if (session) {
+              return `<p>Signed in as <b id="account-username">${escapeHtml(session.username)}</b>. Progress auto-syncs to this account.</p>
+        <div class="chip-row">
+          <button class="chip" data-action="account-logout">Log out</button>
+          <button class="chip" data-action="account-change-password">Change password</button>
+          <button class="chip" data-action="cloud-sync-now">Sync now</button>
+        </div>
+        <div id="change-password-box" hidden>
+          <label class="tagline" for="pw-current">Current password</label>
+          <input id="pw-current" class="login-input" type="password" autocomplete="current-password" maxlength="128" />
+          <label class="tagline" for="pw-new">New password</label>
+          <input id="pw-new" class="login-input" type="password" autocomplete="new-password" maxlength="128" />
+          <button class="chip" data-action="account-change-password-submit">Save new password</button>
+        </div>`;
+            }
+            return `<p>Not signed in — progress stays on this device (and optional account code below) until you log in.</p>
+        <div class="chip-row">
+          <button class="chip" data-action="account-open-login">Log in / Register</button>
+          <button class="chip" data-action="cloud-sync-now">Sync now</button>
+        </div>`;
+          })()
+        }
+        <h3>Cloud sync (account code)</h3>
+        <p>Optional alternate key if you prefer not to use a username. Cursor sign-in is used automatically when available. Keep Export/Import as a backup.</p>
         <p class="tagline" id="cloud-sync-status">${escapeHtml(
           (() => {
             const st = getCloudLinkStatus(g.storage);
-            if (st.linked) return `Linked · code ends …${(st.accountCode ?? '').slice(-6)}`;
-            return 'Not linked — create or paste a code to sync';
+            if (st.username) return `Logged in as ${st.username}`;
+            if (st.accountCode) return `Code linked · ends …${st.accountCode.slice(-6)}`;
+            return 'Not linked — log in or paste a code to sync';
           })(),
         )}</p>
         <div class="chip-row">
           <button class="chip" data-action="cloud-create">Create / show code</button>
           <button class="chip" data-action="cloud-copy">Copy sync code</button>
           <button class="chip" data-action="cloud-link">Paste code to restore</button>
-          <button class="chip" data-action="cloud-sync-now">Sync now</button>
-          <button class="chip" data-action="cloud-unlink">Unlink</button>
+          <button class="chip" data-action="cloud-unlink">Unlink code</button>
         </div>
         <label class="tagline" for="account-code-box">Account code</label>
         <textarea id="account-code-box" rows="2" spellcheck="false" placeholder="DGAC.…." style="width:100%;box-sizing:border-box;margin:1cqw 0 2cqw;padding:2cqw;font:600 2.8cqw/1.35 ui-monospace,Menlo,Consolas,monospace;border:1px solid #c9c0b2;border-radius:1.2cqw;background:#f7f3ea;color:#2a241c;resize:vertical">${escapeHtml(
@@ -345,15 +587,16 @@ export function showSettings(ctx: UIContext): void {
   let seasonArmed = false;
   let importArmed = false;
   let unlinkArmed = false;
+  let logoutArmed = false;
   const codeBox = () => el.querySelector('#save-code-box') as HTMLTextAreaElement | null;
   const accountBox = () => el.querySelector('#account-code-box') as HTMLTextAreaElement | null;
   const refreshCloudStatus = () => {
     const statusEl = el.querySelector('#cloud-sync-status');
     const st = getCloudLinkStatus(g.storage);
     if (statusEl) {
-      statusEl.textContent = st.linked
-        ? `Linked · code ends …${(st.accountCode ?? '').slice(-6)}`
-        : 'Not linked — create or paste a code to sync';
+      if (st.username) statusEl.textContent = `Logged in as ${st.username}`;
+      else if (st.accountCode) statusEl.textContent = `Code linked · ends …${st.accountCode.slice(-6)}`;
+      else statusEl.textContent = 'Not linked — log in or paste a code to sync';
     }
     const box = accountBox();
     if (box && st.accountCode && !box.value.trim()) box.value = st.accountCode;
@@ -365,6 +608,45 @@ export function showSettings(ctx: UIContext): void {
       case 'close':
         ctx.closeModal();
         break;
+      case 'account-open-login':
+        ctx.closeModal();
+        showLogin(ctx, { allowGuest: false });
+        break;
+      case 'account-logout': {
+        if (!logoutArmed) {
+          logoutArmed = true;
+          t.textContent = 'Tap again to log out';
+          break;
+        }
+        logoutArmed = false;
+        void (async () => {
+          await logoutAccount(g.storage);
+          g.toast('Logged out — local save kept on this device', 'info');
+          ctx.closeModal();
+          showSettings(ctx);
+        })();
+        break;
+      }
+      case 'account-change-password': {
+        const box = el.querySelector('#change-password-box') as HTMLElement | null;
+        if (box) box.hidden = !box.hidden;
+        break;
+      }
+      case 'account-change-password-submit': {
+        const current = (el.querySelector('#pw-current') as HTMLInputElement | null)?.value ?? '';
+        const next = (el.querySelector('#pw-new') as HTMLInputElement | null)?.value ?? '';
+        void (async () => {
+          const result = await changePassword(g.storage, current, next);
+          if (!result.ok) {
+            g.toast(friendlyAuthError(result.error), 'bad');
+            return;
+          }
+          g.toast('Password updated', 'good');
+          ctx.closeModal();
+          showSettings(ctx);
+        })();
+        break;
+      }
       case 'cloud-create': {
         const code = ensureAccountCode(g.storage);
         const box = accountBox();

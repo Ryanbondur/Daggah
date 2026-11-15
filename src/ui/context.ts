@@ -30,6 +30,7 @@ export interface UIContext {
   showBag(): void;
   showHero(): void;
   showSettings(): void;
+  showLogin(opts?: { allowGuest?: boolean }): void;
   showChat(): void;
   showItemInfo(slot: string): void;
   showClassPick(): void;

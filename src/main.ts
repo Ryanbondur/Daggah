@@ -7,6 +7,7 @@ import '@fontsource/inter/700.css';
 import '@fontsource/inter/800.css';
 import '@fontsource/lilita-one/400.css';
 import './style.css';
+import { fetchMe, readAuthSession } from './game/authSession';
 import { getCloudLinkStatus, syncCloudSave } from './game/cloudSave';
 import { Game } from './game/game';
 import { ensurePhaser } from './stage/bootPhaser';
@@ -22,7 +23,12 @@ async function boot(): Promise<void> {
   })();
   const game = new Game(storage);
 
-  // Pull on boot when linked (account code) or when identity may be present.
+  // Refresh session username if logged in; drop stale tokens.
+  if (readAuthSession(storage)) {
+    void fetchMe(storage);
+  }
+
+  // Pull on boot when linked (username session / account code) or when identity may be present.
   const linked = getCloudLinkStatus(storage).linked;
   void syncCloudSave(storage, game.save, Date.now(), { askOnConflict: linked }).then(({ save, result }) => {
     if (result.status === 'pulled') {
