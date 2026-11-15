@@ -6,6 +6,8 @@ export type Tab = 'camp' | 'skill' | 'adventure' | 'clan';
 export type ClanPane = 'hall' | 'board' | 'town';
 /** Camp home: gear paper doll or Daily Shop (one-tap from main loop). */
 export type CampPane = 'gear' | 'shop';
+/** Adventure difficulty strip: Normal acts vs Ascended Nightscar. */
+export type AdventureDiff = 'normal' | 'ascended';
 
 export interface UIContext {
   game: Game;
@@ -14,6 +16,8 @@ export interface UIContext {
   clanPane: ClanPane;
   /** Camp sub-pane (Gear / Shop). */
   campPane: CampPane;
+  /** Adventure difficulty (Normal / Ascended). */
+  adventureDiff: AdventureDiff;
   skillStyle: PlaystyleId;
   /** Skill bar slot index selected for swap (Skill tab). */
   skillBarFocus: number | null;

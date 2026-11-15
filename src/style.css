@@ -2438,6 +2438,14 @@ button {
 .diff-row {
   display: flex;
   gap: 1.4cqw;
+  margin: 0.4cqw 0 0.6cqw;
+}
+.diff-row .chip {
+  flex: 1;
+  text-align: center;
+}
+.act-card.ascended-only .dg.ascended {
+  margin-top: 0.6cqw;
 }
 /* ----------------------------------------------------------- clan tab */
 .clan-tab .clan-subs {

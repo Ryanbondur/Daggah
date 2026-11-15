@@ -4,14 +4,17 @@ import { ASCENDED_NIGHTSCAR_DEF, type DungeonDef } from '../data/acts';
  * Ascended Nightscar + Ascended Seal economy.
  *
  * Seals drop from Clan Raid (full seal or fragments). Fragments craft into seals.
- * Ascended Nightscar spends seals + extra keys vs normal Apex.
+ * Ascended Nightscar spends Ascended Seals only (no key surcharge).
  */
 
 /** Fragments required to craft one Ascended Seal (inventory craft). */
 export const ASCENDED_SEAL_FRAGMENTS_PER_SEAL = 5;
 
-/** Key cost for Ascended Nightscar Enter/Sweep (normal Apex = 4). */
-export const ASCENDED_NIGHTSCAR_KEY_COST = 6;
+/**
+ * Key cost for Ascended Nightscar Enter/Sweep.
+ * 0 = seal-only entry (Normal Apex still uses act key costs).
+ */
+export const ASCENDED_NIGHTSCAR_KEY_COST = 0;
 
 /** Ascended Seals consumed per Ascended Nightscar Enter/Sweep. */
 export const ASCENDED_NIGHTSCAR_SEAL_COST = 1;
@@ -32,8 +35,9 @@ export function formatAscendedEntryCost(
   keys = ASCENDED_NIGHTSCAR_KEY_COST,
   seals = ASCENDED_NIGHTSCAR_SEAL_COST,
 ): string {
-  const keyLabel = keys === 1 ? '1 Key' : `${keys} Keys`;
   const sealLabel = seals === 1 ? '1 Seal' : `${seals} Seals`;
+  if (keys <= 0) return sealLabel;
+  const keyLabel = keys === 1 ? '1 Key' : `${keys} Keys`;
   return `${keyLabel} + ${sealLabel}`;
 }
 

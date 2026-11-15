@@ -32,10 +32,10 @@ describe('ascended constants', () => {
     expect(isAscendedDungeon(getDungeon('nightscar-apex'))).toBe(false);
   });
 
-  it('costs more keys than Apex plus a seal', () => {
-    expect(ASCENDED_NIGHTSCAR_KEY_COST).toBeGreaterThan(4);
+  it('costs 1 Ascended Seal with no key surcharge', () => {
+    expect(ASCENDED_NIGHTSCAR_KEY_COST).toBe(0);
     expect(ASCENDED_NIGHTSCAR_SEAL_COST).toBe(1);
-    expect(formatAscendedEntryCost()).toContain('Seal');
+    expect(formatAscendedEntryCost()).toBe('1 Seal');
   });
 
   it('ascended boss table has higher legendary weight than nightscar boss', () => {
@@ -61,10 +61,10 @@ describe('Ascended Nightscar entry', () => {
     expect(game.save.keys).toBe(8);
   });
 
-  it('spends keys + seal and starts a harder run', () => {
+  it('spends one seal (not keys) and starts a harder run', () => {
     const game = endgameGame();
     expect(game.startAscendedDungeon()).toBe(true);
-    expect(game.save.keys).toBe(8 - ASCENDED_NIGHTSCAR_KEY_COST);
+    expect(game.save.keys).toBe(8);
     expect(game.save.ascendedSeals).toBe(2);
     expect(game.mode).toBe('dungeon');
     expect(game.battle?.run.title).toBe('Ascended Nightscar');
@@ -73,11 +73,12 @@ describe('Ascended Nightscar entry', () => {
     expect(ascTier).toBeGreaterThan(apexTier);
   });
 
-  it('blocks entry when seals are missing', () => {
+  it('blocks entry when seals are missing without spending keys', () => {
     const game = endgameGame();
     game.save.ascendedSeals = 0;
     expect(game.startAscendedDungeon()).toBe(false);
     expect(game.save.keys).toBe(8);
+    expect(game.save.ascendedSeals).toBe(0);
   });
 
   it('crafts fragments into seals', () => {
@@ -89,13 +90,13 @@ describe('Ascended Nightscar entry', () => {
     expect(game.save.ascendedSealFragments).toBe(1);
   });
 
-  it('sweepAscendedDungeon spends premium cost and rolls ascended loot', () => {
+  it('sweepAscendedDungeon spends one seal and rolls ascended loot', () => {
     const game = endgameGame();
     game.save.dungeons[ASCENDED_NIGHTSCAR.id] = { cleared: true, clears: SWEEP_UNLOCK_CLEARS };
     game.save.keys = 8;
     game.save.ascendedSeals = 2;
     expect(game.sweepAscendedDungeon()).toBe(true);
-    expect(game.save.keys).toBe(8 - ASCENDED_NIGHTSCAR_KEY_COST);
+    expect(game.save.keys).toBe(8);
     expect(game.save.ascendedSeals).toBe(1);
     expect(game.save.dungeons[ASCENDED_NIGHTSCAR.id]?.clears).toBe(SWEEP_UNLOCK_CLEARS + 1);
   });
