@@ -147,16 +147,16 @@ function renderCampShop(ctx: UIContext): string {
     ${currencyStrip(ctx, { dust: false, keyTimer: false })}
     <div class="shop-hero">
       <b>Daily Merchant</b>
-      <span>Fresh slate each calendar day · Gold only · ${left}/${DAILY_SHOP_SIZE} left</span>
+      <span>${left}/${DAILY_SHOP_SIZE} left · gold · resets midnight</span>
     </div>
     <div class="shop-list" role="list">${cards}</div>
-    <p class="tagline">Prices climb with rarity. Set pieces cost a premium. Resets at midnight.</p>
   </div>`;
 }
 
 export function renderCamp(ctx: UIContext): string {
   const shop = ctx.campPane === 'shop';
-  return `<div class="pane-inner ${shop ? 'scroll' : ''}">
+  // Shop scrolls inside .shop-list so Gear/Shop tabs stay pinned; gear keeps pane scroll.
+  return `<div class="pane-inner${shop ? ' pane-shop' : ' scroll'}">
     ${campSubTabs(ctx.campPane)}
     ${shop ? renderCampShop(ctx) : renderCampGear(ctx)}
   </div>`;

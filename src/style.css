@@ -623,6 +623,11 @@ button {
 .pane-inner.scroll::-webkit-scrollbar {
   display: none;
 }
+/* Shop: reclaim bottom padding; list scrolls clear of the battle orb itself. */
+.pane-inner.pane-shop {
+  overflow: hidden;
+  padding-bottom: max(10px, 2cqw);
+}
 .gear-grid {
   position: relative;
   display: grid;
@@ -1864,14 +1869,19 @@ button {
 .camp-shop {
   display: flex;
   flex-direction: column;
-  gap: max(8px, 1.8cqw);
-  flex: 0 1 auto;
+  gap: max(6px, 1.4cqw);
+  flex: 1 1 auto;
   width: 100%;
   min-width: 0;
-  overflow: visible;
+  min-height: 0;
+  overflow: hidden;
 }
 .shop-hero {
-  padding: max(8px, 1.8cqw) max(10px, 2cqw);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.2cqw;
+  padding: max(6px, 1.2cqw) max(8px, 1.6cqw);
   background: rgba(40, 34, 28, 0.28);
   border: 0.35cqw solid rgba(60, 54, 44, 0.55);
   border-radius: 1.2cqw;
@@ -1882,32 +1892,38 @@ button {
 .shop-hero b {
   display: block;
   font-family: var(--font-title);
-  font-size: max(15px, 4cqw);
+  font-size: max(14px, 3.6cqw);
   font-weight: 800;
   color: #14110e;
 }
 .shop-hero span {
   display: block;
-  margin-top: 0.4cqw;
-  font-size: max(11px, 2.6cqw);
+  font-size: max(10px, 2.3cqw);
   color: #3a342c;
   font-weight: 600;
+  text-align: right;
+  line-height: 1.2;
 }
 /* 2-col offer grid. Grid items are .shop-offer-cell divs — never bare <button>s. */
 .shop-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: max(6px, 1.4cqw);
+  gap: max(4px, 1cqw);
   align-content: start;
   justify-items: stretch;
   width: 100%;
   margin: 0;
-  flex: 0 0 auto;
-  min-height: min-content;
-  height: auto;
-  overflow: visible;
-  /* Leave room to scroll last row clear of the battle orb / nav. */
-  padding-bottom: max(12px, 2cqw);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  /* Clear last row above battle orb / nav when scrolled to end. */
+  padding-bottom: max(20px, 5cqw);
+}
+.shop-list::-webkit-scrollbar {
+  display: none;
 }
 .shop-offer-cell {
   min-width: 0;
@@ -1918,11 +1934,12 @@ button {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: max(3px, 0.5cqw);
+  gap: 2px;
   width: 100%;
   margin: 0;
-  padding: max(8px, 1.4cqw) max(5px, 1cqw) max(8px, 1.4cqw);
-  min-height: max(108px, 24cqw);
+  padding: 5px 4px 6px;
+  /* Keep ~2 full rows visible in the Camp parchment without scrolling. */
+  min-height: 0;
   border: max(2px, 0.4cqw) solid #6a5c45;
   border-radius: max(8px, 1.6cqw);
   background: linear-gradient(180deg, #f7eed8, #e4d4ae);
@@ -1942,8 +1959,8 @@ button {
   pointer-events: none;
 }
 .shop-offer-icon {
-  width: max(34px, 9cqw);
-  height: max(34px, 9cqw);
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   flex: none;
   filter: drop-shadow(0 0.4cqw 0.6cqw rgba(0, 0, 0, 0.28));
@@ -1952,16 +1969,16 @@ button {
   display: block;
   width: 100%;
   font-family: var(--font-title);
-  font-size: max(12px, 2.9cqw);
+  font-size: 11px;
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.1;
   letter-spacing: 0.01em;
 }
 .shop-offer-meta {
   display: block;
   width: 100%;
-  font-size: max(10px, 2.3cqw);
-  line-height: 1.25;
+  font-size: 9px;
+  line-height: 1.15;
   color: #5a5348;
   font-weight: 600;
 }
@@ -1969,20 +1986,20 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5cqw;
-  margin-top: auto;
-  padding: max(4px, 0.7cqw) max(8px, 1.4cqw);
+  gap: 3px;
+  margin-top: 2px;
+  padding: 3px 7px;
   font-family: var(--font-num);
-  font-size: max(13px, 3.2cqw);
+  font-size: 12px;
   font-weight: 400;
   color: #6a3a12;
   background: rgba(255, 248, 220, 0.7);
-  border: max(1px, 0.25cqw) solid #a87828;
-  border-radius: 1cqw;
+  border: 1px solid #a87828;
+  border-radius: 6px;
 }
 .shop-offer-price img {
-  width: max(14px, 3.8cqw);
-  height: max(14px, 3.8cqw);
+  width: 12px;
+  height: 12px;
   object-fit: contain;
 }
 .shop-list .sold {
