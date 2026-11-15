@@ -1,4 +1,6 @@
 /** Probe: does db.ts load (without querying) on the hosted runtime? */
+export const runtime = 'nodejs';
+
 export async function GET(): Promise<Response> {
   try {
     const { dbMode } = await import('../src/lib/db');

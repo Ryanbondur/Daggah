@@ -1,24 +1,16 @@
-// server-only — Postgres via DATABASE_URL (hosted + local with a URL).
-// PGlite lives in ./dbPglite.ts and is registered only by Vite/tests — never import
-// @electric-sql/pglite from this module (WASM in the API bundle → FUNCTION_INVOCATION_FAILED).
+// server-only — Postgres via DATABASE_URL using postgres.js (Edge/Node friendly).
+// PGlite lives in ./dbPglite.ts (Vite/tests only). No node:fs / `pg` here — those crash
+// some hosted runtimes at module load (FUNCTION_INVOCATION_FAILED).
+
+import type postgres from 'postgres';
 
 type SqlFn = <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]>;
 
-type PgPool = {
-  query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-  connect: () => Promise<{
-    query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    release: () => void;
-  }>;
-};
-
 const databaseUrl = process.env.DATABASE_URL?.trim() ?? '';
-/** Hosted Cursor / Vercel apps should always get DATABASE_URL from cursor-app.json. */
 const hosted = Boolean(process.env.VERCEL || process.env.CURSOR_APP_ID);
 
-let pool: PgPool | undefined;
+let client: ReturnType<typeof postgres> | undefined;
 let schemaReady: Promise<void> | undefined;
-/** Injected by dbPglite.ts for local dev / vitest when DATABASE_URL is unset. */
 let localSql: SqlFn | undefined;
 
 export class DatabaseUnavailableError extends Error {
@@ -57,9 +49,10 @@ export async function sql<T = Record<string, unknown>>(
   params: unknown[] = [],
 ): Promise<T[]> {
   if (databaseUrl !== '') {
-    const p = await getPool();
-    await ensurePostgresSchema(p);
-    return (await p.query(text, params)).rows as T[];
+    const c = await getClient();
+    await ensurePostgresSchema(c);
+    const rows = await c.unsafe(text, params as never[]);
+    return rows as unknown as T[];
   }
   if (localSql) {
     return localSql<T>(text, params);
@@ -74,28 +67,26 @@ export async function sql<T = Record<string, unknown>>(
   );
 }
 
-async function getPool(): Promise<PgPool> {
-  if (pool) return pool;
-  // Dynamic import — avoid a static `pg` edge into the module graph where possible.
-  const mod = await import('pg');
-  const Pool = mod.default.Pool as unknown as new (opts: {
-    connectionString: string;
-    max: number;
-  }) => PgPool;
-  pool = new Pool({ connectionString: databaseUrl, max: 5 });
-  return pool;
+async function getClient(): Promise<ReturnType<typeof postgres>> {
+  if (client) return client;
+  const { default: postgresFn } = await import('postgres');
+  client = postgresFn(databaseUrl, {
+    max: 5,
+    // Transaction poolers (common on serverless) reject prepared statements.
+    prepare: false,
+    idle_timeout: 20,
+    connect_timeout: 30,
+  });
+  return client;
 }
 
-/**
- * Safety net when build-time migrate.mjs did not run (or migrations/ is absent from
- * the function bundle). DDL is idempotent (IF NOT EXISTS).
- */
-async function ensurePostgresSchema(p: PgPool): Promise<void> {
+/** Idempotent DDL safety net when build-time migrate.mjs did not run. */
+async function ensurePostgresSchema(c: ReturnType<typeof postgres>): Promise<void> {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
-    const appliedViaFiles = await tryApplyMigrationFiles(p);
-    if (appliedViaFiles) return;
-    await p.query(INLINE_SCHEMA_SQL);
+    for (const statement of INLINE_SCHEMA_STATEMENTS) {
+      await c.unsafe(statement);
+    }
   })().catch((error: unknown) => {
     schemaReady = undefined;
     throw error;
@@ -103,105 +94,61 @@ async function ensurePostgresSchema(p: PgPool): Promise<void> {
   return schemaReady;
 }
 
-async function tryApplyMigrationFiles(p: PgPool): Promise<boolean> {
-  try {
-    const { readdir, readFile } = await import('node:fs/promises');
-    const files = (await readdir('migrations').catch(() => []))
-      .filter((f) => f.endsWith('.sql'))
-      .sort();
-    if (files.length === 0) return false;
+/** Mirrors migrations/001 + 002 as individual statements (postgres.js-safe). */
+const INLINE_SCHEMA_STATEMENTS = [
+  `create table if not exists saves (
+    owner_key text primary key,
+    payload text not null,
+    schema_version integer not null default 3,
+    updated_at timestamptz not null default now()
+  )`,
+  `create index if not exists saves_updated_at_idx on saves (updated_at desc)`,
+  `create table if not exists season_stats (
+    id bigserial primary key,
+    season_id integer not null,
+    owner_key text not null,
+    clan_code text,
+    wins integer not null default 0,
+    losses integer not null default 0,
+    updated_at timestamptz not null default now()
+  )`,
+  `create unique index if not exists season_stats_season_owner_uidx
+    on season_stats (season_id, owner_key)`,
+  `create table if not exists clan_results (
+    id bigserial primary key,
+    season_id integer not null,
+    clan_code text not null,
+    wins integer not null default 0,
+    losses integer not null default 0,
+    updated_at timestamptz not null default now()
+  )`,
+  `create unique index if not exists clan_results_season_clan_uidx
+    on clan_results (season_id, clan_code)`,
+  `create table if not exists users (
+    id text primary key,
+    username text not null,
+    password_hash text not null,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  )`,
+  `create unique index if not exists users_username_lower_uidx
+    on users (lower(username))`,
+  `create table if not exists sessions (
+    token_hash text primary key,
+    user_id text not null references users (id) on delete cascade,
+    expires_at timestamptz not null,
+    created_at timestamptz not null default now()
+  )`,
+  `create index if not exists sessions_user_id_idx on sessions (user_id)`,
+  `create index if not exists sessions_expires_at_idx on sessions (expires_at)`,
+];
 
-    await p.query(
-      `create table if not exists schema_migrations (
-         name text primary key,
-         applied_at timestamptz not null default now()
-       )`,
-    );
-    const migrated = await p.query('select name from schema_migrations');
-    const done = new Set(
-      (migrated.rows as { name: string }[]).map((r) => r.name),
-    );
-    for (const file of files.filter((f) => !done.has(f))) {
-      const client = await p.connect();
-      try {
-        await client.query('begin');
-        await client.query(await readFile(`migrations/${file}`, 'utf8'));
-        await client.query('insert into schema_migrations (name) values ($1)', [file]);
-        await client.query('commit');
-        console.log(`db: applied ${file}`);
-      } catch (error) {
-        await client.query('rollback');
-        throw error;
-      } finally {
-        client.release();
-      }
-    }
-    return true;
-  } catch (error) {
-    console.warn(
-      'db: migration files unavailable, using inline schema ensure',
-      error instanceof Error ? error.message : error,
-    );
-    return false;
-  }
-}
-
-/** Mirrors migrations/001 + 002 — used when the SQL files are not in the function bundle. */
-const INLINE_SCHEMA_SQL = `
-create table if not exists saves (
-  owner_key text primary key,
-  payload text not null,
-  schema_version integer not null default 3,
-  updated_at timestamptz not null default now()
-);
-create index if not exists saves_updated_at_idx on saves (updated_at desc);
-
-create table if not exists season_stats (
-  id bigserial primary key,
-  season_id integer not null,
-  owner_key text not null,
-  clan_code text,
-  wins integer not null default 0,
-  losses integer not null default 0,
-  updated_at timestamptz not null default now()
-);
-create unique index if not exists season_stats_season_owner_uidx
-  on season_stats (season_id, owner_key);
-
-create table if not exists clan_results (
-  id bigserial primary key,
-  season_id integer not null,
-  clan_code text not null,
-  wins integer not null default 0,
-  losses integer not null default 0,
-  updated_at timestamptz not null default now()
-);
-create unique index if not exists clan_results_season_clan_uidx
-  on clan_results (season_id, clan_code);
-
-create table if not exists users (
-  id text primary key,
-  username text not null,
-  password_hash text not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create unique index if not exists users_username_lower_uidx
-  on users (lower(username));
-
-create table if not exists sessions (
-  token_hash text primary key,
-  user_id text not null references users (id) on delete cascade,
-  expires_at timestamptz not null,
-  created_at timestamptz not null default now()
-);
-create index if not exists sessions_user_id_idx on sessions (user_id);
-create index if not exists sessions_expires_at_idx on sessions (expires_at);
-`;
-
-/** Test helper: drop cached pool / local registration so the next sql() rebuilds. */
+/** Test helper: drop cached client / local registration so the next sql() rebuilds. */
 export function resetLocalDbForTests(): void {
-  pool = undefined;
+  if (client) {
+    void client.end({ timeout: 1 }).catch(() => undefined);
+  }
+  client = undefined;
   schemaReady = undefined;
   localSql = undefined;
 }

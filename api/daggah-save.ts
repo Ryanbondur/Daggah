@@ -2,6 +2,8 @@
  * Thin hosted entry for /api/daggah-save.
  * Heavy deps load inside the handler so import failures become JSON 500s.
  */
+export const runtime = 'nodejs';
+
 const NO_STORE = { 'cache-control': 'private, no-store' } as const;
 
 function loadFailed(error: unknown): Response {

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { getIdentity } from '../../cursor/identity';
 import {
   SESSION_HEADER,
@@ -6,6 +5,7 @@ import {
   ownerKeyForUser,
   resolveSessionToken,
 } from './auth';
+import { sha256Hex } from './webCrypto';
 
 export const ACCOUNT_CODE_PREFIX = 'DGAC';
 export const ACCOUNT_CODE_HEADER = 'x-daggah-account-code';
@@ -32,8 +32,8 @@ export function normalizeAccountCode(raw: string): string | null {
   return `${ACCOUNT_CODE_PREFIX}.${body}.${sum}`;
 }
 
-export function hashAccountCode(code: string): string {
-  return createHash('sha256').update(code, 'utf8').digest('hex');
+export async function hashAccountCode(code: string): Promise<string> {
+  return sha256Hex(code);
 }
 
 export type OwnerRef =
@@ -85,7 +85,7 @@ export async function resolveOwner(request: Request): Promise<OwnerRef | Respons
   }
   return {
     kind: 'account',
-    ownerKey: `ac:${hashAccountCode(code)}`,
+    ownerKey: `ac:${await hashAccountCode(code)}`,
     code,
   };
 }

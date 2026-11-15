@@ -1,8 +1,10 @@
 /**
  * Thin hosted entry for /api/daggah-auth.
- * Heavy deps (crypto, pg) load inside the handler so import failures become JSON 500s
+ * Heavy deps load inside the handler so import failures become JSON 500s
  * instead of platform FUNCTION_INVOCATION_FAILED.
  */
+export const runtime = 'nodejs';
+
 const NO_STORE = { 'cache-control': 'private, no-store' } as const;
 
 function loadFailed(error: unknown): Response {
