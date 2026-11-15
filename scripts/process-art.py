@@ -51,12 +51,50 @@ def trim(img: Image.Image, pad: int = 6) -> Image.Image:
     return img.crop(box)
 
 
+def square_center(img: Image.Image, max_side: int) -> Image.Image:
+    """Trim-aware square canvas with alpha-mass centroid at center.
+
+    BBox centering leaves strap-heavy / diagonal art looking shifted in
+    object-fit:contain slots; mass centering matches what players see.
+    """
+    img = trim(img)
+    a = np.asarray(img)[..., 3].astype(np.float32)
+    h, w = a.shape
+    total = float(a.sum())
+    if total <= 0:
+        side = max(w, h, 1)
+        out = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        out.paste(img, ((side - w) // 2, (side - h) // 2), img)
+        return fit(out, max_side)
+    xs = np.arange(w, dtype=np.float32)
+    ys = np.arange(h, dtype=np.float32)
+    cx = float((a.sum(axis=0) * xs).sum() / total)
+    cy = float((a.sum(axis=1) * ys).sum() / total)
+    # Pad so the mass centroid can sit at the square center without clipping.
+    left = cx
+    right = (w - 1) - cx
+    top = cy
+    bottom = (h - 1) - cy
+    half = max(left, right, top, bottom)
+    side = int(np.ceil(half * 2 + 1))
+    side = max(side, w, h)
+    out = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+    ox = int(round(side / 2 - cx))
+    oy = int(round(side / 2 - cy))
+    out.paste(img, (ox, oy), img)
+    return fit(out, max_side)
+
+
 def fit(img: Image.Image, max_side: int) -> Image.Image:
     scale = max_side / max(img.size)
     if scale >= 1:
         return img
     return img.resize((round(img.width * scale), round(img.height * scale)), Image.LANCZOS)
 
+
+def finalize_icon(img: Image.Image, max_side: int) -> Image.Image:
+    """Trim → mass-center in square → fit. Keeps inventory/detail icons centered."""
+    return square_center(img, max_side)
 
 def save(img: Image.Image, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -66,7 +104,7 @@ def save(img: Image.Image, path: Path) -> None:
 
 def single(name: str, out: str, max_side: int) -> None:
     img = Image.open(SRC / f"{name}.jpg")
-    save(fit(trim(key_magenta(img)), max_side), OUT / out)
+    save(finalize_icon(key_magenta(img), max_side), OUT / out)
 
 
 def save_bg(name: str) -> None:
@@ -82,44 +120,133 @@ def save_bg(name: str) -> None:
     print("wrote", dest.relative_to(ROOT), img.size)
 
 
-def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate: int = 14) -> None:
-    img = key_magenta(Image.open(SRC / f"{name}.jpg"))
+def _blob_boxes(img: Image.Image, dilate: int, min_area: int = 2500):
     alpha = np.asarray(img)[..., 3] > 40
     merged = ndimage.binary_dilation(alpha, iterations=dilate)
-    labels, count = ndimage.label(merged)
+    labels, _count = ndimage.label(merged)
     objs = ndimage.find_objects(labels)
     boxes = []
     for i, sl in enumerate(objs):
         area = (labels[sl] == i + 1).sum()
-        if area < 2500:
+        if area < min_area:
             continue
         cy = (sl[0].start + sl[0].stop) / 2
         cx = (sl[1].start + sl[1].stop) / 2
         boxes.append((cy, cx, sl, i + 1))
-    if len(boxes) != len(names):
-        print(f"warn {name}: expected {len(names)} blobs, found {len(boxes)} — using grid crop")
-        grid_crop(img, outdir, names, max_side)
-        return
-    boxes.sort(key=lambda b: b[0])
-    cols = len(names) // (2 if len(names) in (6, 8) else 3) if len(names) != 12 else 4
-    rows = [boxes[i : i + cols] for i in range(0, len(boxes), cols)]
+    return boxes, labels
+
+
+def _cluster_rows(boxes: list, y_tol_frac: float = 0.12):
+    """Group blobs into rows by Y proximity (supports 3-col and 4-col sheets)."""
+    boxes = sorted(boxes, key=lambda b: b[0])
+    ys = [b[0] for b in boxes]
+    span = max(ys) - min(ys) if ys else 1.0
+    tol = max(40.0, span * y_tol_frac)
+    rows: list[list] = []
+    cur: list = []
+    for b in boxes:
+        if not cur:
+            cur = [b]
+            continue
+        if abs(b[0] - float(np.median([x[0] for x in cur]))) <= tol:
+            cur.append(b)
+        else:
+            rows.append(cur)
+            cur = [b]
+    if cur:
+        rows.append(cur)
     ordered = []
     for row in rows:
         ordered.extend(sorted(row, key=lambda b: b[1]))
+    return ordered, [len(r) for r in rows]
+
+
+def _detect_grid_cols(img: Image.Image, n_names: int) -> int:
+    """Pick 3 vs 4 columns by scoring alpha mass vs cell-edge bleed."""
+    a = (np.asarray(img)[..., 3] > 40).astype(np.float32)
+    ys, xs = np.where(a > 0)
+    if len(xs) == 0:
+        return 4 if n_names == 12 else (4 if n_names == 8 else 3)
+    x0, x1 = int(xs.min()), int(xs.max()) + 1
+    y0, y1 = int(ys.min()), int(ys.max()) + 1
+    candidates = []
+    if n_names == 12:
+        candidates = [3, 4]
+    elif n_names == 8:
+        candidates = [4]
+    elif n_names == 6:
+        candidates = [3]
+    else:
+        candidates = [3, 4]
+    best_cols, best_score = candidates[0], -1.0
+    for cols in candidates:
+        rows = int(np.ceil(n_names / cols))
+        cell_w = (x1 - x0) / cols
+        cell_h = (y1 - y0) / rows
+        score = 0.0
+        for i in range(n_names):
+            r, c = divmod(i, cols)
+            left = int(x0 + c * cell_w)
+            right = int(x0 + (c + 1) * cell_w)
+            top = int(y0 + r * cell_h)
+            bottom = int(y0 + (r + 1) * cell_h)
+            cell = a[top:bottom, left:right]
+            if cell.size == 0:
+                continue
+            edge = (
+                float(cell[:, 0].sum())
+                + float(cell[:, -1].sum())
+                + float(cell[0].sum())
+                + float(cell[-1].sum())
+            )
+            score += float(cell.sum()) / (1.0 + edge)
+        if score > best_score:
+            best_score = score
+            best_cols = cols
+    return best_cols
+
+
+def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate: int = 14) -> None:
+    """Slice a magenta-keyed icon sheet.
+
+    Gear sheets mix layouts (packs b/c/d are 3×4; most others are 4×3). Fixed
+    column counts mis-ordered blobs and the old 4-col grid fallback bisected
+    icons (right-half + neighbor sliver). We search dilate values for an exact
+    blob count, cluster rows by Y proximity, and square-pad each tile.
+    """
+    img = key_magenta(Image.open(SRC / f"{name}.jpg"))
+    dilates = [dilate] + [d for d in (14, 12, 10, 8, 6, 4, 3, 2) if d != dilate]
+    chosen = None
+    for d in dilates:
+        boxes, labels = _blob_boxes(img, d)
+        if len(boxes) != len(names):
+            continue
+        ordered, row_lens = _cluster_rows(boxes)
+        if sum(row_lens) != len(names):
+            continue
+        chosen = (d, boxes, labels, ordered, row_lens)
+        break
+    if chosen is None:
+        print(f"warn {name}: no dilate yielded {len(names)} blobs — using grid crop")
+        grid_crop(img, outdir, names, max_side)
+        return
+    d, _boxes, labels, ordered, row_lens = chosen
+    print(f"slice {name}: dilate={d} rows={row_lens}")
     arr = np.asarray(img)
-    for (cy, cx, sl, lab), nm in zip(ordered, names):
+    for (_cy, _cx, sl, lab), nm in zip(ordered, names):
         mask = labels[sl] == lab
-        mask = ndimage.binary_dilation(mask, iterations=dilate)
+        mask = ndimage.binary_dilation(mask, iterations=d)
         piece = arr[sl].copy()
         piece[..., 3] = np.where(mask, piece[..., 3], 0)
         tile = Image.fromarray(piece, "RGBA")
-        save(fit(trim(tile), max_side), OUT / outdir / f"{nm}.webp")
+        save(finalize_icon(tile, max_side), OUT / outdir / f"{nm}.webp")
 
 
 def grid_crop(img: Image.Image, outdir: str, names: list[str], max_side: int) -> None:
-    """Fallback: evenly divide the content bbox into a grid matching names length."""
-    cols = 4 if len(names) == 12 else (4 if len(names) == 8 else 3)
+    """Fallback: evenly divide the content bbox into a detected 3- or 4-col grid."""
+    cols = _detect_grid_cols(img, len(names))
     rows = int(np.ceil(len(names) / cols))
+    print(f"grid_crop {outdir}: cols={cols} rows={rows}")
     a = np.asarray(img)[..., 3]
     ys, xs = np.where(a > 20)
     if len(xs) == 0:
@@ -134,8 +261,8 @@ def grid_crop(img: Image.Image, outdir: str, names: list[str], max_side: int) ->
         top = int(y0 + r * cell_h)
         right = int(x0 + (c + 1) * cell_w)
         bottom = int(y0 + (r + 1) * cell_h)
-        tile = trim(img.crop((left, top, right, bottom)))
-        save(fit(tile, max_side), OUT / outdir / f"{nm}.webp")
+        tile = img.crop((left, top, right, bottom))
+        save(finalize_icon(tile, max_side), OUT / outdir / f"{nm}.webp")
 
 
 GEAR_SLOTS = [
@@ -203,6 +330,11 @@ def main() -> None:
     slice_sheet("icons-gear-i", "icons/gear-i", GEAR_SLOTS, 160)
     slice_sheet("icons-gear-j", "icons/gear-j", GEAR_SLOTS, 160)
     slice_sheet("icons-gear-k", "icons/gear-k", GEAR_SLOTS, 160)
+    # Dedicated pauldron art (packs b/c/d sheet cells were helmet-like / chest-like).
+    for pack in ("b", "c", "d"):
+        src = SRC / f"shoulders-pack-{pack}.jpg"
+        if src.exists():
+            single(f"shoulders-pack-{pack}", f"icons/gear-{pack}/shoulders.webp", 160)
     slice_sheet("icons-skills-warrior", "icons/skills", SKILLS_WARRIOR, 160, dilate=6)
     slice_sheet("icons-skills-mage", "icons/skills", SKILLS_MAGE, 160, dilate=6)
     slice_sheet("icons-skills-ranger", "icons/skills", SKILLS_RANGER, 160, dilate=6)
