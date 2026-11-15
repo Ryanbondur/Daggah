@@ -30,7 +30,31 @@ export const SAVE_VERSION = 3;
 export const BAG_CAP = 24;
 export const KEY_CAP = 8;
 export const KEY_REGEN_MS = 30 * 60 * 1000;
-export const DUNGEON_CRYSTAL_COST = 50;
+/** Crystal buy-in per dungeon key (act-scaled total = keys × this). */
+export const DUNGEON_CRYSTAL_COST_PER_KEY = 50;
+/** @deprecated Prefer `dungeonCrystalCost(actId)`. Early-act (1 key) crystal buy-in. */
+export const DUNGEON_CRYSTAL_COST = DUNGEON_CRYSTAL_COST_PER_KEY;
+
+/**
+ * Dungeon Key entry cost by act tier (Enter and Sweep).
+ * Acts 1–3: 1 · 4–6: 2 · 7–9: 3 · Nightscar Apex (10): 4.
+ */
+export function dungeonKeyCost(actId: number): number {
+  if (actId <= 3) return 1;
+  if (actId <= 6) return 2;
+  if (actId <= 9) return 3;
+  return 4;
+}
+
+/** Crystal buy-in if the player is out of keys (same tier scaling). */
+export function dungeonCrystalCost(actId: number): number {
+  return dungeonKeyCost(actId) * DUNGEON_CRYSTAL_COST_PER_KEY;
+}
+
+/** Adventure Enter/Sweep button label. */
+export function formatDungeonKeyCost(keys: number): string {
+  return keys === 1 ? '1 Key' : `${keys} Keys`;
+}
 
 /** Ms until the next dungeon key regenerates; 0 when already at cap. */
 export function msUntilNextKey(keys: number, keysAt: number, now: number): number {

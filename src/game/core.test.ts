@@ -13,11 +13,16 @@ import { HERO_CLASSES } from '../data/types';
 import { addXp, availableSpeeds, heroBaseStats, maxEnergy, xpToNext } from '../data/xp';
 import { Game } from './game';
 import { mulberry32 } from './rng';
+import { ACTS } from '../data/acts';
 import {
+  DUNGEON_CRYSTAL_COST_PER_KEY,
   KEY_CAP,
   KEY_REGEN_MS,
   SAVE_KEY,
   defaultSave,
+  dungeonCrystalCost,
+  dungeonKeyCost,
+  formatDungeonKeyCost,
   formatKeyRegenLabel,
   loadSave,
   msUntilNextKey,
@@ -390,5 +395,69 @@ describe('dungeon key regen', () => {
     expect(game.save.keys).toBe(KEY_CAP);
     expect(game.nextKeyInMs(t0 + KEY_REGEN_MS * 10)).toBe(0);
     expect(formatKeyRegenLabel(game.save.keys, game.nextKeyInMs())).toBe('full');
+  });
+});
+
+describe('dungeon key cost by act', () => {
+  it('scales 1 / 2 / 3 / 4 across early, mid, late, Nightscar Apex', () => {
+    expect([1, 2, 3].map(dungeonKeyCost)).toEqual([1, 1, 1]);
+    expect([4, 5, 6].map(dungeonKeyCost)).toEqual([2, 2, 2]);
+    expect([7, 8, 9].map(dungeonKeyCost)).toEqual([3, 3, 3]);
+    expect(dungeonKeyCost(10)).toBe(4);
+    expect(ACTS.map((a) => dungeonKeyCost(a.id))).toEqual([1, 1, 1, 2, 2, 2, 3, 3, 3, 4]);
+  });
+
+  it('crystal buy-in is 50 Crystals per key at that tier', () => {
+    expect(dungeonCrystalCost(1)).toBe(DUNGEON_CRYSTAL_COST_PER_KEY);
+    expect(dungeonCrystalCost(5)).toBe(100);
+    expect(dungeonCrystalCost(8)).toBe(150);
+    expect(dungeonCrystalCost(10)).toBe(200);
+    expect(formatDungeonKeyCost(1)).toBe('1 Key');
+    expect(formatDungeonKeyCost(4)).toBe('4 Keys');
+  });
+
+  it('startDungeon and sweepDungeon spend the act-scaled key cost', () => {
+    const game = new Game(memoryStorage(), mulberry32(9));
+    game.pickClass('Warrior');
+    game.devUnlockThroughAct(10);
+    game.save.keys = 8;
+    game.save.dungeons['cinder-forge'] = { cleared: true, clears: 1 };
+    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: 1 };
+
+    expect(game.sweepDungeon('cinder-forge')).toBe(true); // Act 6 → 2 keys
+    expect(game.save.keys).toBe(6);
+    expect(game.sweepDungeon('nightscar-apex')).toBe(true); // Act 10 → 4 keys
+    expect(game.save.keys).toBe(2);
+  });
+
+  it('falls back to scaled crystal buy-in when keys are short', () => {
+    const game = new Game(memoryStorage(), mulberry32(11));
+    game.pickClass('Warrior');
+    game.devUnlockThroughAct(10);
+    game.save.keys = 1;
+    game.save.crystals = 250;
+    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: 1 };
+
+    expect(game.sweepDungeon('nightscar-apex')).toBe(true);
+    expect(game.save.keys).toBe(1);
+    expect(game.save.crystals).toBe(50);
+  });
+
+  it('refuses entry when neither keys nor crystals cover the tier cost', () => {
+    const game = new Game(memoryStorage(), mulberry32(13));
+    game.pickClass('Warrior');
+    game.devUnlockThroughAct(10);
+    game.save.keys = 3;
+    game.save.crystals = 100;
+    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: 1 };
+    const toasts: string[] = [];
+    game.on((e) => {
+      if (e.t === 'toast') toasts.push(e.text);
+    });
+
+    expect(game.sweepDungeon('nightscar-apex')).toBe(false);
+    expect(game.save.keys).toBe(3);
+    expect(game.save.crystals).toBe(100);
+    expect(toasts.some((t) => /4 Keys|200 Crystals/i.test(t))).toBe(true);
   });
 });
