@@ -216,6 +216,21 @@ describe('register / login / save roundtrip (PGlite)', () => {
       }),
     );
     expect(xssName.status).toBe(400);
+
+    const spaced = await authPost(
+      new Request('http://localhost/api/daggah-auth', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'login',
+          username: 'Mod Bons',
+          password: 'stone-gate-9',
+        }),
+      }),
+    );
+    expect(spaced.status).toBe(400);
+    const spacedBody = (await spaced.json()) as { error?: string };
+    expect(spacedBody.error).toBe('invalid_username');
   });
 
   it('logs out and rejects the old session token', async () => {
