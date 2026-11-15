@@ -79,7 +79,7 @@ import {
 } from './clanBrackets';
 import type { BattleEvent, HeroInput, RunDef } from './combat';
 import { Battle, STEP } from './combat';
-import type { PvpResult } from './pvp';
+import type { PvpEvent, PvpFighterSnap, PvpResult } from './pvp';
 import { buildOpponentRoster, simulatePvp } from './pvp';
 import { nextNightscarPity } from './nightscarPity';
 import type { Rng } from './rng';
@@ -109,7 +109,7 @@ import {
 export type { OfflineSummary } from './offline';
 export { OFFLINE_CAP_MS, OFFLINE_MIN_MS, formatOfflineToast } from './offline';
 
-export type Mode = 'camp' | 'stage' | 'dungeon';
+export type Mode = 'camp' | 'stage' | 'dungeon' | 'pvp';
 
 export interface RunResult {
   kind: 'dungeon' | 'actClear' | 'stageFailed';
@@ -125,6 +125,31 @@ export interface RunResult {
   farmHint?: string;
 }
 
+/** Live fighter state while the Phaser stage replays a resolved 4v4. */
+export interface PvpPlaybackFighter extends PvpFighterSnap {
+  hp: number;
+  dead: boolean;
+  hitFlash: number;
+  swingAnim: number;
+  deathT: number;
+}
+
+export interface PvpPlayback {
+  result: PvpResult;
+  tokens: number;
+  /** Sim-time cursor into result.playback. */
+  t: number;
+  nextIdx: number;
+  /** Wall-clock hold after the end event before opening the breakdown. */
+  holdT: number;
+  /** Wall-clock intro before the first log event so teams are visible. */
+  introT: number;
+  /** Sim-seconds advanced per wall-clock second (before game.speed). */
+  rate: number;
+  fighters: PvpPlaybackFighter[];
+  finished: boolean;
+}
+
 export type GameEvent =
   | { t: 'change' }
   | { t: 'run' }
@@ -132,6 +157,7 @@ export type GameEvent =
   | { t: 'toast'; text: string; kind: 'good' | 'bad' | 'info' }
   | { t: 'levelUp'; level: number; newSkills: SkillId[] }
   | { t: 'result'; result: RunResult }
+  | { t: 'pvpFx'; ev: PvpEvent }
   | { t: 'pvp'; result: PvpResult; tokens: number }
   | { t: 'chat'; text: string };
 
@@ -208,6 +234,8 @@ export class Game {
   lives = MAX_LIVES;
   paused = false;
   chat: string[] = ['Welcome to Daggah. Tap Battle to begin.'];
+  /** Authoritative sim result playing out on the Phaser stage before the breakdown modal. */
+  pvpPlayback: PvpPlayback | null = null;
   readonly rng: Rng;
   readonly storage: Storage | undefined;
   private listeners = new Set<Listener>();
@@ -258,6 +286,7 @@ export class Game {
     if (!result.ok) return result.error;
     this.save = result.save;
     this.battle = null;
+    this.pvpPlayback = null;
     this.mode = 'camp';
     this.dungeonCtx = null;
     this.lives = MAX_LIVES;
@@ -375,6 +404,7 @@ export class Game {
   }
 
   get title(): string {
+    if (this.mode === 'pvp') return 'Clan 4v4';
     if (this.mode === 'dungeon' && this.dungeonCtx) {
       const floor = this.battle ? this.battle.nodeIndex + 1 : 1;
       return `${this.dungeonCtx.dungeon.name} F${Math.min(10, floor)}`;
@@ -393,10 +423,11 @@ export class Game {
   }
 
   get inBattle(): boolean {
-    return this.mode !== 'camp' && !!this.battle;
+    return (this.mode !== 'camp' && !!this.battle) || this.mode === 'pvp';
   }
 
   get bg() {
+    if (this.mode === 'pvp') return 'clan';
     if (this.battle) return this.battle.run.bg;
     return getAct(this.currentAct).bg;
   }
@@ -404,6 +435,10 @@ export class Game {
   // ---- loop ---------------------------------------------------------------
 
   tick(dtReal: number): void {
+    if (this.mode === 'pvp' && this.pvpPlayback && !this.paused) {
+      this.tickPvp(dtReal);
+      return;
+    }
     if (!this.battle || this.paused) return;
     this.acc += Math.min(dtReal, 0.25) * this.speed;
     let guard = 0;
@@ -706,12 +741,20 @@ export class Game {
       this.toast('Pick a class first', 'info');
       return;
     }
+    if (this.mode === 'pvp') {
+      this.finishPvpPlayback();
+      return;
+    }
     if (this.battle && this.mode !== 'camp') return;
     this.startStage();
     this.say(`Entering ${this.title}.`);
   }
 
   retreat(): void {
+    if (this.mode === 'pvp') {
+      this.finishPvpPlayback();
+      return;
+    }
     if (!this.battle) return;
     this.dungeonCtx = null;
     this.endRun();
@@ -1477,6 +1520,7 @@ export class Game {
    * Soft floor still applies (same as ranked queue) so solo test mirrors live rules.
    */
   queuePractice4v4(opts?: { challengeUp?: boolean }): string | null {
+    if (this.mode === 'pvp') return 'Clan fight in progress.';
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
     if (!this.save.classPicked) return 'Pick a class first.';
     if (!this.save.clan) {
@@ -1495,8 +1539,12 @@ export class Game {
     return this.queueClanPvp(opts);
   }
 
-  /** Queue local 4v4 auto-battle. Returns error or null + emits pvp event. */
+  /**
+   * Queue local 4v4 auto-battle.
+   * Sim + rewards resolve immediately; Phaser stage plays the log, then emits `pvp` for the breakdown modal.
+   */
   queueClanPvp(opts?: { challengeUp?: boolean }): string | null {
+    if (this.mode === 'pvp') return 'Clan fight in progress.';
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
     if (!this.save.clan) return 'Join a clan first.';
     if (!meetsClanQueueFloor(this.save.stagesCleared, this.cp)) {
@@ -1548,9 +1596,127 @@ export class Game {
       `Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${tierNote}${capNote}${result.practiceAi ? ' (AI practice)' : ''}.`,
     );
     this.toast(`${result.won ? 'Victory' : 'Defeat'}${tierNote}${capNote}`, result.won ? 'good' : 'bad');
-    this.emit({ t: 'pvp', result, tokens: awarded });
+    this.beginPvpPlayback(result, awarded);
     this.changed();
     return null;
+  }
+
+  /** Skip remaining stage playback and open the existing PvP breakdown modal. */
+  finishPvpPlayback(): void {
+    const pb = this.pvpPlayback;
+    if (!pb || pb.finished) return;
+    // Snap fighters to final HP from the authoritative result.
+    for (const f of pb.fighters) {
+      const final =
+        f.team === 'ally'
+          ? pb.result.allyTeam.find((t) => t.name === f.name)
+          : pb.result.enemyTeam.find((t) => t.name === f.name);
+      if (final) {
+        f.hp = final.hp;
+        f.dead = final.hp <= 0;
+        if (f.dead && f.deathT <= 0) f.deathT = 0.7;
+      }
+    }
+    pb.nextIdx = pb.result.playback.length;
+    pb.t = pb.result.duration;
+    pb.holdT = 99;
+    this.emitPvpResult(pb);
+  }
+
+  private beginPvpPlayback(result: PvpResult, tokens: number): void {
+    // Keep short wipeouts readable; stretch long matches into ~8–12s of stage time.
+    const targetWall = Math.max(4, Math.min(12, Math.max(0.5, result.duration) / 5));
+    const rate = Math.max(0.15, result.duration / targetWall);
+    this.pvpPlayback = {
+      result,
+      tokens,
+      t: 0,
+      nextIdx: 0,
+      holdT: 0,
+      introT: 0.85,
+      rate,
+      finished: false,
+      fighters: result.fighters.map((f) => ({
+        ...f,
+        hp: f.maxHp,
+        dead: false,
+        hitFlash: 0,
+        swingAnim: 0,
+        deathT: 0,
+      })),
+    };
+    this.mode = 'pvp';
+    this.battle = null;
+    this.emit({ t: 'run' });
+  }
+
+  private tickPvp(dtReal: number): void {
+    const pb = this.pvpPlayback;
+    if (!pb || pb.finished) return;
+    const dt = Math.min(dtReal, 0.25) * this.speed;
+    for (const f of pb.fighters) {
+      if (f.hitFlash > 0) f.hitFlash = Math.max(0, f.hitFlash - dt);
+      if (f.swingAnim > 0) f.swingAnim = Math.max(0, f.swingAnim - dt);
+      if (f.dead && f.deathT < 0.7) f.deathT = Math.min(0.7, f.deathT + dt);
+    }
+
+    if (pb.introT > 0) {
+      pb.introT = Math.max(0, pb.introT - dt);
+      return;
+    }
+
+    if (pb.nextIdx >= pb.result.playback.length) {
+      pb.holdT += dt;
+      if (pb.holdT >= 0.9) this.emitPvpResult(pb);
+      return;
+    }
+
+    pb.t += dt * pb.rate;
+    const log = pb.result.playback;
+    while (pb.nextIdx < log.length && log[pb.nextIdx]!.time <= pb.t) {
+      const ev = log[pb.nextIdx]!;
+      pb.nextIdx += 1;
+      this.applyPvpFx(pb, ev);
+      this.emit({ t: 'pvpFx', ev });
+    }
+  }
+
+  private applyPvpFx(pb: PvpPlayback, ev: PvpEvent): void {
+    const find = (name: string | undefined, team: 'ally' | 'enemy' | undefined) => {
+      if (!name) return undefined;
+      return pb.fighters.find((f) => f.name === name && (!team || f.team === team));
+    };
+    if (ev.t === 'skill' || ev.t === 'hit') {
+      const actor = find(ev.actor, ev.team);
+      const target = find(ev.target, ev.targetTeam);
+      if (actor) actor.swingAnim = 0.28;
+      if (target && ev.dmg != null) {
+        target.hp = Math.max(0, target.hp - ev.dmg);
+        target.hitFlash = 0.12;
+        if (target.hp <= 0) {
+          target.dead = true;
+          if (target.deathT <= 0) target.deathT = 0.01;
+        }
+      }
+    } else if (ev.t === 'kill') {
+      const target = find(ev.target, ev.targetTeam);
+      if (target) {
+        target.hp = 0;
+        target.dead = true;
+        if (target.deathT <= 0) target.deathT = 0.01;
+      }
+    }
+  }
+
+  private emitPvpResult(pb: PvpPlayback): void {
+    if (pb.finished) return;
+    pb.finished = true;
+    const { result, tokens } = pb;
+    this.pvpPlayback = null;
+    this.mode = 'camp';
+    this.emit({ t: 'pvp', result, tokens });
+    this.emit({ t: 'run' });
+    this.emit({ t: 'change' });
   }
 
   buyClanVendor(index: number): string | null {
@@ -1613,6 +1779,7 @@ export class Game {
     this.save.clanNightscarUnlocked = false;
     this.save.classPicked = false;
     this.battle = null;
+    this.pvpPlayback = null;
     this.mode = 'camp';
     this.dungeonCtx = null;
     this.lives = MAX_LIVES;

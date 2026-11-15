@@ -458,7 +458,8 @@ export type BackgroundId =
   | 'spire'
   | 'echo'
   | 'void'
-  | 'nightscar';
+  | 'nightscar'
+  | 'clan';
 
 export interface DungeonDef {
   id: string;

@@ -101,6 +101,7 @@ describe('clan CP brackets', () => {
       }
     });
     expect(game.queueClanPvp({ challengeUp: true })).toBeNull();
+    game.finishPvpPlayback();
     expect(challengeUp).toBe(true);
     expect(bracket).toBe(expected);
     expect(game.save.clanChallengeUpDayKey).toBe(dayKey());
@@ -123,6 +124,7 @@ describe('clan CP brackets', () => {
     }
     expect(game.clanBracketStatus().bracket).toBe('nightscar');
     expect(game.queueClanPvp()).toBeNull();
+    game.finishPvpPlayback();
     expect(game.save.clanNightscarUnlocked).toBe(true);
     expect(game.buyClanVendor(4)).toBeNull();
     expect(game.save.clanTokens).toBeLessThan(80);
@@ -133,6 +135,7 @@ describe('clan CP brackets', () => {
     game.save.clanTokensEarnedToday = TOKEN_DAY_CAP - 3;
     for (const m of game.save.clan!.members) m.cp = 500;
     expect(game.queueClanPvp()).toBeNull();
+    game.finishPvpPlayback();
     expect(game.save.clanTokensEarnedToday).toBe(TOKEN_DAY_CAP);
   });
 });

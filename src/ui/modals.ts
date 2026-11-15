@@ -864,8 +864,10 @@ export function showSettings(ctx: UIContext): void {
       }
       case 'dev-practice-4v4': {
         ctx.closeModal();
-        const err = g.queuePractice4v4();
-        if (err) g.toast(err, 'bad');
+        void ctx.ensureStage().then(() => {
+          const err = g.queuePractice4v4();
+          if (err) g.toast(err, 'bad');
+        });
         break;
       }
       case 'season-reset':
@@ -1056,9 +1058,12 @@ export function showClanHall(ctx: UIContext): void {
       return;
     }
     if (act === 'clan-practice') {
-      const err = g.queuePractice4v4();
-      if (err) g.toast(err, 'bad');
-      // pvp modal opened via game event
+      ctx.closeModal();
+      void ctx.ensureStage().then(() => {
+        const err = g.queuePractice4v4();
+        if (err) g.toast(err, 'bad');
+        // Stage fight plays, then existing pvp breakdown modal via game event
+      });
       return;
     }
     if (act === 'clan-queue') {
@@ -1066,9 +1071,11 @@ export function showClanHall(ctx: UIContext): void {
         g.toast('Need one of each class — Fill AI roster', 'bad');
         return;
       }
-      const err = g.queueClanPvp();
-      if (err) g.toast(err, 'bad');
-      // pvp modal opened via game event
+      ctx.closeModal();
+      void ctx.ensureStage().then(() => {
+        const err = g.queueClanPvp();
+        if (err) g.toast(err, 'bad');
+      });
       return;
     }
     if (act === 'clan-queue-challenge') {
@@ -1076,8 +1083,11 @@ export function showClanHall(ctx: UIContext): void {
         g.toast('Need one of each class — Fill AI roster', 'bad');
         return;
       }
-      const err = g.queueClanPvp({ challengeUp: true });
-      if (err) g.toast(err, 'bad');
+      ctx.closeModal();
+      void ctx.ensureStage().then(() => {
+        const err = g.queueClanPvp({ challengeUp: true });
+        if (err) g.toast(err, 'bad');
+      });
       return;
     }
     if (act === 'clan-leave') {

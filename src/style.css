@@ -214,6 +214,15 @@ button {
   height: 6.4cqw;
   margin: -1.6cqw 0.2cqw -1.6cqw -3.4cqw;
 }
+.track .pvp-score {
+  font-family: var(--font-title);
+  font-weight: 800;
+  font-size: 3.4cqw;
+  color: #ffe9a8;
+  letter-spacing: 0.04em;
+  padding: 0 1.2cqw;
+  text-shadow: 0 0.3cqw 0.5cqw rgba(0, 0, 0, 0.75);
+}
 .node {
   position: relative;
   width: 6.2cqw;

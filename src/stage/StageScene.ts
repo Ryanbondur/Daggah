@@ -3,7 +3,8 @@ import type { BackgroundId } from '../data/acts';
 import type { SkillId } from '../data/types';
 import type { BattleEvent, Enemy } from '../game/combat';
 import { HERO_X } from '../game/combat';
-import type { Game } from '../game/game';
+import type { Game, PvpPlaybackFighter } from '../game/game';
+import type { PvpEvent } from '../game/pvp';
 import { ENEMY_SPRITES, SKILL_IDS, asset, heroSprite, skillIcon } from '../ui/assets';
 import type { HeroClass } from '../data/types';
 
@@ -22,6 +23,12 @@ interface BuffChip {
   img: Phaser.GameObjects.Image;
 }
 
+interface PvpFighterView {
+  sprite: Phaser.GameObjects.Image;
+  bar: Phaser.GameObjects.Graphics;
+  tag: Phaser.GameObjects.Text | null;
+}
+
 export class StageScene extends Phaser.Scene {
   private game_: Game;
   private bgSprites: Partial<Record<BackgroundId, Phaser.GameObjects.TileSprite>> = {};
@@ -35,10 +42,12 @@ export class StageScene extends Phaser.Scene {
   private heroBar!: Phaser.GameObjects.Graphics;
   private tag!: Phaser.GameObjects.Text;
   private enemyViews = new Map<number, EnemyView>();
+  private pvpViews = new Map<string, PvpFighterView>();
   private chips: BuffChip[] = [];
   private embers!: Phaser.GameObjects.Particles.ParticleEmitter;
   private burst!: Phaser.GameObjects.Particles.ParticleEmitter;
   private queue: BattleEvent[] = [];
+  private pvpQueue: PvpEvent[] = [];
   private lastEnergyText = 0;
   private bgScroll = 0;
   private lastRunKey = '';
@@ -62,6 +71,7 @@ export class StageScene extends Phaser.Scene {
     this.load.image('bg-echo', asset('bg/bg-echoing-dark.jpg'));
     this.load.image('bg-void', asset('bg/bg-voidgate.jpg'));
     this.load.image('bg-nightscar', asset('bg/bg-nightscar-depths.jpg'));
+    this.load.image('bg-clan', asset('bg/bg-clan-arena.jpg'));
     for (const c of ['Warrior', 'Mage', 'Ranger', 'Rogue'] as HeroClass[]) {
       this.load.image(`hero-${c.toLowerCase()}`, heroSprite(c));
     }
@@ -83,6 +93,7 @@ export class StageScene extends Phaser.Scene {
     this.makeWideBg('bg-echo', 'echo');
     this.makeWideBg('bg-void', 'void');
     this.makeWideBg('bg-nightscar', 'nightscar');
+    this.makeWideBg('bg-clan', 'clan');
     this.heroKey = `hero-${this.game_.save.heroClass.toLowerCase()}`;
 
     const g = this.make.graphics({ x: 0, y: 0 }, false);
@@ -138,6 +149,7 @@ export class StageScene extends Phaser.Scene {
 
     this.unsub = this.game_.on((e) => {
       if (e.t === 'battle') this.queue.push(e.ev);
+      if (e.t === 'pvpFx') this.pvpQueue.push(e.ev);
     });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.unsub?.());
   }
@@ -171,9 +183,14 @@ export class StageScene extends Phaser.Scene {
     if (W < 10 || H < 10) return;
     const game = this.game_;
     const battle = game.battle;
-    const inBattle = game.mode !== 'camp' && !!battle;
+    const inPvp = game.mode === 'pvp' && !!game.pvpPlayback;
+    const inBattle = game.mode !== 'camp' && !!battle && !inPvp;
 
-    const runKey = battle ? `${battle.run.title}|${game.mode}` : 'camp';
+    const runKey = inPvp
+      ? `pvp|${game.pvpPlayback!.result.duration}`
+      : battle
+        ? `${battle.run.title}|${game.mode}`
+        : 'camp';
     if (runKey !== this.lastRunKey) {
       this.lastRunKey = runKey;
       this.resetViews();
@@ -183,12 +200,17 @@ export class StageScene extends Phaser.Scene {
     this.fx.clear();
     this.heroBar.clear();
 
-    if (inBattle && battle) this.renderBattle(battle, W, H, dt);
+    if (inPvp && game.pvpPlayback) this.renderPvp(game.pvpPlayback.fighters, W, H);
+    else if (inBattle && battle) this.renderBattle(battle, W, H, dt);
     else this.renderCamp(W, H);
 
     const q = this.queue;
     this.queue = [];
     for (const ev of q) this.handleEvent(ev, W, H);
+
+    const pq = this.pvpQueue;
+    this.pvpQueue = [];
+    for (const ev of pq) this.handlePvpEvent(ev, W, H);
   }
 
   private resetViews(): void {
@@ -197,7 +219,14 @@ export class StageScene extends Phaser.Scene {
       v.bar.destroy();
     }
     this.enemyViews.clear();
+    for (const v of this.pvpViews.values()) {
+      v.sprite.destroy();
+      v.bar.destroy();
+      v.tag?.destroy();
+    }
+    this.pvpViews.clear();
     this.queue = [];
+    this.pvpQueue = [];
     this.bgScroll = 0;
   }
 
@@ -524,6 +553,215 @@ export class StageScene extends Phaser.Scene {
       bar.fillCircle(x - h * 0.15, by - H * 0.022, H * 0.011);
       bar.fillCircle(x, by - H * 0.03, H * 0.011);
       bar.fillCircle(x + h * 0.15, by - H * 0.022, H * 0.011);
+    }
+  }
+
+  // ---- clan 4v4 stage -----------------------------------------------------
+
+  private hideSoloActors(): void {
+    this.hero.setVisible(false);
+    this.heroSleep.setVisible(false);
+    this.bubble.setVisible(false);
+    this.campProps.setVisible(false);
+    this.fireGlow.setVisible(false);
+    this.embers.emitting = false;
+    this.embers.setVisible(false);
+    this.tag.setVisible(false);
+    this.heroBar.clear();
+    for (const c of this.chips) c.img.setVisible(false);
+  }
+
+  private renderPvp(fighters: PvpPlaybackFighter[], W: number, H: number): void {
+    this.hideSoloActors();
+    const groundY = GROUND * H;
+    const seen = new Set<string>();
+    for (const f of fighters) {
+      seen.add(f.id);
+      let view = this.pvpViews.get(f.id);
+      if (!view) {
+        const key = `hero-${f.heroClass.toLowerCase()}`;
+        const sprite = this.add.image(0, 0, key).setOrigin(0.5, 1).setDepth(f.team === 'ally' ? 6 : 5);
+        if (f.team === 'enemy') {
+          sprite.setFlipX(true);
+          sprite.setTint(0xffc0c0);
+        }
+        const bar = this.add.graphics().setDepth(11);
+        let tag: Phaser.GameObjects.Text | null = null;
+        if (f.isPlayer) {
+          tag = this.add
+            .text(0, 0, '1P', {
+              fontFamily: 'Inter, sans-serif',
+              fontStyle: '800',
+              fontSize: '11px',
+              color: '#ffffff',
+              backgroundColor: '#2a6fe0',
+              padding: { x: 4, y: 1 },
+            })
+            .setOrigin(0.5, 1)
+            .setDepth(12);
+        }
+        view = { sprite, bar, tag };
+        this.pvpViews.set(f.id, view);
+      }
+      this.updatePvpFighterView(view, f, W, H, groundY);
+    }
+    for (const [id, view] of this.pvpViews) {
+      if (!seen.has(id)) {
+        view.sprite.destroy();
+        view.bar.destroy();
+        view.tag?.destroy();
+        this.pvpViews.delete(id);
+      }
+    }
+  }
+
+  private updatePvpFighterView(
+    view: PvpFighterView,
+    f: PvpPlaybackFighter,
+    W: number,
+    H: number,
+    groundY: number,
+  ): void {
+    const hH = H * 0.22;
+    const hW = hH * (360 / 343);
+    let x = f.x * W;
+    let y = groundY + H * 0.01;
+    let rot = 0;
+    if (!f.dead) {
+      y -= Math.abs(Math.sin(this.clock * 9 + f.x * 20)) * H * 0.006;
+      if (f.swingAnim > 0) {
+        const p = 1 - f.swingAnim / 0.28;
+        const dir = f.team === 'ally' ? 1 : -1;
+        x += Math.sin(Math.PI * Math.min(1, p)) * W * 0.035 * dir;
+        rot = Math.sin(Math.PI * Math.min(1, p)) * 0.18 * dir;
+      }
+    }
+    const s = view.sprite;
+    s.setDisplaySize(hW, hH);
+    s.setPosition(x, y);
+    s.setRotation(rot);
+    if (f.dead) {
+      const p = Math.min(1, f.deathT / 0.7);
+      s.setAlpha(1 - p);
+      s.setRotation(p * 0.7 * (f.team === 'ally' ? -1 : 1));
+      s.x += p * W * 0.03 * (f.team === 'ally' ? -1 : 1);
+      s.y -= Math.sin(p * Math.PI) * H * 0.025;
+      s.setTintFill(0xffffff);
+      view.bar.clear();
+      view.tag?.setVisible(false);
+      return;
+    }
+    s.setAlpha(1);
+    if (f.hitFlash > 0) s.setTintFill(0xffffff);
+    else if (f.team === 'enemy') s.setTint(0xffc0c0);
+    else s.clearTint();
+
+    const bar = view.bar;
+    bar.clear();
+    const bw = Math.max(H * 0.11, hW * 0.72);
+    const bh = H * 0.018;
+    const bx = x - bw / 2;
+    const by = y - hH - H * 0.015;
+    bar.fillStyle(0x120808, 0.92);
+    bar.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    bar.fillStyle(f.team === 'ally' ? 0xd23030 : 0xe8742a, 1);
+    bar.fillRect(bx, by, bw * Math.max(0, f.hp / f.maxHp), bh);
+    bar.lineStyle(1, 0xffffff, 0.3);
+    for (let i = 1; i < 4; i++) bar.lineBetween(bx + (bw * i) / 4, by, bx + (bw * i) / 4, by + bh);
+
+    if (view.tag) {
+      view.tag.setVisible(true);
+      view.tag.setPosition(x, by - H * 0.008);
+    }
+  }
+
+  private pvpFighterPos(
+    name: string | undefined,
+    team: 'ally' | 'enemy' | undefined,
+    W: number,
+    H: number,
+  ): { x: number; y: number } {
+    const pb = this.game_.pvpPlayback;
+    const groundY = GROUND * H;
+    if (!pb || !name) return { x: W * 0.5, y: groundY - H * 0.12 };
+    const f = pb.fighters.find((x) => x.name === name && (!team || x.team === team));
+    if (!f) return { x: W * 0.5, y: groundY - H * 0.12 };
+    const view = this.pvpViews.get(f.id);
+    if (view) return { x: view.sprite.x, y: view.sprite.y - view.sprite.displayHeight * 0.55 };
+    return { x: f.x * W, y: groundY - H * 0.14 };
+  }
+
+  private handlePvpEvent(ev: PvpEvent, W: number, H: number): void {
+    switch (ev.t) {
+      case 'skill': {
+        const actor = this.pvpFighterPos(ev.actor, ev.team, W, H);
+        const target = this.pvpFighterPos(ev.target, ev.targetTeam, W, H);
+        const t = this.floatText(actor.x, actor.y - H * 0.12, ev.skillName ?? 'Skill', {
+          color: '#e8c48a',
+          size: H * 0.07,
+          rise: H * 0.04,
+          life: 900,
+          stroke: '#2a1408',
+          family: '"Playfair Display", serif',
+          weight: '900',
+          pop: true,
+        });
+        t.setDepth(25);
+        if (ev.dmg != null) {
+          this.floatText(target.x + (Math.random() - 0.5) * W * 0.04, target.y, String(ev.dmg), {
+            color: ev.crit ? '#ffe14a' : '#ff9a1f',
+            size: H * (ev.crit ? 0.11 : 0.09),
+            rise: H * 0.16,
+            life: 850,
+            stroke: '#2a0c00',
+          });
+          if (ev.crit) this.cameras.main.shake(60, 0.002);
+          this.burst.explode(6, target.x, target.y);
+        }
+        break;
+      }
+      case 'hit': {
+        const target = this.pvpFighterPos(ev.target, ev.targetTeam, W, H);
+        if (ev.dmg != null) {
+          this.floatText(target.x + (Math.random() - 0.5) * W * 0.04, target.y, String(ev.dmg), {
+            color: ev.crit ? '#ffe14a' : '#ff9a1f',
+            size: H * (ev.crit ? 0.1 : 0.075),
+            rise: H * 0.14,
+            life: 750,
+            stroke: '#2a0c00',
+          });
+        }
+        break;
+      }
+      case 'kill': {
+        const target = this.pvpFighterPos(ev.target, ev.targetTeam, W, H);
+        this.burst.explode(14, target.x, target.y);
+        this.cameras.main.shake(100, 0.0035);
+        this.floatText(target.x, target.y - H * 0.06, 'Fallen!', {
+          color: '#ffb199',
+          size: H * 0.065,
+          rise: H * 0.06,
+          life: 900,
+          stroke: '#3a0a0a',
+        });
+        break;
+      }
+      case 'end': {
+        const t = this.floatText(W * 0.5, H * 0.22, ev.text, {
+          color: this.game_.pvpPlayback?.result.won ? '#ffe9a8' : '#ffb199',
+          size: H * 0.09,
+          rise: H * 0.03,
+          life: 1200,
+          stroke: '#2a1408',
+          family: '"Playfair Display", serif',
+          weight: '900',
+          pop: true,
+        });
+        t.setDepth(25);
+        break;
+      }
+      default:
+        break;
     }
   }
 
