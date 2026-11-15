@@ -633,11 +633,12 @@ button {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   grid-template-rows: repeat(4, 1fr);
+  /* Single Boots slot (DG-68); gloves/bracers absorb the old legs columns. */
   grid-template-areas:
     'weapon weapon chest chest helmet helmet shoulders shoulders boots boots amulet amulet'
     'weapon weapon chest chest helmet helmet shoulders shoulders boots boots medal ring'
-    'weapon weapon chest chest gloves bracers legs legs wing wing wing wing'
-    'weapon weapon belt belt gloves bracers legs legs wing wing wing wing';
+    'weapon weapon chest chest gloves gloves bracers bracers wing wing wing wing'
+    'weapon weapon belt belt gloves gloves bracers bracers wing wing wing wing';
   gap: 0.7cqw;
   flex: 1 1 auto;
   min-height: 0;

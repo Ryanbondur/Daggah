@@ -74,7 +74,7 @@ describe('durable save key', () => {
     };
     store.setItem(SAVE_KEY, JSON.stringify(future));
     const loaded = loadSave(store);
-    expect(loaded.version).toBe(3);
+    expect(loaded.version).toBe(4);
     expect(loaded.level).toBe(8);
     expect(loaded.loadout).toContain('frostbite');
   });

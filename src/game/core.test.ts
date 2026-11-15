@@ -66,8 +66,10 @@ describe('xp and progression', () => {
 });
 
 describe('gear', () => {
-  it('fills all 12 slots with starter gear', () => {
-    expect(Object.keys(starterGear('Ranger'))).toHaveLength(12);
+  it('fills all 11 slots with starter gear (single boots)', () => {
+    expect(Object.keys(starterGear('Ranger'))).toHaveLength(11);
+    expect(starterGear('Ranger').boots?.slot).toBe('boots');
+    expect(starterGear('Ranger')).not.toHaveProperty('legs');
     expect(starterGear('Mage').weapon?.name).toContain('Staff');
   });
 
@@ -152,7 +154,7 @@ describe('gear', () => {
     expect(gloom.hastePct).toBeGreaterThanOrEqual(8);
     expect(gloom.shadowstepCharges).toBeGreaterThanOrEqual(1);
     gear.shoulders = rollItem(rng, { gearLevel: 15, rarity: 'epic', slot: 'shoulders', setId: 'echoplate' });
-    gear.legs = rollItem(rng, { gearLevel: 15, rarity: 'epic', slot: 'legs', setId: 'echoplate' });
+    gear.bracers = rollItem(rng, { gearLevel: 15, rarity: 'epic', slot: 'bracers', setId: 'echoplate' });
     const echo = computeHero(15, gear, 'Rogue').effects;
     expect(echo.atkPct).toBeGreaterThanOrEqual(7);
   });
@@ -219,7 +221,9 @@ describe('save', () => {
     expect(back.level).toBe(6);
     expect(back.crystals).toBe(42);
     expect(back.heroClass).toBe('Mage');
-    expect(Object.keys(back.gear)).toHaveLength(12);
+    expect(Object.keys(back.gear)).toHaveLength(11);
+    expect(back.gear.boots?.slot).toBe('boots');
+    expect(back.gear).not.toHaveProperty('legs');
   });
 
   it('falls back to a fresh save on corrupt data', () => {
@@ -227,6 +231,81 @@ describe('save', () => {
     store.setItem(SAVE_KEY, '{not json');
     expect(loadSave(store).level).toBe(1);
     expect(loadSave(store).classPicked).toBe(false);
+  });
+
+  it('migrates dual legs+boots: keeps higher CP equipped, loser to bag', () => {
+    const store = memoryStorage();
+    const base = defaultSave(1_700_000_000_000);
+    base.classPicked = true;
+    const weakBoots = {
+      id: 'old-boots',
+      slot: 'boots' as const,
+      rarity: 'common' as const,
+      gearLevel: 1,
+      name: 'Muddy Boots',
+      icon: 'a' as const,
+      stats: { atk: 0, def: 1, hp: 10, critRate: 0, critDmg: 0, skillPower: 0, haste: 0, energyRegen: 0 },
+    };
+    const strongLegs = {
+      id: 'old-legs',
+      slot: 'legs',
+      rarity: 'epic' as const,
+      gearLevel: 4,
+      name: 'Warlord Greaves',
+      icon: 'a' as const,
+      stats: { atk: 0, def: 20, hp: 200, critRate: 0, critDmg: 0, skillPower: 0, haste: 2, energyRegen: 0 },
+    };
+    const legacy = {
+      ...base,
+      version: 3,
+      gear: { ...base.gear, boots: weakBoots, legs: strongLegs },
+      bag: [
+        {
+          id: 'bag-legs',
+          slot: 'legs',
+          rarity: 'rare' as const,
+          gearLevel: 2,
+          name: 'Bag Greaves',
+          icon: 'a' as const,
+          stats: { atk: 0, def: 5, hp: 40, critRate: 0, critDmg: 0, skillPower: 0, haste: 0, energyRegen: 0 },
+        },
+      ],
+    };
+    store.setItem(SAVE_KEY, JSON.stringify(legacy));
+    const loaded = loadSave(store);
+    expect(loaded.version).toBe(4);
+    expect(loaded.gear.boots?.id).toBe('old-legs');
+    expect(loaded.gear.boots?.slot).toBe('boots');
+    expect(loaded.gear).not.toHaveProperty('legs');
+    expect(loaded.bag.some((i) => i.id === 'old-boots')).toBe(true);
+    expect(loaded.bag.find((i) => i.id === 'bag-legs')?.slot).toBe('boots');
+  });
+
+  it('migrates legs-only gear onto the boots slot', () => {
+    const store = memoryStorage();
+    const base = defaultSave();
+    const legsOnly = {
+      ...base,
+      version: 3,
+      classPicked: true,
+      gear: {
+        ...base.gear,
+        boots: undefined,
+        legs: {
+          id: 'solo-legs',
+          slot: 'legs',
+          rarity: 'rare' as const,
+          gearLevel: 3,
+          name: 'Solo Greaves',
+          icon: 'a' as const,
+          stats: { atk: 0, def: 8, hp: 60, critRate: 0, critDmg: 0, skillPower: 0, haste: 0, energyRegen: 0 },
+        },
+      },
+    };
+    store.setItem(SAVE_KEY, JSON.stringify(legsOnly));
+    const loaded = loadSave(store);
+    expect(loaded.gear.boots?.id).toBe('solo-legs');
+    expect(loaded.gear.boots?.slot).toBe('boots');
   });
 });
 
@@ -240,6 +319,18 @@ describe('game gear flow', () => {
     expect(game.equip(item, true)).toBe(true);
     expect(game.save.gear.helmet?.id).toBe(item.id);
     expect(game.save.salvageCount).toBe(1);
+  });
+
+  it('equips boots into the single boots slot', () => {
+    const game = new Game(memoryStorage(), mulberry32(5));
+    game.pickClass('Warrior');
+    expect(Object.keys(game.save.gear)).toHaveLength(11);
+    expect(game.save.gear).not.toHaveProperty('legs');
+    const item = rollItem(mulberry32(12), { gearLevel: 1, rarity: 'rare', slot: 'boots' });
+    expect(game.compareFor(item).current?.slot).toBe('boots');
+    expect(game.equip(item, false)).toBe(true);
+    expect(game.save.gear.boots?.id).toBe(item.id);
+    expect(game.save.bag.some((i) => i.slot === 'boots')).toBe(true);
   });
 
   it('refuses gear above hero level', () => {

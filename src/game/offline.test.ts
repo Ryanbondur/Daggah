@@ -30,7 +30,6 @@ const SLOTS: SlotId[] = [
   'gloves',
   'bracers',
   'shoulders',
-  'legs',
   'boots',
   'amulet',
   'medal',
