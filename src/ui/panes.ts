@@ -97,14 +97,9 @@ function renderCampGear(ctx: UIContext): string {
   const tut = g.tutorialIsActive
     ? `<button class="chip tut-chip" data-action="tutorial">Tutorial</button>`
     : '';
-  const left = DAILY_SHOP_SIZE - g.save.shop.purchased.length;
-  return `<div class="camp-gear">
-    <div class="gear-grid">${slots}<div class="wing-fill">${ICON.wings}</div></div>
-    <button type="button" class="shop-cta" data-action="camp-pane" data-pane="shop">
-      <img src="${navIcon('gold')}" alt="" />
-      <span><b>Daily Shop</b><small>${left} offer${left === 1 ? '' : 's'} left today</small></span>
-      <i>Open</i>
-    </button>
+  /* Direct pane-inner children (no .camp-gear wrapper / shop CTA) so .gear-grid
+     flex:1 fills the parchment like the pre-Daily-Shop layout. */
+  return `<div class="gear-grid">${slots}<div class="wing-fill">${ICON.wings}</div></div>
     <div class="bottom-row">
       ${quest}
       <div class="round-btns">
@@ -113,8 +108,7 @@ function renderCampGear(ctx: UIContext): string {
         <button class="round-btn" data-action="hero" aria-label="Hero">${ICON.crown}</button>
         <button class="round-btn" data-action="settings" aria-label="Settings">${ICON.shield}</button>
       </div>
-    </div>
-  </div>`;
+    </div>`;
 }
 
 function renderCampShop(ctx: UIContext): string {
