@@ -92,9 +92,11 @@ import { buildDailyOffers, hashDayKey } from './shop';
 import type { SaveData, Storage } from './state';
 import {
   BAG_CAP,
-  DUNGEON_CRYSTAL_COST,
   KEY_CAP,
   KEY_REGEN_MS,
+  dungeonCrystalCost,
+  dungeonKeyCost,
+  formatDungeonKeyCost,
   msUntilNextKey,
   PLAYABLE_STAGES,
   STAGES_PER_ACT,
@@ -757,17 +759,22 @@ export class Game {
     return msUntilNextKey(this.save.keys, this.save.keysAt, now);
   }
 
-  private payDungeonEntry(): boolean {
+  private payDungeonEntry(actId: number): boolean {
     this.refreshKeys();
-    if (this.save.keys > 0) {
-      this.save.keys -= 1;
+    const keysNeeded = dungeonKeyCost(actId);
+    const crystalCost = dungeonCrystalCost(actId);
+    if (this.save.keys >= keysNeeded) {
+      this.save.keys -= keysNeeded;
       return true;
     }
-    if (this.save.crystals >= DUNGEON_CRYSTAL_COST) {
-      this.save.crystals -= DUNGEON_CRYSTAL_COST;
+    if (this.save.crystals >= crystalCost) {
+      this.save.crystals -= crystalCost;
       return true;
     }
-    this.toast(`Need 1 Dungeon Key or ${DUNGEON_CRYSTAL_COST} Crystals`, 'bad');
+    this.toast(
+      `Need ${formatDungeonKeyCost(keysNeeded)} or ${crystalCost} Crystals`,
+      'bad',
+    );
     return false;
   }
 
@@ -778,7 +785,7 @@ export class Game {
       return false;
     }
     if (this.mode === 'dungeon') return false;
-    if (!this.payDungeonEntry()) return false;
+    if (!this.payDungeonEntry(d.actId)) return false;
     this.dungeonCtx = { dungeon: d, loot: [], xp: 0 };
     this.battle = new Battle(this.buildDungeonRun(d), this.heroInput(), this.rng);
     this.mode = 'dungeon';
@@ -798,7 +805,7 @@ export class Game {
       return false;
     }
     if (this.mode === 'dungeon') return false;
-    if (!this.payDungeonEntry()) return false;
+    if (!this.payDungeonEntry(d.actId)) return false;
     const loot: Item[] = [];
     let xp = 0;
     const baseTier = stageTier(d.actId, 5) + 0.3;

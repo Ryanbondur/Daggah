@@ -735,10 +735,11 @@ export interface EnemyScale {
 /** Enemy stats for a given tier and role. Tuned against hero progression in game/sim.test.ts. */
 export function enemyScale(tier: number, role: EnemyRole): EnemyScale {
   // Soften after Act 2, 4, 6, then 8 so Acts 9-10 stay clearable with set farming.
+  // Softened further past Act 6 so act-scaled key costs (2–4) still allow set-farm clears.
   const growth =
-    tier <= 9 ? 1.22 : tier <= 19 ? 1.175 : tier <= 29 ? 1.14 : tier <= 39 ? 1.11 : 1.085;
+    tier <= 9 ? 1.22 : tier <= 19 ? 1.175 : tier <= 29 ? 1.13 : tier <= 39 ? 1.09 : 1.07;
   const atkGrowth =
-    tier <= 9 ? 1.15 : tier <= 19 ? 1.12 : tier <= 29 ? 1.1 : tier <= 39 ? 1.08 : 1.06;
+    tier <= 9 ? 1.15 : tier <= 19 ? 1.12 : tier <= 29 ? 1.095 : tier <= 39 ? 1.07 : 1.05;
   const hp = 55 * Math.pow(growth, tier);
   const atk = 9 * Math.pow(atkGrowth, tier);
   const def = 2 + tier * 2.0;

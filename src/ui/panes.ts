@@ -17,7 +17,13 @@ import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../gam
 import { NIGHTSCAR_PITY_MAX } from '../game/nightscarPity';
 import { DAILY_SHOP_SIZE } from '../game/shop';
 import { HERO_CLASSES } from '../data/types';
-import { KEY_CAP, STAGES_PER_ACT, formatKeyRegenLabel } from '../game/state';
+import {
+  KEY_CAP,
+  STAGES_PER_ACT,
+  dungeonKeyCost,
+  formatDungeonKeyCost,
+  formatKeyRegenLabel,
+} from '../game/state';
 import { asset, itemIcon, navIcon, skillIcon } from './assets';
 import type { CampPane, ClanPane, UIContext } from './context';
 import { fmt } from './context';
@@ -261,9 +267,10 @@ export function renderAdventure(ctx: UIContext): string {
       d.endgame && open
         ? ` <small style="font-weight:600;color:#6b655a">Pity ${s.nightscarPity ?? 0}/${NIGHTSCAR_PITY_MAX}</small>`
         : '';
+    const keyCostLabel = formatDungeonKeyCost(dungeonKeyCost(act.id));
     const buttons = open
-      ? `<button class="btn red" data-action="dungeon-enter" data-id="${d.id}">Enter<br /><small style="font-size:2.2cqw">1 Key</small></button>
-         <button class="btn gold ${cleared ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}">Sweep<br /><small style="font-size:2.2cqw">1 Key</small></button>`
+      ? `<button class="btn red" data-action="dungeon-enter" data-id="${d.id}">Enter<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>
+         <button class="btn gold ${cleared ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}">Sweep<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>`
       : `<div style="width:9cqw;height:9cqw">${ICON.lock}</div>`;
     return `<div class="act-card">
       <div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></div>
