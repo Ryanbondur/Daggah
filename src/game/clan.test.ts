@@ -112,9 +112,16 @@ describe('4v4 auto-battle', () => {
       if (e.t === 'pvp') saw = true;
     });
     expect(game.queueClanPvp()).toBeNull();
-    expect(saw).toBe(true);
+    expect(game.mode).toBe('pvp');
+    expect(game.pvpPlayback).toBeTruthy();
+    expect(game.pvpPlayback!.result.fighters).toHaveLength(8);
+    expect(game.pvpPlayback!.result.playback.length).toBeGreaterThan(0);
+    // Tokens award immediately; breakdown modal waits for stage playback.
     expect(game.save.clanTokens).toBeGreaterThanOrEqual(4); // Scout loss floor (bracket-scaled)
     expect(game.save.clanWins + game.save.clanLosses).toBe(1);
+    game.finishPvpPlayback();
+    expect(saw).toBe(true);
+    expect(game.mode).toBe('camp');
   });
 
   it('queuePractice4v4 creates Practice Hall, fills AI, and queues', () => {
@@ -129,8 +136,30 @@ describe('4v4 auto-battle', () => {
     expect(game.queuePractice4v4()).toBeNull();
     expect(game.clan?.name).toBe('Practice Hall');
     expect(game.clanRosterReady()).toBe(true);
-    expect(saw).toBe(true);
+    expect(game.mode).toBe('pvp');
     expect(game.save.clanWins + game.save.clanLosses).toBe(1);
+    // Tick playback to completion (sim clock advances via rate).
+    for (let i = 0; i < 400 && !saw; i++) game.tick(0.05);
+    expect(saw).toBe(true);
+    expect(game.mode).toBe('camp');
+  });
+
+  it('stage playback emits pvpFx then the existing breakdown event', () => {
+    const game = new Game(memoryStorage(), mulberry32(42));
+    game.pickClass('Warrior');
+    game.save.stagesCleared = 15;
+    expect(game.queuePractice4v4()).toBeNull();
+    expect(game.pvpPlayback!.introT).toBeGreaterThan(0);
+    let fx = 0;
+    let pvp = 0;
+    game.on((e) => {
+      if (e.t === 'pvpFx') fx += 1;
+      if (e.t === 'pvp') pvp += 1;
+    });
+    for (let i = 0; i < 800 && pvp === 0; i++) game.tick(0.05);
+    expect(fx).toBeGreaterThan(0);
+    expect(pvp).toBe(1);
+    expect(game.pvpPlayback).toBeNull();
   });
 
   it('recruitForRoster alias still fills one of each class', () => {

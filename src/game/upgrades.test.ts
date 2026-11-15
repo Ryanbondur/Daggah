@@ -169,6 +169,7 @@ describe('pvp replay strip data', () => {
       if (e.t === 'pvp') saw = e.result.log;
     });
     expect(game.queuePractice4v4()).toBeNull();
+    game.finishPvpPlayback();
     const castOrKill = saw.filter((e) => e.t === 'skill' || e.t === 'kill');
     expect(castOrKill.length).toBeGreaterThan(0);
     expect(castOrKill.some((e) => e.t === 'skill' && !!e.skillName)).toBe(true);

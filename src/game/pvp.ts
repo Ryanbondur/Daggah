@@ -18,6 +18,7 @@ export interface PvpFighter {
   heroClass: HeroClass;
   level: number;
   isAi: boolean;
+  isPlayer: boolean;
   stats: Stats;
   effects: SetEffects;
   loadout: SkillId[];
@@ -43,8 +44,21 @@ export interface PvpEvent {
   skillId?: SkillId;
   skillName?: string;
   target?: string;
+  targetTeam?: 'ally' | 'enemy';
   dmg?: number;
   crit?: boolean;
+}
+
+/** Initial arena layout for Phaser stage playback (presentation only). */
+export interface PvpFighterSnap {
+  id: string;
+  name: string;
+  team: 'ally' | 'enemy';
+  heroClass: HeroClass;
+  maxHp: number;
+  x: number;
+  isAi: boolean;
+  isPlayer: boolean;
 }
 
 export interface PvpResult {
@@ -53,7 +67,12 @@ export interface PvpResult {
   enemyKills: number;
   duration: number;
   timedOut: boolean;
+  /** Filtered cast/kill strip for the post-fight breakdown modal. */
   log: PvpEvent[];
+  /** Full timed log (incl. hits) for visual stage playback. */
+  playback: PvpEvent[];
+  /** Starting lineup + lane positions for the stage. */
+  fighters: PvpFighterSnap[];
   allyHpLeft: number;
   enemyHpLeft: number;
   allyTeam: { name: string; heroClass: HeroClass; hp: number; maxHp: number; isAi: boolean }[];
@@ -100,8 +119,9 @@ function fighterFromMember(
   const stats = scaleStats(totals.stats, totals.effects.pvpCpPct);
   const primary = m.primary && loadout.includes(m.primary) ? m.primary : defaultPrimary(loadout);
   const maxEn = maxEnergy(level);
-  const side = team === 'ally' ? 0.2 : 0.8;
-  const classOffset = HERO_CLASSES.indexOf(m.heroClass) * 0.06;
+  // Spread lanes across the short portrait stage band (allies left / foes right).
+  const lane = HERO_CLASSES.indexOf(m.heroClass);
+  const x = team === 'ally' ? 0.1 + lane * 0.1 : 0.6 + lane * 0.1;
   const isAi = m.isPlayer ? false : m.isAi !== false;
   return {
     id: `${team}_${m.id}`,
@@ -110,6 +130,7 @@ function fighterFromMember(
     heroClass: m.heroClass,
     level,
     isAi,
+    isPlayer: !!m.isPlayer,
     stats,
     effects: totals.effects,
     loadout,
@@ -121,7 +142,7 @@ function fighterFromMember(
     cd: {},
     swingT: 0.3 + rng.next() * 0.5,
     dead: false,
-    x: side + (team === 'ally' ? classOffset : -classOffset),
+    x,
   };
 }
 
@@ -264,6 +285,7 @@ export function simulatePvp(
           skillId: cast,
           skillName: SKILL_BY_ID[cast].name,
           target: target.name,
+          targetTeam: target.team,
           dmg,
           crit,
         });
@@ -279,6 +301,7 @@ export function simulatePvp(
             actorClass: f.heroClass,
             team: f.team,
             target: target.name,
+            targetTeam: target.team,
           });
           if (f.effects.onKillHealPct > 0) {
             f.hp = Math.min(f.maxHp, f.hp + f.maxHp * (f.effects.onKillHealPct / 100));
@@ -298,6 +321,7 @@ export function simulatePvp(
           actorClass: f.heroClass,
           team: f.team,
           target: target.name,
+          targetTeam: target.team,
           dmg,
           crit,
         });
@@ -313,6 +337,7 @@ export function simulatePvp(
             actorClass: f.heroClass,
             team: f.team,
             target: target.name,
+            targetTeam: target.team,
           });
         }
       }
@@ -353,6 +378,17 @@ export function simulatePvp(
   const practiceAi =
     fighters.some((f) => f.team === 'ally' && f.isAi) || fighters.some((f) => f.team === 'enemy' && f.isAi);
 
+  const fighterSnaps: PvpFighterSnap[] = fighters.map((f) => ({
+    id: f.id,
+    name: f.name,
+    team: f.team,
+    heroClass: f.heroClass,
+    maxHp: f.maxHp,
+    x: f.x,
+    isAi: f.isAi,
+    isPlayer: f.isPlayer,
+  }));
+
   return {
     won,
     allyKills,
@@ -360,6 +396,8 @@ export function simulatePvp(
     duration: Math.round(time * 10) / 10,
     timedOut,
     log: log.filter((e) => e.t !== 'hit').slice(-48),
+    playback: log,
+    fighters: fighterSnaps,
     allyHpLeft: Math.round(allyHpLeft),
     enemyHpLeft: Math.round(enemyHpLeft),
     allyTeam: snap('ally'),

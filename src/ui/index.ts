@@ -249,9 +249,24 @@ export function mountUI(
     const nodes = game.trackNodes;
     const cur = game.currentNodeIndex;
     const pct = game.progressPct;
-    const key = `${nodes.join(',')}|${cur}|${pct}|${game.inBattle}`;
+    const pb = game.pvpPlayback;
+    const pvpScore = pb ? `${pb.result.allyKills}-${pb.result.enemyKills}@${pb.nextIdx}` : '';
+    const key = `${nodes.join(',')}|${cur}|${pct}|${game.inBattle}|${game.mode}|${pvpScore}`;
     if (key === lastTrackKey && !force) return;
     lastTrackKey = key;
+    if (game.mode === 'pvp' && pb) {
+      // Count kills already applied in playback for a live score pip.
+      let allyK = 0;
+      let enemyK = 0;
+      for (let i = 0; i < pb.nextIdx; i++) {
+        const ev = pb.result.playback[i];
+        if (ev?.t !== 'kill') continue;
+        if (ev.team === 'ally') allyK += 1;
+        else enemyK += 1;
+      }
+      $('#track').innerHTML = `<span class="portal">${ICON.swords}</span><span class="pvp-score">${allyK}–${enemyK}</span>`;
+      return;
+    }
     const portal = game.inBattle ? `<span class="portal">${ICON.portal}</span>` : '';
     $('#track').innerHTML =
       portal +
@@ -268,10 +283,12 @@ export function mountUI(
 
   function updateHud(): void {
     const b = game.battle;
-    const inBattle = game.inBattle && !!b;
+    const inPvp = game.mode === 'pvp';
+    const inBattle = (game.inBattle && !!b) || inPvp;
     const totals = game.totals;
-    const hpMax = inBattle && b ? b.hero.maxHp : totals.stats.hp;
-    const hp = inBattle && b ? Math.max(0, b.hero.hp) : hpMax;
+    const playerF = inPvp ? game.pvpPlayback?.fighters.find((f) => f.isPlayer) : null;
+    const hpMax = inBattle && b ? b.hero.maxHp : playerF ? playerF.maxHp : totals.stats.hp;
+    const hp = inBattle && b ? Math.max(0, b.hero.hp) : playerF ? Math.max(0, playerF.hp) : hpMax;
     const enMax = inBattle && b ? b.hero.maxEnergy : 500 + game.save.level * 10;
     const en = inBattle && b ? b.hero.energy : enMax * 0.5;
     $('#hp-fill').style.height = `${(hp / hpMax) * 100}%`;
@@ -291,7 +308,12 @@ export function mountUI(
     btn.classList.toggle('fighting', inBattle);
     const loadout = game.heroInput().loadout;
     const prim = game.save.primary && loadout.includes(game.save.primary) ? game.save.primary : defaultPrimary(loadout);
-    if (inBattle && b && prim) {
+    if (inPvp) {
+      btn.classList.remove('ready');
+      btn.style.setProperty('--cd', '0%');
+      const costEl = $('#battle-cost');
+      if (costEl.textContent !== 'Skip') costEl.textContent = 'Skip';
+    } else if (inBattle && b && prim) {
       const img = $('#battle-skill') as unknown as HTMLImageElement;
       const src = skillIcon(prim);
       if (img.getAttribute('src') !== src) img.setAttribute('src', src);
@@ -342,6 +364,11 @@ export function mountUI(
         if (ev.t === 'hit') playSfx(ev.crit ? 'crit' : 'hit', game.muted);
         else if (ev.t === 'skill') playSfx('skill', game.muted);
         else if (ev.t === 'heroHit') playSfx('heroHit', game.muted);
+        break;
+      }
+      case 'pvpFx': {
+        if (e.ev.t === 'skill') playSfx('skill', game.muted);
+        else if (e.ev.t === 'hit' || e.ev.t === 'kill') playSfx(e.ev.crit ? 'crit' : 'hit', game.muted);
         break;
       }
       case 'toast': {
@@ -403,7 +430,9 @@ export function mountUI(
     const d = el.dataset;
     switch (d.action) {
       case 'battle':
-        if (game.inBattle) {
+        if (game.mode === 'pvp') {
+          game.finishPvpPlayback();
+        } else if (game.inBattle) {
           if (!game.forceCast()) game.toast('Primary skill not ready', 'info');
         } else {
           void withStage(() => {
@@ -561,8 +590,10 @@ export function mountUI(
         break;
       }
       case 'clan-practice': {
-        const err = game.queuePractice4v4();
-        if (err) game.toast(err, 'bad');
+        void withStage(() => {
+          const err = game.queuePractice4v4();
+          if (err) game.toast(err, 'bad');
+        });
         break;
       }
       case 'clan-queue': {
@@ -570,8 +601,10 @@ export function mountUI(
           game.toast('Need one of each class — Fill AI roster', 'bad');
           break;
         }
-        const err = game.queueClanPvp();
-        if (err) game.toast(err, 'bad');
+        void withStage(() => {
+          const err = game.queueClanPvp();
+          if (err) game.toast(err, 'bad');
+        });
         break;
       }
       case 'clan-queue-challenge': {
@@ -579,8 +612,10 @@ export function mountUI(
           game.toast('Need one of each class — Fill AI roster', 'bad');
           break;
         }
-        const err = game.queueClanPvp({ challengeUp: true });
-        if (err) game.toast(err, 'bad');
+        void withStage(() => {
+          const err = game.queueClanPvp({ challengeUp: true });
+          if (err) game.toast(err, 'bad');
+        });
         break;
       }
       case 'clan-leave':
