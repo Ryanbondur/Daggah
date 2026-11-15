@@ -120,16 +120,13 @@ async function postAuth(
       data = {};
     }
     if (!res.ok) {
-      // Prefer machine code (UI maps it); fall back to hint, then a stable status token
-      // (never bare "http 500" — hosted crashes often return plain text, not JSON).
+      const code = typeof data.error === 'string' ? data.error : '';
+      const hint = typeof data.hint === 'string' ? data.hint : '';
+      // Prefer hint for opaque internals; never bare "http 500".
       const err =
-        typeof data.error === 'string' && data.error
-          ? data.error
-          : typeof data.hint === 'string' && data.hint
-            ? data.hint
-            : res.status >= 500
-              ? 'server_error'
-              : `http_${res.status}`;
+        (code === 'internal' || code === 'server_error') && hint
+          ? hint
+          : code || hint || (res.status >= 500 ? 'server_error' : `http_${res.status}`);
       return { ok: false, error: err, status: res.status };
     }
     const token = typeof data.token === 'string' ? data.token : '';
