@@ -12,8 +12,14 @@ import {
   skillsForPlaystyle,
 } from '../data/skills';
 import type { PlaystyleId, SkillId } from '../data/types';
+import {
+  ASCENDED_NIGHTSCAR,
+  ASCENDED_SEAL_FRAGMENTS_PER_SEAL,
+  formatAscendedEntryCost,
+} from '../game/ascended';
 import { CLAN_CREATE_COST, TOKEN_DAY_CAP, buildClanLeaderboard } from '../game/clan';
 import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../game/clanBrackets';
+import { CLAN_RAID_WEEKLY_ATTEMPTS } from '../game/clanRaid';
 import { NIGHTSCAR_PITY_MAX } from '../game/nightscarPity';
 import { DAILY_SHOP_SIZE } from '../game/shop';
 import { HERO_CLASSES } from '../data/types';
@@ -32,12 +38,16 @@ import { escapeHtml } from './escape';
 import { slotHtml } from './items';
 import { ICON } from './svg';
 
-/** Shared Gold + Keys + Crystals strip (Adventure / Camp Shop / Town). */
-export function currencyStrip(ctx: UIContext, opts: { keys?: boolean; dust?: boolean; keyTimer?: boolean } = {}): string {
+/** Shared Gold + Keys + Crystals (+ optional Ascended Seals) strip. */
+export function currencyStrip(
+  ctx: UIContext,
+  opts: { keys?: boolean; dust?: boolean; keyTimer?: boolean; seals?: boolean } = {},
+): string {
   const g = ctx.game;
   const s = g.save;
   const showKeys = opts.keys !== false;
   const showDust = !!opts.dust;
+  const showSeals = opts.seals !== false;
   let keyChip = '';
   if (showKeys) {
     if (opts.keyTimer !== false) {
@@ -48,10 +58,14 @@ export function currencyStrip(ctx: UIContext, opts: { keys?: boolean; dust?: boo
       keyChip = `<span class="res"><img src="${navIcon('key')}" alt="" />${s.keys}/${KEY_CAP}</span>`;
     }
   }
+  const sealChip = showSeals
+    ? `<span class="res res-seals" title="Ascended Seals · ${s.ascendedSealFragments} fragments">${ICON.seal}<b>${s.ascendedSeals}</b><small class="seal-frags">${s.ascendedSealFragments}f</small></span>`
+    : '';
   return `<div class="res-bar currency-strip" role="group" aria-label="Currencies">
     <span class="res"><img src="${navIcon('gold')}" alt="" /><b>${fmt(s.gold)}</b></span>
     ${keyChip}
     <span class="res"><img src="${navIcon('crystal')}" alt="" />${fmt(s.crystals)}</span>
+    ${sealChip}
     ${showDust ? `<span class="res"><i class="dust"></i>${fmt(s.dust)}</span>` : ''}
   </div>`;
 }
@@ -240,10 +254,65 @@ function fmtSeasonRemain(ms: number): string {
   return `${d}d ${h}h`;
 }
 
+function renderAscendedNightscarRow(ctx: UIContext): string {
+  const g = ctx.game;
+  const s = g.save;
+  const d = ASCENDED_NIGHTSCAR;
+  const open = g.ascendedUnlocked();
+  const clears = s.dungeons[d.id]?.clears ?? 0;
+  const sweepReady = g.dungeonSweepUnlocked(d);
+  const afford = open && g.canAffordAscendedEntry();
+  const costLabel = formatAscendedEntryCost();
+  const pityHint = open
+    ? ` <small style="font-weight:600;color:#6b655a">Pity ${s.ascendedPity ?? 0}/${NIGHTSCAR_PITY_MAX}</small>`
+    : '';
+  const sweepHint = open
+    ? sweepReady
+      ? ''
+      : `  -  Sweep at ${SWEEP_UNLOCK_CLEARS} clears (${clears}/${SWEEP_UNLOCK_CLEARS})`
+    : '';
+  const enterTitle = afford
+    ? `Enter Ascended for ${costLabel}`
+    : `Need ${costLabel} (keys ${s.keys}, seals ${s.ascendedSeals})`;
+  const sweepTitle = !sweepReady
+    ? `Clear ${SWEEP_UNLOCK_CLEARS} times to unlock Sweep (${clears}/${SWEEP_UNLOCK_CLEARS})`
+    : afford
+      ? `Sweep Ascended for ${costLabel}`
+      : `Need ${costLabel} (keys ${s.keys}, seals ${s.ascendedSeals})`;
+  const buttons = open
+    ? `<button class="btn red ascended-btn ${afford ? '' : 'disabled'}" data-action="dungeon-enter" data-id="${d.id}" title="${escapeHtml(enterTitle)}" ${afford ? '' : 'aria-disabled="true"'}>Enter<br /><small style="font-size:2cqw">${costLabel}</small></button>
+       <button class="btn gold ascended-btn ${sweepReady && afford ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}" title="${escapeHtml(sweepTitle)}" ${sweepReady && afford ? '' : 'aria-disabled="true"'}>Sweep<br /><small style="font-size:2cqw">${costLabel}</small></button>`
+    : `<div style="width:9cqw;height:9cqw">${ICON.lock}</div>`;
+  return `<div class="dg ascended ${open ? '' : 'locked'}">
+    <div class="dn"><b>${ICON.seal} Ascended Nightscar · Harder</b><span>${
+      open
+        ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${sweepHint}  -  better BiS odds${pityHint}`
+        : 'Clear Nightscar Depths to unlock'
+    }</span><br /><span>Costs ${costLabel}. Clearable without BiS — BiS is lucky upside.</span></div>
+    ${buttons}
+  </div>`;
+}
+
+function renderSealCraftPanel(ctx: UIContext): string {
+  const g = ctx.game;
+  const s = g.save;
+  const canCraft = s.ascendedSealFragments >= ASCENDED_SEAL_FRAGMENTS_PER_SEAL;
+  return `<div class="seal-panel" data-seal-panel>
+    <div class="seal-panel-head">
+      <span class="seal-ico">${ICON.seal}</span>
+      <div>
+        <b>Ascended Seals</b>
+        <span>${s.ascendedSeals} seals · ${s.ascendedSealFragments} fragments (${ASCENDED_SEAL_FRAGMENTS_PER_SEAL} → 1)</span>
+      </div>
+    </div>
+    <button type="button" class="btn stone ${canCraft ? '' : 'disabled'}" data-action="craft-seal" ${canCraft ? '' : 'aria-disabled="true"'} title="Craft Ascended Seal from fragments">Craft Seal</button>
+  </div>`;
+}
+
 export function renderAdventure(ctx: UIContext): string {
   const g = ctx.game;
   const s = g.save;
-  const res = currencyStrip(ctx, { dust: true, keyTimer: true });
+  const res = currencyStrip(ctx, { dust: true, keyTimer: true, seals: true });
   const power = g.stagePowerReadout(s.currentStage);
   const powerCls = power.underpowered ? 'low' : 'ok';
   const acts = ACTS.map((act) => {
@@ -288,6 +357,7 @@ export function renderAdventure(ctx: UIContext): string {
       ? `<button class="btn red ${keysOk ? '' : 'disabled'}" data-action="dungeon-enter" data-id="${d.id}" title="${escapeHtml(enterTitle)}" ${keysOk ? '' : 'aria-disabled="true"'}>Enter<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>
          <button class="btn gold ${sweepReady && keysOk ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}" title="${escapeHtml(sweepTitle)}" ${sweepReady && keysOk ? '' : 'aria-disabled="true"'}>Sweep<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>`
       : `<div style="width:9cqw;height:9cqw">${ICON.lock}</div>`;
+    const ascendedRow = act.id === 10 ? renderAscendedNightscarRow(ctx) : '';
     return `<div class="act-card">
       <div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></div>
       <div class="stage-row">${chips}</div>
@@ -295,11 +365,13 @@ export function renderAdventure(ctx: UIContext): string {
         <div class="dn"><b>${d.name}${d.endgame ? ' · Endgame' : ''}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${sweepHint}${d.endgame ? '  -  stingy drops' : ''}${pityHint}` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
         ${buttons}
       </div>
+      ${ascendedRow}
     </div>`;
   }).join('');
   return `<div class="pane-inner scroll">
     <div class="tab-title">Adventure <small>[Normal]</small></div>
     ${res}
+    ${renderSealCraftPanel(ctx)}
     <div class="cp-vs-stage ${powerCls}">
       <span>Your CP <b>${fmt(power.yourCp)}</b></span>
       <span>Stage rec <b>${fmt(power.recCp)}</b></span>
@@ -371,6 +443,14 @@ function renderClanHallPane(ctx: UIContext): string {
       ? `<button type="button" class="btn gold ${ready ? '' : 'disabled'}" data-action="clan-queue-challenge">Challenge up → ${escapeHtml(bracket.nextLabel)}</button>`
       : '';
 
+  const raid = g.clanRaidStatus();
+  const raidReady = raid.unlocked && raid.attemptsLeft > 0;
+  const raidLockNote = !raid.unlocked
+    ? 'Clear Nightscar Depths (Act 10) to unlock Clan Raid.'
+    : raid.attemptsLeft <= 0
+      ? `No attempts left this week (${CLAN_RAID_WEEKLY_ATTEMPTS}/${CLAN_RAID_WEEKLY_ATTEMPTS}).`
+      : 'Solo AI boss stub — seals & fragments only (no marks / chests / bracket bonus).';
+
   return `<div class="clan-panel">
     <div class="clan-banner clan-banner-pane">
       <img src="${asset('ui/clan-hall.webp')}" alt="" />
@@ -386,6 +466,17 @@ function renderClanHallPane(ctx: UIContext): string {
         <b>Team CP ${fmt(bracket.teamCp)}</b>
         <span>${escapeHtml(bracketRangeLabel(bracket.bracket))} · Challenge-up ${bracket.challengeUpLeft}/1 today</span>
       </div>
+    </div>
+    <div class="clan-raid-card">
+      <div class="clan-raid-head">
+        <span class="seal-ico">${ICON.seal}</span>
+        <div>
+          <b>Clan Raid</b>
+          <span>${raid.attemptsLeft}/${raid.attemptsMax} attempts · Seals ${raid.seals} · Fragments ${raid.fragments}</span>
+        </div>
+      </div>
+      <p class="tagline">${escapeHtml(raidLockNote)}</p>
+      <button type="button" class="btn red ${raidReady ? '' : 'disabled'}" data-action="clan-raid" ${raidReady ? '' : 'aria-disabled="true"'}>Start Clan Raid</button>
     </div>
     <p class="ai-banner">AI teammates &amp; rivals until live multiplayer. Your class stays human.</p>
     <div class="clan-roster">${rows}</div>

@@ -1347,7 +1347,18 @@ export function showResult(ctx: UIContext, r: RunResult): void {
   const g = ctx.game;
   let body = '';
   let buttons = '';
-  if (r.kind === 'dungeon') {
+  if (r.kind === 'clanRaid') {
+    const seals = r.ascendedSeals ?? 0;
+    const frags = r.ascendedSealFragments ?? 0;
+    body = `<p>${r.success ? 'Raid boss defeated!' : escapeHtml(r.note ?? '')}</p>
+      <div class="row"><span>XP gained</span><b>${fmt(r.xp)}</b></div>
+      ${seals ? `<div class="row"><span>Ascended Seals</span><b>+${seals}</b></div>` : ''}
+      ${frags ? `<div class="row"><span>Seal Fragments</span><b>+${frags}</b></div>` : ''}
+      <div class="row"><span>Seals owned</span><b>${g.save.ascendedSeals}</b></div>
+      ${r.success && r.note ? `<p>${escapeHtml(r.note)}</p>` : ''}
+      <p class="tagline">No gear, marks, or participation chests — seals feed Ascended Nightscar.</p>`;
+    buttons = `<button class="btn gold" data-action="res-ok">OK</button>`;
+  } else if (r.kind === 'dungeon') {
     const highlights = r.loot.map((it) =>
       lootCompareHighlight(g.save.level, g.save.gear, it, g.save.heroClass, g.save.loadout),
     );

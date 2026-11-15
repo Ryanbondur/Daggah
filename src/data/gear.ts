@@ -99,7 +99,10 @@ export type DropSource =
   | 'dungeon-boss'
   | 'nightscar-floor'
   | 'nightscar-mini'
-  | 'nightscar-boss';
+  | 'nightscar-boss'
+  | 'ascended-floor'
+  | 'ascended-mini'
+  | 'ascended-boss';
 
 const DROP_WEIGHTS: Record<DropSource, Record<RarityId, number>> = {
   'stage-boss': { common: 70, rare: 25, epic: 5, legendary: 0 },
@@ -111,6 +114,10 @@ const DROP_WEIGHTS: Record<DropSource, Record<RarityId, number>> = {
   'nightscar-floor': { common: 65, rare: 28, epic: 6, legendary: 1 },
   'nightscar-mini': { common: 50, rare: 35, epic: 12, legendary: 3 },
   'nightscar-boss': { common: 20, rare: 40, epic: 28, legendary: 12 },
+  // Ascended Nightscar: higher BiS odds; still lucky, not guaranteed.
+  'ascended-floor': { common: 48, rare: 30, epic: 17, legendary: 5 },
+  'ascended-mini': { common: 32, rare: 34, epic: 24, legendary: 10 },
+  'ascended-boss': { common: 10, rare: 28, epic: 40, legendary: 22 },
 };
 
 /** Base drop weights for a source (before Nightscar soft pity). */
@@ -119,12 +126,13 @@ export function baseDropWeights(source: DropSource): Record<RarityId, number> {
 }
 
 /**
- * Resolve rarity weights. `pity` only affects Nightscar Apex sources
- * (`nightscar-*`); other tables ignore it.
+ * Resolve rarity weights. `pity` only affects Nightscar / Ascended Apex sources
+ * (`nightscar-*`, `ascended-*`); other tables ignore it.
  */
 export function dropWeightsFor(source: DropSource, pity = 0): Record<RarityId, number> {
   const base = baseDropWeights(source);
-  if (!source.startsWith('nightscar-') || pity <= 0) return base;
+  const pityable = source.startsWith('nightscar-') || source.startsWith('ascended-');
+  if (!pityable || pity <= 0) return base;
   return applyNightscarSoftPity(base, pity);
 }
 

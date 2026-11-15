@@ -534,6 +534,20 @@ export function mountUI(
       case 'dungeon-sweep':
         game.sweepDungeon(d.id!);
         break;
+      case 'craft-seal': {
+        const err = game.craftAllAscendedSeals();
+        if (err) game.toast(err, 'info');
+        ctx.render();
+        break;
+      }
+      case 'clan-raid': {
+        void withStage(() => {
+          const err = game.startClanRaid();
+          if (err) game.toast(err, 'bad');
+          else ctx.setTab('camp');
+        });
+        break;
+      }
       case 'camp-pane': {
         const paneId = d.pane as CampPane;
         if (paneId === 'gear' || paneId === 'shop') {

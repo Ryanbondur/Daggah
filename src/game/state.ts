@@ -13,6 +13,8 @@ import {
   sanitizeClanCode,
   sanitizeClanName,
 } from './clan';
+import { normalizeNonNegInt } from './ascended';
+import { clanRaidWeekKey } from './clanRaid';
 import { normalizeNightscarPity } from './nightscarPity';
 import type { DailyShopSave } from './shop';
 import { defaultDailyShop, normalizeDailyShop } from './shop';
@@ -163,6 +165,19 @@ export interface SaveData {
    * Soft-ramps endgame drop odds; resets on high-tier success. Cap 8.
    */
   nightscarPity: number;
+  /**
+   * Consecutive dry Ascended Nightscar clears/sweeps (no Epic/Legendary).
+   * Soft-ramps ascended drop odds independently of normal Apex pity.
+   */
+  ascendedPity: number;
+  /** Full Ascended Seals — premium entry for Ascended Nightscar. */
+  ascendedSeals: number;
+  /** Fragments craft into Ascended Seals (see ASCENDED_SEAL_FRAGMENTS_PER_SEAL). */
+  ascendedSealFragments: number;
+  /** ISO week key when clan raid attempts were last spent. */
+  clanRaidWeekKey: string;
+  /** Clan Raid attempts used in the current week. */
+  clanRaidAttemptsUsed: number;
 }
 
 export function defaultSave(now = Date.now()): SaveData {
@@ -223,6 +238,11 @@ export function defaultSave(now = Date.now()): SaveData {
     shop: defaultDailyShop(now),
     savedAt: now,
     nightscarPity: 0,
+    ascendedPity: 0,
+    ascendedSeals: 0,
+    ascendedSealFragments: 0,
+    clanRaidWeekKey: clanRaidWeekKey(now),
+    clanRaidAttemptsUsed: 0,
   };
 }
 
@@ -382,6 +402,11 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   | 'seasonLoginDays'
   | 'daily'
   | 'shop'
+  | 'ascendedPity'
+  | 'ascendedSeals'
+  | 'ascendedSealFragments'
+  | 'clanRaidWeekKey'
+  | 'clanRaidAttemptsUsed'
 > {
   const day = new Date(now).toISOString().slice(0, 10);
   const tut = parsed.tutorial;
@@ -429,6 +454,14 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
           }
         : { ...fresh.daily, dayKey: day },
     shop: normalizeDailyShop(parsed.shop, fresh.shop),
+    ascendedPity: normalizeNightscarPity(parsed.ascendedPity),
+    ascendedSeals: normalizeNonNegInt(parsed.ascendedSeals),
+    ascendedSealFragments: normalizeNonNegInt(parsed.ascendedSealFragments),
+    clanRaidWeekKey:
+      typeof parsed.clanRaidWeekKey === 'string' && parsed.clanRaidWeekKey
+        ? parsed.clanRaidWeekKey
+        : clanRaidWeekKey(now),
+    clanRaidAttemptsUsed: normalizeNonNegInt(parsed.clanRaidAttemptsUsed, 99),
   };
 }
 
