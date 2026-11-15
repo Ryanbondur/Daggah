@@ -5,7 +5,9 @@ import { handleDaggahSaveApi } from './src/lib/httpAdapter';
 export function daggahApiPlugin(): Plugin {
   return {
     name: 'daggah-api',
-    configureServer(server) {
+    async configureServer(server) {
+      // Register in-memory PGlite before any API hit (not used on the hosted publish build).
+      await import('./src/lib/dbPglite');
       server.middlewares.use(async (req, res, next) => {
         try {
           if (await handleDaggahSaveApi(req, res)) return;
@@ -18,7 +20,8 @@ export function daggahApiPlugin(): Plugin {
         next();
       });
     },
-    configurePreviewServer(server) {
+    async configurePreviewServer(server) {
+      await import('./src/lib/dbPglite');
       server.middlewares.use(async (req, res, next) => {
         try {
           if (await handleDaggahSaveApi(req, res)) return;

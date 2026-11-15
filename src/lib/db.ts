@@ -1,17 +1,25 @@
-// server-only — Postgres when DATABASE_URL is set; in-memory PGlite for local/tests.
-// PGlite and `pg` are loaded lazily so hosted API bundles do not evaluate WASM at import time
-// (top-level PGlite import can crash the serverless function → FUNCTION_INVOCATION_FAILED).
+// server-only — Postgres via DATABASE_URL (hosted + local with a URL).
+// PGlite lives in ./dbPglite.ts and is registered only by Vite/tests — never import
+// @electric-sql/pglite from this module (WASM in the API bundle → FUNCTION_INVOCATION_FAILED).
 
-import type { PGlite } from '@electric-sql/pglite';
-import type pg from 'pg';
+type SqlFn = <T = Record<string, unknown>>(text: string, params?: unknown[]) => Promise<T[]>;
+
+type PgPool = {
+  query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
+  connect: () => Promise<{
+    query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
+    release: () => void;
+  }>;
+};
 
 const databaseUrl = process.env.DATABASE_URL?.trim() ?? '';
 /** Hosted Cursor / Vercel apps should always get DATABASE_URL from cursor-app.json. */
 const hosted = Boolean(process.env.VERCEL || process.env.CURSOR_APP_ID);
 
-let pool: pg.Pool | undefined;
-let local: Promise<PGlite> | undefined;
+let pool: PgPool | undefined;
 let schemaReady: Promise<void> | undefined;
+/** Injected by dbPglite.ts for local dev / vitest when DATABASE_URL is unset. */
+let localSql: SqlFn | undefined;
 
 export class DatabaseUnavailableError extends Error {
   readonly code = 'database_unavailable' as const;
@@ -21,8 +29,15 @@ export class DatabaseUnavailableError extends Error {
   }
 }
 
-export function dbMode(): 'postgres' | 'pglite' {
-  return databaseUrl !== '' ? 'postgres' : 'pglite';
+export function dbMode(): 'postgres' | 'pglite' | 'none' {
+  if (databaseUrl !== '') return 'postgres';
+  if (localSql) return 'pglite';
+  return 'none';
+}
+
+/** Used by src/lib/dbPglite.ts — do not call from API routes. */
+export function registerLocalSql(fn: SqlFn): void {
+  localSql = fn;
 }
 
 export function isDatabaseUnavailable(error: unknown): boolean {
@@ -46,23 +61,28 @@ export async function sql<T = Record<string, unknown>>(
     await ensurePostgresSchema(p);
     return (await p.query(text, params)).rows as T[];
   }
+  if (localSql) {
+    return localSql<T>(text, params);
+  }
   if (hosted) {
     throw new DatabaseUnavailableError(
       'DATABASE_URL is not set on the hosted app; cloud auth/saves need Postgres',
     );
   }
-  local ??= startLocal().catch((error: unknown) => {
-    local = undefined;
-    throw error;
-  });
-  return (await (await local).query<T>(text, params)).rows;
+  throw new DatabaseUnavailableError(
+    'No database: set DATABASE_URL or load src/lib/dbPglite.ts for local PGlite',
+  );
 }
 
-async function getPool(): Promise<pg.Pool> {
+async function getPool(): Promise<PgPool> {
   if (pool) return pool;
+  // Dynamic import — avoid a static `pg` edge into the module graph where possible.
   const mod = await import('pg');
-  const Pg = mod.default;
-  pool = new Pg.Pool({ connectionString: databaseUrl, max: 5 });
+  const Pool = mod.default.Pool as unknown as new (opts: {
+    connectionString: string;
+    max: number;
+  }) => PgPool;
+  pool = new Pool({ connectionString: databaseUrl, max: 5 });
   return pool;
 }
 
@@ -70,10 +90,9 @@ async function getPool(): Promise<pg.Pool> {
  * Safety net when build-time migrate.mjs did not run (or migrations/ is absent from
  * the function bundle). DDL is idempotent (IF NOT EXISTS).
  */
-async function ensurePostgresSchema(p: pg.Pool): Promise<void> {
+async function ensurePostgresSchema(p: PgPool): Promise<void> {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
-    // Prefer applying files from migrations/ when present (same as migrate.mjs).
     const appliedViaFiles = await tryApplyMigrationFiles(p);
     if (appliedViaFiles) return;
     await p.query(INLINE_SCHEMA_SQL);
@@ -84,7 +103,7 @@ async function ensurePostgresSchema(p: pg.Pool): Promise<void> {
   return schemaReady;
 }
 
-async function tryApplyMigrationFiles(p: pg.Pool): Promise<boolean> {
+async function tryApplyMigrationFiles(p: PgPool): Promise<boolean> {
   try {
     const { readdir, readFile } = await import('node:fs/promises');
     const files = (await readdir('migrations').catch(() => []))
@@ -98,8 +117,9 @@ async function tryApplyMigrationFiles(p: pg.Pool): Promise<boolean> {
          applied_at timestamptz not null default now()
        )`,
     );
+    const migrated = await p.query('select name from schema_migrations');
     const done = new Set(
-      (await p.query<{ name: string }>('select name from schema_migrations')).rows.map((r) => r.name),
+      (migrated.rows as { name: string }[]).map((r) => r.name),
     );
     for (const file of files.filter((f) => !done.has(f))) {
       const client = await p.connect();
@@ -118,7 +138,6 @@ async function tryApplyMigrationFiles(p: pg.Pool): Promise<boolean> {
     }
     return true;
   } catch (error) {
-    // Missing migrations/ in the serverless package is expected — fall back to inline DDL.
     console.warn(
       'db: migration files unavailable, using inline schema ensure',
       error instanceof Error ? error.message : error,
@@ -180,22 +199,9 @@ create index if not exists sessions_user_id_idx on sessions (user_id);
 create index if not exists sessions_expires_at_idx on sessions (expires_at);
 `;
 
-async function startLocal(): Promise<PGlite> {
-  const { PGlite } = await import('@electric-sql/pglite');
-  const { readdir, readFile } = await import('node:fs/promises');
-  const db = new PGlite();
-  const files = (await readdir('migrations').catch(() => []))
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
-  for (const file of files) {
-    await db.exec(await readFile(`migrations/${file}`, 'utf8'));
-  }
-  return db;
-}
-
-/** Test helper: drop the cached PGlite so the next sql() rebuilds from migrations. */
+/** Test helper: drop cached pool / local registration so the next sql() rebuilds. */
 export function resetLocalDbForTests(): void {
-  local = undefined;
   pool = undefined;
   schemaReady = undefined;
+  localSql = undefined;
 }

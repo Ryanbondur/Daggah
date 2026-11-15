@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GET, PUT } from '../../api/daggah-save';
 import { ACCOUNT_CODE_HEADER, hashAccountCode, normalizeAccountCode } from './owner';
-import { dbMode, resetLocalDbForTests, sql } from './db';
+import { dbMode, sql } from './db';
+import { resetPgliteForTests } from './dbPglite';
 import { getSave, sanitizeSavePayload, upsertSave } from './saves';
 
 function validAccountCode(): string {
@@ -30,14 +31,14 @@ function sampleSave(overrides: Record<string, unknown> = {}) {
 
 describe('migrations + save roundtrip (PGlite)', () => {
   beforeEach(() => {
-    resetLocalDbForTests();
+    resetPgliteForTests();
     // Disable simulated identity so account-code auth is exercised.
     process.env.CURSOR_APP_ID = 'daggah-test';
     process.env.CURSOR_APP_IDENTITY_ISSUER = 'https://example.invalid';
   });
 
   afterEach(() => {
-    resetLocalDbForTests();
+    resetPgliteForTests();
     delete process.env.CURSOR_APP_ID;
     delete process.env.CURSOR_APP_IDENTITY_ISSUER;
   });
