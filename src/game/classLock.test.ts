@@ -75,7 +75,7 @@ describe('class-locked drops + equip', () => {
     game.pickClass('Warrior');
     game.save.level = 12;
     game.devUnlockThroughAct(5);
-    game.save.dungeons['mire-sanctum'] = { cleared: true, clears: 1 };
+    game.save.dungeons['mire-sanctum'] = { cleared: true, clears: 5 };
     game.save.keys = 40;
 
     const rangerSets = new Set<string>(['quillstorm', 'deadeye']);
@@ -99,7 +99,7 @@ describe('class-locked drops + equip', () => {
     game.pickClass('Ranger');
     game.save.level = 12;
     game.devUnlockThroughAct(5);
-    game.save.dungeons['mire-sanctum'] = { cleared: true, clears: 1 };
+    game.save.dungeons['mire-sanctum'] = { cleared: true, clears: 5 };
     game.save.keys = 40;
 
     let lastLoot: Item[] = [];

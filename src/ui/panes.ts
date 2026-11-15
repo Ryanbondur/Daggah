@@ -20,6 +20,7 @@ import { HERO_CLASSES } from '../data/types';
 import {
   KEY_CAP,
   STAGES_PER_ACT,
+  SWEEP_UNLOCK_CLEARS,
   dungeonKeyCost,
   formatDungeonKeyCost,
   formatKeyRegenLabel,
@@ -259,24 +260,39 @@ export function renderAdventure(ctx: UIContext): string {
     }).join('');
     const d = act.dungeon!;
     const open = g.dungeonUnlocked(d);
-    const cleared = g.dungeonCleared(d);
     const clears = s.dungeons[d.id]?.clears ?? 0;
+    const sweepReady = g.dungeonSweepUnlocked(d);
+    const keysOk = open && g.canAffordDungeonKeys(act.id);
+    const keyCost = dungeonKeyCost(act.id);
+    const keyCostLabel = formatDungeonKeyCost(keyCost);
     const lo = stageRecLevel(act.id, 1);
     const hi = stageRecLevel(act.id, 5);
     const pityHint =
       d.endgame && open
         ? ` <small style="font-weight:600;color:#6b655a">Pity ${s.nightscarPity ?? 0}/${NIGHTSCAR_PITY_MAX}</small>`
         : '';
-    const keyCostLabel = formatDungeonKeyCost(dungeonKeyCost(act.id));
+    const sweepHint = open
+      ? sweepReady
+        ? ''
+        : `  -  Sweep at ${SWEEP_UNLOCK_CLEARS} clears (${clears}/${SWEEP_UNLOCK_CLEARS})`
+      : '';
+    const enterTitle = keysOk
+      ? `Enter for ${keyCostLabel}`
+      : `Need ${keyCostLabel} (you have ${s.keys})`;
+    const sweepTitle = !sweepReady
+      ? `Clear ${SWEEP_UNLOCK_CLEARS} times to unlock Sweep (${clears}/${SWEEP_UNLOCK_CLEARS})`
+      : keysOk
+        ? `Sweep for ${keyCostLabel}`
+        : `Need ${keyCostLabel} (you have ${s.keys})`;
     const buttons = open
-      ? `<button class="btn red" data-action="dungeon-enter" data-id="${d.id}">Enter<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>
-         <button class="btn gold ${cleared ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}">Sweep<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>`
+      ? `<button class="btn red ${keysOk ? '' : 'disabled'}" data-action="dungeon-enter" data-id="${d.id}" title="${escapeHtml(enterTitle)}" ${keysOk ? '' : 'aria-disabled="true"'}>Enter<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>
+         <button class="btn gold ${sweepReady && keysOk ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}" title="${escapeHtml(sweepTitle)}" ${sweepReady && keysOk ? '' : 'aria-disabled="true"'}>Sweep<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>`
       : `<div style="width:9cqw;height:9cqw">${ICON.lock}</div>`;
     return `<div class="act-card">
       <div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></div>
       <div class="stage-row">${chips}</div>
       <div class="dg ${open ? '' : 'locked'}">
-        <div class="dn"><b>${d.name}${d.endgame ? ' · Endgame' : ''}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${d.endgame ? '  -  stingy drops' : ''}${pityHint}` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
+        <div class="dn"><b>${d.name}${d.endgame ? ' · Endgame' : ''}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${sweepHint}${d.endgame ? '  -  stingy drops' : ''}${pityHint}` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
         ${buttons}
       </div>
     </div>`;

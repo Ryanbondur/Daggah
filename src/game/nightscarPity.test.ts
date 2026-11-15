@@ -87,7 +87,7 @@ describe('Nightscar pity on Game clear/sweep + save', () => {
     game.pickClass('Warrior');
     game.save.stagesCleared = 50;
     game.save.keys = 8;
-    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: 2 };
+    game.save.dungeons['nightscar-apex'] = { cleared: true, clears: 5 };
     game.save.nightscarPity = pity;
     return { store, game };
   }
@@ -149,7 +149,7 @@ describe('Nightscar pity on Game clear/sweep + save', () => {
     game.pickClass('Warrior');
     game.save.stagesCleared = 50;
     game.save.keys = 8;
-    game.save.dungeons['hollow-crypt'] = { cleared: true, clears: 1 };
+    game.save.dungeons['hollow-crypt'] = { cleared: true, clears: 5 };
     game.save.nightscarPity = 6;
 
     expect(game.sweepDungeon('hollow-crypt')).toBe(true);
