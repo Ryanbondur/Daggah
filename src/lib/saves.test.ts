@@ -60,9 +60,15 @@ describe('migrations + save roundtrip (PGlite)', () => {
       `select table_name from information_schema.tables
        where table_schema = 'public' and table_name = any($1)
        order by table_name`,
-      [['clan_results', 'saves', 'season_stats']],
+      [['clan_results', 'saves', 'season_stats', 'sessions', 'users']],
     );
-    expect(tables.map((t) => t.table_name)).toEqual(['clan_results', 'saves', 'season_stats']);
+    expect(tables.map((t) => t.table_name)).toEqual([
+      'clan_results',
+      'saves',
+      'season_stats',
+      'sessions',
+      'users',
+    ]);
   });
 
   it('sanitizes payloads and rejects oversized / invalid bodies', () => {

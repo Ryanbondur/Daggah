@@ -1,4 +1,9 @@
 import {
+  authHeaders as sessionAuthHeaders,
+  readAuthSession,
+  type Storage as AuthStorage,
+} from './authSession';
+import {
   ACCOUNT_CODE_HEADER,
   clearStoredAccountCode,
   generateAccountCode,
@@ -12,7 +17,7 @@ import { loadSaveFromRaw, writeSave } from './state';
 
 /**
  * Cloud sync via GET/PUT /api/daggah-save.
- * Auth: Cursor identity (private/team) when present; else player account code (public).
+ * Auth: username session (primary); Cursor identity (private/team); else account code.
  * localStorage + DAG1 Export/Import remain the always-on fallback.
  */
 export const CLOUD_SAVE_PATH = '/api/daggah-save';
@@ -31,6 +36,8 @@ export type CloudSyncResult =
 
 export type CloudLinkStatus = {
   linked: boolean;
+  /** Username when logged in; null otherwise. */
+  username: string | null;
   accountCode: string | null;
   lastResult: CloudSyncResult | null;
   lastError: string | null;
@@ -50,18 +57,30 @@ function cloudDisabled(): boolean {
   }
 }
 
+function asAuthStorage(storage?: Storage): AuthStorage | undefined {
+  return storage as AuthStorage | undefined;
+}
+
 function authHeaders(storage?: Storage): HeadersInit {
   const headers: Record<string, string> = {
     accept: 'application/json',
+    ...sessionAuthHeaders(asAuthStorage(storage)),
   };
   const code = readStoredAccountCode(storage as AccountStorage | undefined);
   if (code) headers[ACCOUNT_CODE_HEADER] = code;
   return headers;
 }
 
+function isLinked(storage?: Storage): boolean {
+  if (readAuthSession(asAuthStorage(storage))) return true;
+  return !!readStoredAccountCode(storage as AccountStorage | undefined);
+}
+
 export function getCloudLinkStatus(storage?: Storage): CloudLinkStatus {
+  const session = readAuthSession(asAuthStorage(storage));
   return {
-    linked: !!readStoredAccountCode(storage as AccountStorage | undefined),
+    linked: isLinked(storage),
+    username: session?.username ?? null,
     accountCode: readStoredAccountCode(storage as AccountStorage | undefined),
     lastResult,
     lastError,
@@ -124,8 +143,8 @@ export async function pushCloudSave(
   opts: { force?: boolean } = {},
 ): Promise<CloudSyncResult> {
   if (cloudDisabled()) return { status: 'skipped', reason: 'cloud sync off' };
-  const linked = !!readStoredAccountCode(storage as AccountStorage | undefined);
-  // Without an account code, still attempt identity-based sync (private/team).
+  const linked = isLinked(storage);
+  // Without session/account code, still attempt identity-based sync (private/team).
   try {
     const url = opts.force ? `${CLOUD_SAVE_PATH}?force=1` : CLOUD_SAVE_PATH;
     const res = await fetch(url, {
@@ -181,7 +200,7 @@ export async function syncCloudSave(
   now = Date.now(),
   opts: { askOnConflict?: boolean } = {},
 ): Promise<{ save: SaveData; result: CloudSyncResult }> {
-  const linked = !!readStoredAccountCode(storage as AccountStorage | undefined);
+  const linked = isLinked(storage);
   // Always try pull when linked; also try when unlinked (identity may be present).
   const pulled = await pullCloudSave(storage, now);
   if (pulled.status !== 'pulled') {
@@ -224,7 +243,7 @@ export async function syncCloudSave(
   };
 }
 
-/** Debounced auto-push after meaningful progress (requires a linked account code or identity). */
+/** Debounced auto-push after meaningful progress (requires session, account code, or identity). */
 export function scheduleCloudPush(storage: Storage | undefined, save: SaveData, delayMs = 2500): void {
   if (cloudDisabled()) return;
   pendingSave = save;

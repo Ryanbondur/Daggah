@@ -2,7 +2,7 @@
  * Cloud save API for the Cursor publish host (web Request handlers).
  * GET/PUT /api/daggah-save
  *
- * Auth: verified Cursor identity when present; else x-daggah-account-code.
+ * Auth: username session (primary), else Cursor identity, else x-daggah-account-code.
  */
 import { resolveOwner } from '../src/lib/owner';
 import {

@@ -18,11 +18,13 @@ import {
   showCompare,
   showHero,
   showItemInfo,
+  showLogin,
   showPvpResult,
   showResult,
   showSeasonBoard,
   showSettings,
   showTutorialCoach,
+  maybeShowLoginGate,
   maybeShowWhatsNew,
 } from './modals';
 import { escapeHtml } from './escape';
@@ -162,6 +164,7 @@ export function mountUI(
     showBag: () => showBag(ctx),
     showHero: () => showHero(ctx),
     showSettings: () => showSettings(ctx),
+    showLogin: (opts) => showLogin(ctx, opts),
     showChat: () => showChat(ctx),
     showItemInfo: (slot) => showItemInfo(ctx, slot),
     showClassPick: () => showClassPick(ctx),
@@ -629,7 +632,9 @@ export function mountUI(
 
   renderChat();
   renderNow();
-  if (!game.save.classPicked) showClassPick(ctx);
+  if (maybeShowLoginGate(ctx)) {
+    // Class pick / tutorial / what's-new run after login or guest continue.
+  } else if (!game.save.classPicked) showClassPick(ctx);
   else if (game.tutorialIsActive) {
     setTimeout(() => {
       if (!ctx.modalOpen) showTutorialCoach(ctx);

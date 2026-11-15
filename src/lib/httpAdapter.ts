@@ -1,4 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import {
+  GET as authGet,
+  OPTIONS as authOptions,
+  POST as authPost,
+} from '../../api/daggah-auth';
 import { GET, OPTIONS, PUT } from '../../api/daggah-save';
 
 /** Convert a Node IncomingMessage into a web Request for local Vite / start adapters. */
@@ -35,12 +40,39 @@ export async function writeWebResponse(res: ServerResponse, response: Response):
   res.end(buf);
 }
 
-/** Route /api/daggah-save through the web handlers. Returns false if not this path. */
+/** Route /api/daggah-save and /api/daggah-auth through web handlers. Returns false if not these paths. */
 export async function handleDaggahSaveApi(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<boolean> {
   const path = (req.url ?? '/').split('?')[0];
+
+  if (path === '/api/daggah-auth') {
+    const request = await nodeToWebRequest(req);
+    let response: Response;
+    switch (req.method) {
+      case 'GET':
+        response = await authGet(request);
+        break;
+      case 'POST':
+        response = await authPost(request);
+        break;
+      case 'OPTIONS':
+        response = await authOptions();
+        break;
+      default:
+        response = Response.json(
+          { error: 'method_not_allowed' },
+          {
+            status: 405,
+            headers: { allow: 'GET, POST, OPTIONS', 'cache-control': 'private, no-store' },
+          },
+        );
+    }
+    await writeWebResponse(res, response);
+    return true;
+  }
+
   if (path !== '/api/daggah-save') return false;
 
   const request = await nodeToWebRequest(req);
