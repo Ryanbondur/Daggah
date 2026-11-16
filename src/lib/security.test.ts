@@ -6,6 +6,7 @@ import { generateAccountCode } from '../game/accountCode';
 import { sanitizeItem } from '../game/state';
 import type { Item } from '../data/types';
 import { resetRateLimitsForTests } from './auth';
+import { sql } from './db';
 import { resetPgliteForTests } from './dbPglite';
 
 const save = { version: 3, heroClass: 'Warrior', savedAt: 1_700_000_000_000 };
@@ -83,8 +84,23 @@ describe('save endpoint abuse limits', () => {
     expect((await put(code)).status).toBe(429);
   });
 
+  it('rejects oversized guest saves but not their size-compliant neighbours', async () => {
+    const big = savePut(
+      new Request('http://localhost/api/daggah-save', {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          'x-daggah-account-code': generateAccountCode(),
+          'x-forwarded-for': '4.4.4.4',
+        },
+        body: JSON.stringify({ ...save, filler: 'x'.repeat(100_000) }),
+      }),
+    );
+    expect((await big).status).toBe(400);
+  });
+
   it('caps new guest rows per IP', async () => {
-    for (let i = 0; i < 10; i++) expect((await put(generateAccountCode())).status).toBe(204);
+    for (let i = 0; i < 3; i++) expect((await put(generateAccountCode())).status).toBe(204);
     expect((await put(generateAccountCode())).status).toBe(429);
     expect((await put(generateAccountCode(), '8.8.8.8')).status).toBe(204);
   });
@@ -92,7 +108,7 @@ describe('save endpoint abuse limits', () => {
 
 describe('auth abuse limits', () => {
   it('does not trust client-supplied left-hand X-Forwarded-For hops', async () => {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 3; i++) {
       const res = await auth(
         { action: 'register', username: `user_${i}`, password: 'long-enough-1' },
         `10.0.0.${i}, 1.2.3.4`,
@@ -106,20 +122,40 @@ describe('auth abuse limits', () => {
     expect(blocked.status).toBe(429);
   });
 
-  it('locks a username after repeated failures across rotating IPs', async () => {
+  it('locks a username only for the failing IP, not for the real owner elsewhere', async () => {
     await auth({ action: 'register', username: 'victim', password: 'right-pass-1' }, '5.5.5.5');
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 8; i++) {
       const res = await auth(
         { action: 'login', username: 'victim', password: 'wrong-pass' },
-        `7.7.7.${i}`,
+        '7.7.7.7',
       );
       expect(res.status).toBe(401);
     }
-    const locked = await auth(
-      { action: 'login', username: 'victim', password: 'right-pass-1' },
-      '7.7.7.200',
+    const attacker = await auth(
+      { action: 'login', username: 'victim', password: 'wrong-pass' },
+      '7.7.7.7',
     );
-    expect(locked.status).toBe(429);
+    expect(attacker.status).toBe(429);
+    const owner = await auth(
+      { action: 'login', username: 'victim', password: 'right-pass-1' },
+      '6.6.6.6',
+    );
+    expect(owner.status).toBe(200);
+  });
+
+  it('keeps only the newest sessions per account', async () => {
+    await auth({ action: 'register', username: 'sessionly', password: 'right-pass-1' }, '1.0.0.1');
+    for (let i = 0; i < 12; i++) {
+      const res = await auth(
+        { action: 'login', username: 'sessionly', password: 'right-pass-1' },
+        `1.0.1.${i}`,
+      );
+      expect(res.status).toBe(200);
+    }
+    const rows = await sql<{ n: number | string }>(
+      `select count(*) as n from sessions s join users u on u.id = s.user_id where u.username = 'sessionly'`,
+    );
+    expect(Number(rows[0]?.n)).toBe(10);
   });
 
   it('answers a duplicate registration generically and unknown logins identically', async () => {
