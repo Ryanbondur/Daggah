@@ -6,7 +6,7 @@ import {
   projectedDungeonXp,
   projectedStageXp,
 } from '../data/acts';
-import { dropWeightsFor, rollItem, SET_SLOTS, SLOTS, type DropSource, type Gear } from '../data/gear';
+import { capeDropChance, dropWeightsFor, rollItem, SET_SLOTS, type DropSource, type Gear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import type { RarityId } from '../data/types';
 import { addXp, MAX_LEVEL, XP_TO_NEXT } from '../data/xp';
@@ -14,11 +14,20 @@ import { Game, type RunResult } from './game';
 import { mulberry32 } from './rng';
 import type { Storage } from './state';
 
-/** Legendary share of a Nightscar / Ascended drop table (pity 0). */
+/**
+ * Legendary *set-piece* share of a Nightscar / Ascended drop (pity 0).
+ * Cape rolls replace a drop, so they are excluded from the set-roll odds.
+ */
 function legShare(source: DropSource): number {
   const w = dropWeightsFor(source, 0);
   const total = w.common + w.rare + w.epic + w.legendary;
-  return w.legendary / total;
+  return (w.legendary / total) * (1 - capeDropChance(source));
+}
+
+function epicShare(source: DropSource): number {
+  const w = dropWeightsFor(source, 0);
+  const total = w.common + w.rare + w.epic + w.legendary;
+  return (w.epic / total) * (1 - capeDropChance(source));
 }
 
 function memoryStorage(): Storage {
@@ -143,7 +152,8 @@ describe('Nightscar clearability without BiS', () => {
   });
 
   it('targets ~42% 6pc Legendary Regalia by day 30 for regular raiders (DG-96)', () => {
-    // Closed-form base E[Legendary] per clear (pity ignored — dry runs are rare with Epic floors).
+    // Closed-form base E[Legendary set piece] per clear, after class-locked cape rolls
+    // replace some drops (pity ignored — dry runs are rare with Epic floors).
     // Apex: 8 floor + 1 mini + 2 boss. Ascended same layout.
     const eApex =
       8 * legShare('nightscar-floor') +
@@ -161,6 +171,21 @@ describe('Nightscar clearability without BiS', () => {
     expect(eAsc).toBeGreaterThan(eApex * 2);
     expect(eLegs).toBeGreaterThan(6);
     expect(eLegs).toBeLessThan(8.5);
+  });
+
+  it('keeps effective Epic/Legendary set-piece odds after cape replacement (DG-96 + capes)', () => {
+    const base = {
+      'nightscar-floor': { epic: 0.117, legendary: 0.003 },
+      'nightscar-mini': { epic: 0.19, legendary: 0.01 },
+      'nightscar-boss': { epic: 0.336, legendary: 0.024 },
+      'ascended-floor': { epic: 0.204, legendary: 0.016 },
+      'ascended-mini': { epic: 0.309, legendary: 0.031 },
+      'ascended-boss': { epic: 0.532, legendary: 0.088 },
+    } as const;
+    for (const [src, want] of Object.entries(base)) {
+      expect(epicShare(src as DropSource)).toBeCloseTo(want.epic, 2);
+      expect(legShare(src as DropSource)).toBeCloseTo(want.legendary, 2);
+    }
   });
 
   it('clears Nightscar Apex on a full epic (non-BiS) set at endgame level', () => {
@@ -190,7 +215,7 @@ describe('Clan Raid clear times (party of 4)', () => {
     game.save.level = level;
     game.save.xp = 0;
     const gear: Gear = {};
-    for (const slot of SLOTS) {
+    for (const slot of SET_SLOTS) {
       gear[slot] = rollItem(rng, {
         slot,
         rarity,

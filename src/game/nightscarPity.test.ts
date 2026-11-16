@@ -50,8 +50,8 @@ describe('Nightscar soft pity helpers', () => {
     expect(max.common + max.rare).toBeLessThan(base.common + base.rare);
     // Mass conserved.
     const sum = (w: Record<string, number>) => Object.values(w).reduce((a, b) => a + b, 0);
-    expect(sum(mid)).toBe(sum(base));
-    expect(sum(max)).toBe(sum(base));
+    expect(sum(mid)).toBeCloseTo(sum(base), 9);
+    expect(sum(max)).toBeCloseTo(sum(base), 9);
   });
 
   it('ignores pity on non-Nightscar tables', () => {
