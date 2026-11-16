@@ -6,6 +6,7 @@ import { HERO_CLASSES } from '../data/types';
 import type { ClanData } from './clan';
 import { buildAiMember, fillAiRoster, pickQueueRoster } from './clan';
 import type { RaidAlly } from './combat';
+import { ASCENDED_SEAL_FRAGMENTS_PER_SEAL } from './ascended';
 import type { Rng } from './rng';
 
 /**
@@ -19,14 +20,42 @@ export const CLAN_RAID_DUNGEON_ID = CLAN_RAID_DEF.id;
 /** Attempts per ISO week (UTC). */
 export const CLAN_RAID_WEEKLY_ATTEMPTS = 3;
 
-/** Chance the clear drops a full Ascended Seal (else fragments). */
-export const CLAN_RAID_SEAL_CHANCE = 0.18;
+/**
+ * Chance the clear drops a full Ascended Seal (else fragments).
+ * Tuned with fragment range + 5→1 craft so a typical raider who clears all
+ * weekly attempts nets ~2–3 Ascended Seals / week (funds Ascended Nightscar).
+ */
+export const CLAN_RAID_SEAL_CHANCE = 0.4;
 
-export const CLAN_RAID_FRAGMENT_MIN = 1;
-export const CLAN_RAID_FRAGMENT_MAX = 3;
+/** Fragment drop when the clear misses a full seal (inclusive range). */
+export const CLAN_RAID_FRAGMENT_MIN = 2;
+export const CLAN_RAID_FRAGMENT_MAX = 4;
 
 /** Soft floor: Act 10 stages cleared (Nightscar Apex unlocked). */
 export const CLAN_RAID_STAGE_FLOOR = 50;
+
+/** Mean fragments when a clear misses a full seal (uniform inclusive). */
+export function clanRaidMeanFragments(): number {
+  return (CLAN_RAID_FRAGMENT_MIN + CLAN_RAID_FRAGMENT_MAX) / 2;
+}
+
+/**
+ * Expected Ascended Seals from one clear after fragment craft,
+ * treating leftover fragments as fractional seals.
+ */
+export function expectedSealsPerClanRaidClear(
+  fragmentsPerSeal = ASCENDED_SEAL_FRAGMENTS_PER_SEAL,
+): number {
+  const craft = clanRaidMeanFragments() / fragmentsPerSeal;
+  return CLAN_RAID_SEAL_CHANCE + (1 - CLAN_RAID_SEAL_CHANCE) * craft;
+}
+
+/** Expected seals/week if the player spends every Clan Raid attempt. */
+export function expectedSealsPerClanRaidWeek(
+  fragmentsPerSeal = ASCENDED_SEAL_FRAGMENTS_PER_SEAL,
+): number {
+  return CLAN_RAID_WEEKLY_ATTEMPTS * expectedSealsPerClanRaidClear(fragmentsPerSeal);
+}
 
 /** Single-boss “dungeon” stub used for Phaser stage runs. */
 export const CLAN_RAID_DUNGEON: DungeonDef = CLAN_RAID_DEF;
