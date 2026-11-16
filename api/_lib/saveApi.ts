@@ -4,10 +4,12 @@
  *
  * Auth: username session (primary), else Cursor identity, else x-daggah-account-code.
  */
+import { clientIp } from './auth';
+import { maxAccountCodeSaves, reclaimIdleGuestSaves } from './capacity';
 import { isDatabaseUnavailable, isUndefinedTable, sql } from './db';
 import { resolveOwner } from './owner';
 import { hitRateLimit } from './rateLimit';
-import { clientIp } from './auth';
+import { readJsonBody } from './readBody';
 import {
   MAX_GUEST_SAVE_BYTES,
   getSave,
@@ -17,9 +19,7 @@ import {
   upsertSave,
 } from './saves';
 
-/** Hard ceiling on guest (account-code) rows: codes are client-minted, so cap what they can create. */
-const MAX_ACCOUNT_CODE_SAVES = 5_000;
-const GUEST_SAVE_TTL_DAYS = 90;
+const SAVE_BODY_MAX_BYTES = 300_000;
 
 function rateLimited(retryAfterSec: number): Response {
   return Response.json(
@@ -66,13 +66,6 @@ function internalError(error: unknown, where: string): Response {
   );
 }
 
-async function readBody(request: Request): Promise<unknown> {
-  const text = await request.text();
-  if (text.length > 300_000) throw new Error('too_large');
-  if (!text) return {};
-  return JSON.parse(text) as unknown;
-}
-
 export async function GET(request: Request): Promise<Response> {
   try {
     const owner = await resolveOwner(request);
@@ -105,7 +98,7 @@ export async function PUT(request: Request): Promise<Response> {
 
     let body: unknown;
     try {
-      body = await readBody(request);
+      body = await readJsonBody(request, SAVE_BODY_MAX_BYTES);
     } catch (error) {
       if (error instanceof Error && error.message === 'too_large') {
         return json({ error: 'payload_too_large' }, 413);
@@ -124,19 +117,19 @@ export async function PUT(request: Request): Promise<Response> {
     const existing = await getSave(owner.ownerKey);
 
     if (!existing && owner.kind === 'account') {
-      const globalNew = await hitRateLimit('save:new-account:global', 60, 60 * 60 * 1000);
-      if (!globalNew.ok) return rateLimited(globalNew.retryAfterSec);
+      // Per-IP new-guest budget (fair). Soft global ceiling remains high so one IP
+      // cannot starve the whole table, but also cannot alone exhaust a tiny shared bucket.
       const ipNew = await hitRateLimit(`save:new-account:ip:${clientIp(request)}`, 3, 60 * 60 * 1000);
       if (!ipNew.ok) return rateLimited(ipNew.retryAfterSec);
-      // Stale guest rows (never touched for GUEST_SAVE_TTL_DAYS) free room for new players.
-      await sql(
-        `delete from saves where owner_key like 'ac:%' and updated_at < now() - ($1::int * interval '1 day')`,
-        [GUEST_SAVE_TTL_DAYS],
-      );
+      const globalNew = await hitRateLimit('save:new-account:global', 600, 60 * 60 * 1000);
+      if (!globalNew.ok) return rateLimited(globalNew.retryAfterSec);
+      // Stale guest rows free room; TTL / hard cap are env-tunable (see capacity.ts).
+      await reclaimIdleGuestSaves();
+      const cap = maxAccountCodeSaves();
       const rows = await sql<{ n: number | string }>(
         `select count(*) as n from saves where owner_key like 'ac:%'`,
       );
-      if (Number(rows[0]?.n ?? 0) >= MAX_ACCOUNT_CODE_SAVES) {
+      if (Number(rows[0]?.n ?? 0) >= cap) {
         return json({ error: 'guest_saves_full', hint: 'Guest cloud saves are full. Log in to sync.' }, 503);
       }
     }

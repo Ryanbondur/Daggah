@@ -121,14 +121,102 @@ var INLINE_SCHEMA_STATEMENTS = [
   `create index if not exists rate_limits_reset_at_idx on rate_limits (reset_at)`
 ];
 
+// api/_lib/webCrypto.ts
+var textEncoder = new TextEncoder();
+function bytesToHex(bytes) {
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(text));
+  return bytesToHex(new Uint8Array(digest));
+}
+
+// api/_lib/auth.ts
+var SESSION_HEADER = "x-daggah-session";
+async function hashToken(token) {
+  return sha256Hex(token);
+}
+function ownerKeyForUser(userId) {
+  return `user:${userId}`;
+}
+async function resolveSessionToken(token) {
+  if (!token || token.length < 16 || token.length > 200) return null;
+  const tokenHash = await hashToken(token);
+  const rows = await sql(
+    `select s.user_id, u.username, s.expires_at
+     from sessions s
+     join users u on u.id = s.user_id
+     where s.token_hash = $1
+     limit 1`,
+    [tokenHash]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const expires = row.expires_at instanceof Date ? row.expires_at : new Date(row.expires_at);
+  if (Number.isNaN(expires.getTime()) || expires.getTime() <= Date.now()) {
+    await sql(`delete from sessions where token_hash = $1`, [tokenHash]);
+    return null;
+  }
+  return { id: row.user_id, username: row.username };
+}
+function extractSessionToken(request) {
+  const header = request.headers.get(SESSION_HEADER)?.trim() ?? "";
+  if (header) return header;
+  const auth = request.headers.get("authorization")?.trim() ?? "";
+  const m = /^Bearer\s+(.+)$/i.exec(auth);
+  if (m?.[1]) return m[1].trim();
+  return null;
+}
+function clientIp(request) {
+  const xf = request.headers.get("x-forwarded-for");
+  if (xf) {
+    const hops = xf.split(",").map((h) => h.trim()).filter(Boolean);
+    const last = hops[hops.length - 1];
+    if (last) return last.slice(0, 64);
+  }
+  return "local";
+}
+
+// api/_lib/capacity.ts
+function envInt(name, fallback, min, max) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+function maxAccountCodeSaves() {
+  return envInt("DAGGAH_MAX_ACCOUNT_CODE_SAVES", 5e3, 1, 2e6);
+}
+function guestSaveTtlDays() {
+  return envInt("DAGGAH_GUEST_SAVE_TTL_DAYS", 90, 7, 3650);
+}
+async function reclaimIdleGuestSaves() {
+  const days = guestSaveTtlDays();
+  await sql(
+    `delete from saves where owner_key like 'ac:%' and updated_at < now() - ($1::int * interval '1 day')`,
+    [days]
+  );
+}
+
 // cursor/identity.dev.ts
-var DEV_VIEWER = {
+function hostedOrProduction() {
+  if (typeof process === "undefined") return true;
+  const env = process.env;
+  const trim = (v) => typeof v === "string" ? v.trim() : "";
+  if (trim(env.CURSOR_APP_ID) !== "") return true;
+  if (trim(env.VERCEL) !== "") return true;
+  if (trim(env.NODE_ENV) === "production") return true;
+  return false;
+}
+var LOCAL_DEV_VIEWER = {
   sub: "user:dev",
   email: "dev@example.com",
   name: "Dev Viewer",
   teamId: 1,
   teamRole: "admin"
 };
+var DEV_VIEWER = hostedOrProduction() ? null : LOCAL_DEV_VIEWER;
 
 // cursor/identity.ts
 var IDENTITY_HEADER = "x-cursor-identity-v2";
@@ -203,7 +291,7 @@ function devViewer() {
   if (typeof process === "undefined") {
     return { verified: false, reason: "missing_header" };
   }
-  if (trimmed(process.env.CURSOR_APP_ID) !== "" || trimmed(process.env.VERCEL) !== "") {
+  if (trimmed(process.env.CURSOR_APP_ID) !== "" || trimmed(process.env.VERCEL) !== "" || trimmed(process.env.NODE_ENV) === "production") {
     return { verified: false, reason: "missing_header" };
   }
   const value = DEV_VIEWER;
@@ -490,65 +578,14 @@ function keyIdentityFromClaims(base, claims) {
   return { verified: false, reason: "invalid_claims" };
 }
 
-// api/_lib/webCrypto.ts
-var textEncoder = new TextEncoder();
-function bytesToHex(bytes) {
-  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function sha256Hex(text) {
-  const digest = await crypto.subtle.digest("SHA-256", textEncoder.encode(text));
-  return bytesToHex(new Uint8Array(digest));
-}
-
-// api/_lib/auth.ts
-var SESSION_HEADER = "x-daggah-session";
-async function hashToken(token) {
-  return sha256Hex(token);
-}
-function ownerKeyForUser(userId) {
-  return `user:${userId}`;
-}
-async function resolveSessionToken(token) {
-  if (!token || token.length < 16 || token.length > 200) return null;
-  const tokenHash = await hashToken(token);
-  const rows = await sql(
-    `select s.user_id, u.username, s.expires_at
-     from sessions s
-     join users u on u.id = s.user_id
-     where s.token_hash = $1
-     limit 1`,
-    [tokenHash]
-  );
-  const row = rows[0];
-  if (!row) return null;
-  const expires = row.expires_at instanceof Date ? row.expires_at : new Date(row.expires_at);
-  if (Number.isNaN(expires.getTime()) || expires.getTime() <= Date.now()) {
-    await sql(`delete from sessions where token_hash = $1`, [tokenHash]);
-    return null;
-  }
-  return { id: row.user_id, username: row.username };
-}
-function extractSessionToken(request) {
-  const header = request.headers.get(SESSION_HEADER)?.trim() ?? "";
-  if (header) return header;
-  const auth = request.headers.get("authorization")?.trim() ?? "";
-  const m = /^Bearer\s+(.+)$/i.exec(auth);
-  if (m?.[1]) return m[1].trim();
-  return null;
-}
-function clientIp(request) {
-  const xf = request.headers.get("x-forwarded-for");
-  if (xf) {
-    const hops = xf.split(",").map((h) => h.trim()).filter(Boolean);
-    const last = hops[hops.length - 1];
-    if (last) return last.slice(0, 64);
-  }
-  return "local";
-}
-
 // api/_lib/owner.ts
 var ACCOUNT_CODE_PREFIX = "DGAC";
 var ACCOUNT_CODE_HEADER = "x-daggah-account-code";
+function rejectSimulatedIdentity() {
+  if (typeof process === "undefined") return true;
+  const trim = (v) => typeof v === "string" ? v.trim() : "";
+  return trim(process.env.CURSOR_APP_ID) !== "" || trim(process.env.VERCEL) !== "" || trim(process.env.NODE_ENV) === "production";
+}
 function checksum32(text) {
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) {
@@ -585,7 +622,8 @@ async function resolveOwner(request) {
     }
   }
   const identity = await getIdentity(request);
-  if (identity.verified) {
+  const acceptIdentity = identity.verified && !(identity.simulated && rejectSimulatedIdentity());
+  if (acceptIdentity && identity.verified) {
     return {
       kind: "identity",
       ownerKey: `id:${identity.sub}`,
@@ -595,10 +633,11 @@ async function resolveOwner(request) {
   const header = request.headers.get(ACCOUNT_CODE_HEADER) ?? "";
   const code = normalizeAccountCode(header);
   if (!code) {
+    const reason = identity.verified && identity.simulated ? "missing_header" : identity.verified ? "missing_credentials" : identity.reason || "missing_credentials";
     return Response.json(
       {
         error: "unauthorized",
-        reason: identity.reason || "missing_credentials",
+        reason,
         hint: "Log in, sign in (private/team app), or send x-daggah-account-code"
       },
       { status: 401, headers: { "cache-control": "private, no-store" } }
@@ -638,6 +677,44 @@ async function hitRateLimit(key, limit, windowMs) {
   const row = rows[0];
   if (!row) return { ok: true };
   return Number(row.count) > limit ? { ok: false, retryAfterSec: retryAfter(row.reset_at) } : { ok: true };
+}
+
+// api/_lib/readBody.ts
+async function readJsonBody(request, maxBytes) {
+  const declared = request.headers.get("content-length");
+  if (declared) {
+    const n = Number(declared);
+    if (Number.isFinite(n) && n > maxBytes) throw new Error("too_large");
+  }
+  const body = request.body;
+  if (!body) return {};
+  const reader = body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value || value.byteLength === 0) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      try {
+        await reader.cancel();
+      } catch {
+      }
+      throw new Error("too_large");
+    }
+    chunks.push(value);
+  }
+  if (total === 0) return {};
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(merged);
+  if (!text) return {};
+  return JSON.parse(text);
 }
 
 // api/_lib/saves.ts
@@ -711,8 +788,7 @@ function toIso(value) {
 }
 
 // api/_lib/saveApi.ts
-var MAX_ACCOUNT_CODE_SAVES = 5e3;
-var GUEST_SAVE_TTL_DAYS = 90;
+var SAVE_BODY_MAX_BYTES = 3e5;
 function rateLimited(retryAfterSec) {
   return Response.json(
     { error: "rate_limited", retryAfterSec },
@@ -754,12 +830,6 @@ function internalError(error, where) {
     500
   );
 }
-async function readBody(request) {
-  const text = await request.text();
-  if (text.length > 3e5) throw new Error("too_large");
-  if (!text) return {};
-  return JSON.parse(text);
-}
 async function GET(request) {
   try {
     const owner = await resolveOwner(request);
@@ -786,7 +856,7 @@ async function PUT(request) {
     if (!writeHit.ok) return rateLimited(writeHit.retryAfterSec);
     let body;
     try {
-      body = await readBody(request);
+      body = await readJsonBody(request, SAVE_BODY_MAX_BYTES);
     } catch (error) {
       if (error instanceof Error && error.message === "too_large") {
         return json({ error: "payload_too_large" }, 413);
@@ -802,18 +872,16 @@ async function PUT(request) {
     const force = url.searchParams.get("force") === "1";
     const existing = await getSave(owner.ownerKey);
     if (!existing && owner.kind === "account") {
-      const globalNew = await hitRateLimit("save:new-account:global", 60, 60 * 60 * 1e3);
-      if (!globalNew.ok) return rateLimited(globalNew.retryAfterSec);
       const ipNew = await hitRateLimit(`save:new-account:ip:${clientIp(request)}`, 3, 60 * 60 * 1e3);
       if (!ipNew.ok) return rateLimited(ipNew.retryAfterSec);
-      await sql(
-        `delete from saves where owner_key like 'ac:%' and updated_at < now() - ($1::int * interval '1 day')`,
-        [GUEST_SAVE_TTL_DAYS]
-      );
+      const globalNew = await hitRateLimit("save:new-account:global", 600, 60 * 60 * 1e3);
+      if (!globalNew.ok) return rateLimited(globalNew.retryAfterSec);
+      await reclaimIdleGuestSaves();
+      const cap = maxAccountCodeSaves();
       const rows = await sql(
         `select count(*) as n from saves where owner_key like 'ac:%'`
       );
-      if (Number(rows[0]?.n ?? 0) >= MAX_ACCOUNT_CODE_SAVES) {
+      if (Number(rows[0]?.n ?? 0) >= cap) {
         return json({ error: "guest_saves_full", hint: "Guest cloud saves are full. Log in to sync." }, 503);
       }
     }

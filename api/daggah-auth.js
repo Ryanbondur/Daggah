@@ -266,6 +266,7 @@ async function createSession(userId) {
      values ($1, $2, $3, now())`,
     [tokenHash, userId, expiresAt.toISOString()]
   );
+  await sql(`update users set updated_at = now() where id = $1`, [userId]);
   await sql(
     `delete from sessions
      where user_id = $1
@@ -352,6 +353,50 @@ function isUniqueViolation(error) {
   return msg.includes("unique") || msg.includes("duplicate");
 }
 
+// api/_lib/capacity.ts
+function envInt(name, fallback, min, max) {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
+function maxUsers() {
+  return envInt("DAGGAH_MAX_USERS", 2e4, 1, 2e6);
+}
+function inactiveUserDays() {
+  return envInt("DAGGAH_INACTIVE_USER_DAYS", 180, 30, 3650);
+}
+async function reclaimInactiveUsers(need = 1) {
+  if (need <= 0) return 0;
+  const days = inactiveUserDays();
+  const rows = await sql(
+    `with doomed as (
+       select u.id
+       from users u
+       where u.updated_at < now() - ($1::int * interval '1 day')
+         and not exists (
+           select 1 from sessions s
+           where s.user_id = u.id and s.expires_at > now()
+         )
+       order by u.updated_at asc
+       limit $2
+     ),
+     drop_saves as (
+       delete from saves
+       where owner_key in (select 'user:' || id from doomed)
+       returning 1
+     ),
+     drop_users as (
+       delete from users where id in (select id from doomed)
+       returning id
+     )
+     select id from drop_users`,
+    [days, need]
+  );
+  return rows.length;
+}
+
 // api/_lib/rateLimit.ts
 function retryAfter(resetAt) {
   const t = resetAt instanceof Date ? resetAt.getTime() : new Date(resetAt).getTime();
@@ -393,11 +438,51 @@ async function clearRateLimit(key) {
   await sql(`delete from rate_limits where key = $1`, [key]);
 }
 
+// api/_lib/readBody.ts
+async function readJsonBody(request, maxBytes) {
+  const declared = request.headers.get("content-length");
+  if (declared) {
+    const n = Number(declared);
+    if (Number.isFinite(n) && n > maxBytes) throw new Error("too_large");
+  }
+  const body = request.body;
+  if (!body) return {};
+  const reader = body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value || value.byteLength === 0) continue;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      try {
+        await reader.cancel();
+      } catch {
+      }
+      throw new Error("too_large");
+    }
+    chunks.push(value);
+  }
+  if (total === 0) return {};
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder("utf-8", { fatal: false }).decode(merged);
+  if (!text) return {};
+  return JSON.parse(text);
+}
+
 // api/_lib/authApi.ts
-var MAX_USERS = 2e4;
 var LOGIN_FAILS_PER_IP = 8;
 var LOGIN_FAILS_PER_USER = 100;
 var LOGIN_WINDOW_MS = 15 * 60 * 1e3;
+var LOGIN_PER_IP = 15;
+var REGISTER_PER_IP = 3;
+var AUTH_BODY_MAX_BYTES = 16e3;
 function limited(result) {
   return json({ error: "rate_limited", retryAfterSec: result.retryAfterSec }, 429, {
     "retry-after": String(result.retryAfterSec)
@@ -435,12 +520,6 @@ function internalError(error, where) {
     500
   );
 }
-async function readBody(request) {
-  const text = await request.text();
-  if (text.length > 16e3) throw new Error("too_large");
-  if (!text) return {};
-  return JSON.parse(text);
-}
 async function requireUser(request) {
   const token = extractSessionToken(request);
   if (!token) return { error: json({ error: "unauthorized" }, 401) };
@@ -462,7 +541,7 @@ async function POST(request) {
   try {
     let body;
     try {
-      body = await readBody(request);
+      body = await readJsonBody(request, AUTH_BODY_MAX_BYTES);
     } catch (error) {
       if (error instanceof Error && error.message === "too_large") {
         return json({ error: "payload_too_large" }, 413);
@@ -489,13 +568,17 @@ async function POST(request) {
       const password = typeof obj.password === "string" ? obj.password : "";
       const pwErr = validatePassword(password);
       if (pwErr) return json({ error: "weak_password", hint: pwErr }, 400);
-      const globalHit = action === "register" ? await hitRateLimit("auth:register:global", 40, 60 * 60 * 1e3) : await hitRateLimit("auth:login:global", 1e3, LOGIN_WINDOW_MS);
-      if (!globalHit.ok) return limited(globalHit);
-      const ipHit = action === "register" ? await hitRateLimit(`auth:register:ip:${ip}`, 3, 60 * 60 * 1e3) : await hitRateLimit(`auth:login:ip:${ip}`, 15, LOGIN_WINDOW_MS);
+      const ipHit = action === "register" ? await hitRateLimit(`auth:register:ip:${ip}`, REGISTER_PER_IP, 60 * 60 * 1e3) : await hitRateLimit(`auth:login:ip:${ip}`, LOGIN_PER_IP, LOGIN_WINDOW_MS);
       if (!ipHit.ok) return limited(ipHit);
       if (action === "register") {
+        const cap = maxUsers();
         const countRows = await sql(`select count(*) as n from users`);
-        if (Number(countRows[0]?.n ?? 0) >= MAX_USERS) {
+        let used = Number(countRows[0]?.n ?? 0);
+        if (used >= cap) {
+          const freed = await reclaimInactiveUsers(Math.max(1, used - cap + 1));
+          used -= freed;
+        }
+        if (used >= cap) {
           return json({ error: "registration_closed", hint: "New accounts are paused. Play as guest." }, 503);
         }
         try {

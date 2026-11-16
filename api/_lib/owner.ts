@@ -11,6 +11,17 @@ export const ACCOUNT_CODE_PREFIX = 'DGAC';
 export const ACCOUNT_CODE_HEADER = 'x-daggah-account-code';
 export { SESSION_HEADER };
 
+/** Hosted / production must never accept the local simulated identity fallback. */
+function rejectSimulatedIdentity(): boolean {
+  if (typeof process === 'undefined') return true;
+  const trim = (v: string | undefined) => (typeof v === 'string' ? v.trim() : '');
+  return (
+    trim(process.env.CURSOR_APP_ID) !== '' ||
+    trim(process.env.VERCEL) !== '' ||
+    trim(process.env.NODE_ENV) === 'production'
+  );
+}
+
 function checksum32(text: string): string {
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) {
@@ -61,7 +72,9 @@ export async function resolveOwner(request: Request): Promise<OwnerRef | Respons
   }
 
   const identity = await getIdentity(request);
-  if (identity.verified) {
+  const acceptIdentity =
+    identity.verified && !(identity.simulated && rejectSimulatedIdentity());
+  if (acceptIdentity && identity.verified) {
     return {
       kind: 'identity',
       ownerKey: `id:${identity.sub}`,
@@ -72,10 +85,16 @@ export async function resolveOwner(request: Request): Promise<OwnerRef | Respons
   const header = request.headers.get(ACCOUNT_CODE_HEADER) ?? '';
   const code = normalizeAccountCode(header);
   if (!code) {
+    const reason =
+      identity.verified && identity.simulated
+        ? 'missing_header'
+        : identity.verified
+          ? 'missing_credentials'
+          : identity.reason || 'missing_credentials';
     return Response.json(
       {
         error: 'unauthorized',
-        reason: identity.reason || 'missing_credentials',
+        reason,
         hint: 'Log in, sign in (private/team app), or send x-daggah-account-code',
       },
       { status: 401, headers: { 'cache-control': 'private, no-store' } },

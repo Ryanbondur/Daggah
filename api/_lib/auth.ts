@@ -138,6 +138,8 @@ export async function createSession(userId: string): Promise<{ token: string; ex
      values ($1, $2, $3, now())`,
     [tokenHash, userId, expiresAt.toISOString()],
   );
+  // Keep updated_at fresh so capacity reclaim never deletes recently-active accounts.
+  await sql(`update users set updated_at = now() where id = $1`, [userId]);
   await sql(
     `delete from sessions
      where user_id = $1
@@ -222,8 +224,8 @@ export function resetRateLimitsForTests(): void {
 
 /**
  * Best-effort client IP. Uses the right-most X-Forwarded-For hop (the one appended by the
- * host's own proxy); left-hand values are client-controlled and never trusted. Limits that
- * matter also key on username / a global bucket, so a spoofed IP alone cannot bypass them.
+ * host's own proxy); left-hand values are client-controlled and never trusted. Auth limits
+ * key primarily on this IP (and username for failed-login lockouts).
  */
 export function clientIp(request: Request): string {
   const xf = request.headers.get('x-forwarded-for');
