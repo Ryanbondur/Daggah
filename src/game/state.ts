@@ -1,6 +1,7 @@
 import { CAPES } from '../data/capes';
 import type { Gear } from '../data/gear';
 import { cpFromStats, SETS, SLOTS, starterGear } from '../data/gear';
+import { isArmorSlot, isArmorType, migrateLegacyArmor } from '../data/armor';
 import { isWeaponType, migrateLegacyWeapon } from '../data/weapons';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import { defaultTutorial, TUTORIAL_STEPS, type TutorialState } from '../data/tutorial';
@@ -350,7 +351,7 @@ function sanitizeItemStats(raw: unknown): Partial<Stats> {
 }
 
 /** Harden item display strings / ids from save or import blobs. */
-export function sanitizeItem(item: Item): Item {
+export function sanitizeItem(item: Item, heroClass: HeroClass | null = null): Item {
   const slot = coerceSlotId(item.slot);
   const gl = typeof item.gearLevel === 'number' && Number.isFinite(item.gearLevel) ? item.gearLevel : 1;
   const next: Item = {
@@ -375,21 +376,24 @@ export function sanitizeItem(item: Item): Item {
   if (slot === 'weapon') {
     return migrateLegacyWeapon(isWeaponType(item.weaponType) ? { ...next, weaponType: item.weaponType } : next);
   }
+  if (isArmorSlot(slot)) {
+    return migrateLegacyArmor(isArmorType(item.armorType) ? { ...next, armorType: item.armorType } : next, heroClass);
+  }
   return next;
 }
 
-function sanitizeItemList(list: Item[] | undefined): Item[] {
+function sanitizeItemList(list: Item[] | undefined, heroClass: HeroClass | null = null): Item[] {
   if (!Array.isArray(list)) return [];
-  return list.filter((i) => i && typeof i === 'object').map((i) => sanitizeItem(i as Item));
+  return list.filter((i) => i && typeof i === 'object').map((i) => sanitizeItem(i as Item, heroClass));
 }
 
-function sanitizeGear(gear: Gear | undefined, fallback: Gear): Gear {
+function sanitizeGear(gear: Gear | undefined, fallback: Gear, heroClass: HeroClass | null = null): Gear {
   const collapsed = collapseLegsIntoBoots(gear as Record<string, unknown> | undefined, []);
   const base = { ...fallback, ...(collapsed.gear as Gear) };
   const out: Gear = {};
   for (const slot of SLOTS) {
     const piece = base[slot];
-    if (piece) out[slot] = sanitizeItem(piece);
+    if (piece) out[slot] = sanitizeItem(piece, heroClass);
   }
   return out;
 }
@@ -402,7 +406,7 @@ function sanitizeClan(clan: ClanData): ClanData {
     code: sanitizeClanCode(typeof clan.code === 'string' ? clan.code : '') || 'UNKNOWN',
     members: (clan.members ?? []).map((m) => {
       const member = normalizeClanMember(m);
-      const gear = member.gear ? sanitizeGear(member.gear, {}) : undefined;
+      const gear = member.gear ? sanitizeGear(member.gear, {}, isHeroClass(member.heroClass) ? member.heroClass : null) : undefined;
       return gear ? { ...member, gear } : member;
     }),
   };
@@ -507,7 +511,7 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
 }
 
 /** Collapse legs→boots on gear/bag/pending before sanitize. */
-function migrateFootwearSlots(parsed: Partial<SaveData>): {
+function migrateFootwearSlots(parsed: Partial<SaveData>, heroClass: HeroClass | null): {
   gear: Gear;
   bag: Item[];
   pending: Item[];
@@ -525,8 +529,8 @@ function migrateFootwearSlots(parsed: Partial<SaveData>): {
   );
   return {
     gear: collapsed.gear as Gear,
-    bag: sanitizeItemList(collapsed.bag as Item[]),
-    pending: sanitizeItemList(pendingRaw as Item[]),
+    bag: sanitizeItemList(collapsed.bag as Item[], heroClass),
+    pending: sanitizeItemList(pendingRaw as Item[], heroClass),
   };
 }
 
@@ -540,14 +544,14 @@ export function normalizeParsedSave(
 
   // Warrior-only v1 era.
   if (parsed.version === 1 && parsed.heroClass === 'Warrior') {
-    const footwear = migrateFootwearSlots(parsed);
+    const footwear = migrateFootwearSlots(parsed, 'Warrior');
     return {
       ...fresh,
       ...parsed,
       version: SAVE_VERSION,
       heroClass: 'Warrior',
       classPicked: true,
-      gear: sanitizeGear({ ...fresh.gear, ...footwear.gear }, fresh.gear),
+      gear: sanitizeGear({ ...fresh.gear, ...footwear.gear }, fresh.gear, 'Warrior'),
       settings: normalizeSettings(parsed.settings, fresh.settings),
       dungeons: parsed.dungeons ?? {},
       bag: footwear.bag,
@@ -563,14 +567,15 @@ export function normalizeParsedSave(
   // Accept current + future schema versions with a known class (forward-compatible).
   // Unknown fields are dropped by the explicit shape; missing fields fill from fresh.
   if (typeof parsed.version === 'number' && parsed.version >= 2 && isHeroClass(parsed.heroClass)) {
-    const footwear = migrateFootwearSlots(parsed);
+    const footwear = migrateFootwearSlots(parsed, parsed.heroClass);
+    const classStarter = starterGear(parsed.heroClass);
     return {
       ...fresh,
       ...parsed,
       version: SAVE_VERSION,
       heroClass: parsed.heroClass,
       classPicked: parsed.classPicked !== false,
-      gear: sanitizeGear({ ...fresh.gear, ...footwear.gear }, fresh.gear),
+      gear: sanitizeGear({ ...classStarter, ...footwear.gear }, classStarter, parsed.heroClass),
       settings: normalizeSettings(parsed.settings, fresh.settings),
       dungeons: parsed.dungeons ?? {},
       bag: footwear.bag,

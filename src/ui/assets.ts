@@ -1,4 +1,5 @@
 import type { HeroClass, Item, SkillId } from '../data/types';
+import { armorIconPath, isArmorSlot } from '../data/armor';
 import { weaponIconPath } from '../data/weapons';
 
 const BASE = import.meta.env.BASE_URL;
@@ -6,7 +7,7 @@ const BASE = import.meta.env.BASE_URL;
 export const asset = (path: string): string => `${BASE}assets/${path}`;
 
 export const itemIcon = (
-  item: Pick<Item, 'icon' | 'slot' | 'capeId'> & Partial<Pick<Item, 'name' | 'weaponType'>>,
+  item: Pick<Item, 'icon' | 'slot' | 'capeId'> & Partial<Pick<Item, 'name' | 'weaponType' | 'armorType'>>,
 ): string => {
   if (item.slot === 'cape' && item.capeId) {
     return asset(`icons/capes/${item.capeId}.webp`);
@@ -14,6 +15,9 @@ export const itemIcon = (
   const icon = /^[a-k]$/.test(String(item.icon)) ? item.icon : 'a';
   if (item.slot === 'weapon') {
     return asset(weaponIconPath({ name: item.name ?? '', weaponType: item.weaponType, icon }));
+  }
+  if (isArmorSlot(item.slot)) {
+    return asset(armorIconPath({ name: item.name ?? '', slot: item.slot, armorType: item.armorType, icon }));
   }
   return asset(`icons/gear-${icon}/${item.slot}.webp`);
 };

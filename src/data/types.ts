@@ -113,6 +113,15 @@ export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j'
 /** Weapon family; decides icon art and base names. Warrior is `melee` (axe/mace/sword/hammer). */
 export type WeaponType = 'melee' | 'staff' | 'bow' | 'dagger';
 
+/** Slots that wear class armor (everything except weapon, jewelry and cape). */
+export type ArmorSlotId = 'chest' | 'helmet' | 'shoulders' | 'belt' | 'gloves' | 'bracers' | 'boots';
+
+/**
+ * Armor family; decides icon art and base names. Warrior is `plate`, Mage `cloth`; Ranger and
+ * Rogue are both leather but have visually distinct art (hooded hunter vs fitted, strapped).
+ */
+export type ArmorType = 'plate' | 'cloth' | 'ranger-leather' | 'rogue-leather';
+
 export interface Item {
   id: string;
   slot: SlotId;
@@ -124,6 +133,8 @@ export interface Item {
   capeId?: CapeId;
   /** Weapon-slot only. Absent on legacy items; see `resolveWeaponType`. */
   weaponType?: WeaponType;
+  /** Armor-slot only (chest/helmet/shoulders/belt/gloves/bracers/boots). Absent on legacy items. */
+  armorType?: ArmorType;
   icon: IconPack;
   stats: Partial<Stats>;
 }
