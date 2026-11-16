@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Chroma-key and slice the generated art in art-src/ into public/assets/.
 
-Usage: python3 scripts/process-art.py [capes]   (requires pillow, numpy, scipy)
+Usage: python3 scripts/process-art.py [capes|weapons]   (requires pillow, numpy, scipy)
 "capes" reprocesses only the 12 class cape icons.
+"weapons" reprocesses only the Mage staff / Ranger bow / Rogue dagger icon sets.
 """
 import sys
 from pathlib import Path
@@ -36,6 +37,27 @@ def key_magenta(img: Image.Image) -> Image.Image:
     fg[..., 2] = np.where(edge, fg[..., 2] - spill * 0.8, fg[..., 2])
     alpha = np.where(alpha < 0.15, 0.0, alpha)
     out = np.dstack([np.clip(fg, 0, 255), alpha * 255.0]).astype(np.uint8)
+    return Image.fromarray(out, "RGBA")
+
+
+def key_distance(img: Image.Image, lo: float = 45.0, hi: float = 95.0) -> Image.Image:
+    """Key by RGB distance to the border color.
+
+    key_magenta also removes violet/purple art (it keys on min(r,b)-g), so sheets
+    with purple weapons use this keyer instead.
+    """
+    rgb = np.asarray(img.convert("RGB")).astype(np.float32)
+    border = np.concatenate([rgb[:6].reshape(-1, 3), rgb[-6:].reshape(-1, 3),
+                             rgb[:, :6].reshape(-1, 3), rgb[:, -6:].reshape(-1, 3)])
+    bg = np.median(border, axis=0)
+    dist = np.linalg.norm(rgb - bg, axis=-1)
+    alpha = np.clip((dist - lo) / (hi - lo), 0.0, 1.0)
+    a = np.maximum(alpha, 1e-3)[..., None]
+    fg = np.clip((rgb - (1.0 - a) * bg) / a, 0, 255)
+    solid = alpha > 0.98
+    fg = np.where(solid[..., None], rgb, fg)
+    alpha = np.where(alpha < 0.15, 0.0, alpha)
+    out = np.dstack([fg, alpha * 255.0]).astype(np.uint8)
     return Image.fromarray(out, "RGBA")
 
 
@@ -208,7 +230,8 @@ def _detect_grid_cols(img: Image.Image, n_names: int) -> int:
     return best_cols
 
 
-def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate: int = 14) -> None:
+def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate: int = 14,
+                keyer=None) -> None:
     """Slice a magenta-keyed icon sheet.
 
     Gear sheets mix layouts (packs b/c/d are 3×4; most others are 4×3). Fixed
@@ -216,7 +239,7 @@ def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate:
     icons (right-half + neighbor sliver). We search dilate values for an exact
     blob count, cluster rows by Y proximity, and square-pad each tile.
     """
-    img = key_magenta(Image.open(SRC / f"{name}.jpg"))
+    img = (keyer or key_magenta)(Image.open(SRC / f"{name}.jpg"))
     dilates = [dilate] + [d for d in (14, 12, 10, 8, 6, 4, 3, 2) if d != dilate]
     chosen = None
     for d in dilates:
@@ -288,6 +311,13 @@ CAPES = [
     "quillwind-cape", "deadeye-shroud", "hawkflight-mantle",
     "nightstalker-cape", "shadowweave-cloak", "deathveil-drape",
 ]
+# Class weapon sets: 8-up sheets (4x2), one icon per gear-pack theme, in this order.
+# Warrior keeps the per-pack melee art in icons/gear-<pack>/weapon.webp.
+WEAPON_SHEETS = {
+    "staff": ["a", "c", "d", "f", "h", "i", "j", "k"],
+    "bow": ["a", "c", "e", "f", "h", "i", "j", "k"],
+    "dagger": ["a", "c", "g", "f", "h", "i", "j", "k"],
+}
 NAV = ["camp", "skill", "adventure", "town", "crystal", "key"]
 
 
@@ -297,9 +327,19 @@ def process_capes() -> None:
         single(f"cape-{cape}", f"icons/capes/{cape}.webp", 256)
 
 
+def process_weapons() -> None:
+    """icons-weapons-<type>.jpg (8-up) -> icons/weapons/<type>/<pack>.webp."""
+    for wtype, packs in WEAPON_SHEETS.items():
+        slice_sheet(f"icons-weapons-{wtype}", f"icons/weapons/{wtype}", packs, 160, dilate=6,
+                    keyer=key_distance)
+
+
 def main() -> None:
     if "capes" in sys.argv[1:]:
         process_capes()
+        return
+    if "weapons" in sys.argv[1:]:
+        process_weapons()
         return
     for bg in (
         "bg-deep-cavern",
@@ -358,6 +398,7 @@ def main() -> None:
     slice_sheet("icons-skills-rogue", "icons/skills", SKILLS_ROGUE, 160, dilate=6)
     slice_sheet("icons-nav", "icons/nav", NAV, 160)
     process_capes()
+    process_weapons()
 
     single("ui-gargoyle", "ui/gargoyle.webp", 420)
     single("ui-hooded-statue", "ui/hooded-statue.webp", 420)

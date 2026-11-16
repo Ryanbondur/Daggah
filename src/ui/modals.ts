@@ -53,7 +53,8 @@ import { CLASS_PLAYSTYLES } from '../data/skills';
 import type { UIContext } from './context';
 import { fmt } from './context';
 import { CHECK_SVG, cardHtml, slotHtml } from './items';
-import { asset, heroSprite, navIcon } from './assets';
+import { asset, heroSprite, itemIcon, navIcon } from './assets';
+import { CLASS_WEAPON_TYPE } from '../data/weapons';
 import { escapeHtml } from './escape';
 import { copyTextToClipboard } from './clipboard';
 import { SEASON_MILESTONES } from '../data/season';
@@ -1415,7 +1416,7 @@ export function showClanArmorer(ctx: UIContext): void {
     // Avoid class "dim" (modal overlay). Use is-dim for unaffordable rows.
     return `<div class="vendor-row${afford ? '' : ' is-dim'}${locked ? ' locked' : ''}" role="button" tabindex="${locked ? '-1' : '0'}"
       data-action="buy" data-i="${i}" ${locked ? 'aria-disabled="true"' : ''}>
-      <img src="${asset(`icons/gear-k/${o.slot}.webp`)}" alt="" />
+      <img src="${itemIcon({ slot: o.slot, icon: 'k', weaponType: CLASS_WEAPON_TYPE[g.save.heroClass] })}" alt="" />
       <span><b>${escapeHtml(o.label)}</b><small>${escapeHtml(note)}${o.nightscarOnly ? ' · Nightscar exclusive' : ''}</small></span>
       <b class="price"><img src="${asset('ui/clan-token.webp')}" alt="" />${o.cost}</b>
     </div>`;

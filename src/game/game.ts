@@ -1161,6 +1161,7 @@ export class Game {
     const item = rollItem(this.rng, {
       gearLevel: this.stageGearLevel(),
       rarity: rollRarity(this.rng, source),
+      heroClass: this.save.heroClass,
     });
     this.queueLoot([item]);
   }
@@ -1200,6 +1201,7 @@ export class Game {
       rarity,
       // Wrong-class set pools (e.g. Warrior in Quillstorm dungeon) → plain gear.
       setId: setPool.length ? this.rng.pick(setPool) : undefined,
+      heroClass: this.save.heroClass,
     });
   }
 
@@ -2184,6 +2186,7 @@ export class Game {
       slot: offer.slot,
       setId: 'clanforged',
       icon: 'k',
+      heroClass: this.save.heroClass,
     });
     this.queueLoot([item], false);
     this.toast(`Bought ${item.name}`, 'good');
@@ -2339,6 +2342,7 @@ export class Game {
           gearLevel: Math.max(1, Math.min(this.save.level, this.rng.int(1, 8))),
           rarity: rollRarity(this.rng, 'dungeon-floor'),
           setId: setPool.length ? this.rng.pick(setPool) : undefined,
+          heroClass: this.save.heroClass,
         }),
       );
     }

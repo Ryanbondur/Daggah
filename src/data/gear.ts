@@ -13,10 +13,12 @@ import type {
   SlotId,
   StatKey,
   Stats,
+  WeaponType,
 } from './types';
 import { STAT_KEYS } from './types';
 import { PLAYSTYLES, playstyleCommitted } from './skills';
 import { heroBaseStats } from './xp';
+import { CLASS_WEAPON_TYPE, STARTER_WEAPON_NAME, weaponBaseNames } from './weapons';
 
 export const SLOTS: SlotId[] = [
   'weapon',
@@ -225,8 +227,7 @@ export function baseStatsForSlot(slot: SlotId, gl: number, mult: number): Partia
   return s;
 }
 
-const BASE_NAMES: Record<SlotId, string[]> = {
-  weapon: ['Axe', 'Cleaver', 'Hatchet'],
+const BASE_NAMES: Record<Exclude<SlotId, 'weapon'>, string[]> = {
   chest: ['Breastplate', 'Cuirass', 'Hauberk'],
   belt: ['Belt', 'Girdle'],
   helmet: ['Helm', 'Greathelm'],
@@ -798,6 +799,8 @@ export interface RollOptions {
   slot?: SlotId;
   setId?: SetId;
   icon?: IconPack;
+  /** Class receiving the drop; picks weapon type / art. Defaults to Warrior. */
+  heroClass?: HeroClass;
 }
 
 export function rollItem(rng: Rng, opts: RollOptions): Item {
@@ -817,7 +820,15 @@ export function rollItem(rng: Rng, opts: RollOptions): Item {
     stats[key] = substatValue(key, gl, rarity.mult);
   }
 
-  const base = rng.pick(BASE_NAMES[slot]);
+  const icon: IconPack = opts.icon ?? (opts.setId ? SETS[opts.setId].icon : 'a');
+  let weaponType: WeaponType | undefined;
+  let base: string;
+  if (slot === 'weapon') {
+    weaponType = CLASS_WEAPON_TYPE[opts.heroClass ?? 'Warrior'];
+    base = rng.pick(weaponBaseNames(weaponType, icon));
+  } else {
+    base = rng.pick(BASE_NAMES[slot]);
+  }
   const name = opts.setId
     ? `${SETS[opts.setId].name} ${base}`
     : `${rng.pick(PREFIX[opts.rarity])} ${base}`;
@@ -829,7 +840,8 @@ export function rollItem(rng: Rng, opts: RollOptions): Item {
     gearLevel: gl,
     name,
     setId: opts.setId,
-    icon: opts.icon ?? (opts.setId ? SETS[opts.setId].icon : 'a'),
+    icon,
+    ...(weaponType ? { weaponType } : {}),
     stats,
   };
 }
@@ -894,13 +906,6 @@ export function capeDropChance(source: DropSource): number {
   }
 }
 
-const STARTER_WEAPON: Record<HeroClass, string> = {
-  Warrior: 'Rusty Axe',
-  Mage: 'Splintered Staff',
-  Ranger: 'Warped Bow',
-  Rogue: 'Notched Daggers',
-};
-
 const STARTER_NAMES: Record<Exclude<SlotId, 'weapon' | 'cape'>, string> = {
   chest: 'Worn Jerkin',
   belt: 'Frayed Belt',
@@ -923,8 +928,9 @@ export function starterGear(heroClass: HeroClass = 'Warrior'): Gear {
       slot,
       rarity: 'common',
       gearLevel: 1,
-      name: slot === 'weapon' ? STARTER_WEAPON[heroClass] : STARTER_NAMES[slot],
+      name: slot === 'weapon' ? STARTER_WEAPON_NAME[heroClass] : STARTER_NAMES[slot],
       icon: 'a',
+      ...(slot === 'weapon' ? { weaponType: CLASS_WEAPON_TYPE[heroClass] } : {}),
       stats: baseStatsForSlot(slot, 1, 1),
     };
   }

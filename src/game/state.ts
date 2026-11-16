@@ -1,6 +1,7 @@
 import { CAPES } from '../data/capes';
 import type { Gear } from '../data/gear';
 import { cpFromStats, SETS, SLOTS, starterGear } from '../data/gear';
+import { isWeaponType, migrateLegacyWeapon } from '../data/weapons';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import { defaultTutorial, TUTORIAL_STEPS, type TutorialState } from '../data/tutorial';
 import { APP_CONTENT_VERSION } from '../data/whatsNew';
@@ -370,6 +371,9 @@ export function sanitizeItem(item: Item): Item {
     delete next.setId;
   } else if (item.capeId) {
     delete next.capeId;
+  }
+  if (slot === 'weapon') {
+    return migrateLegacyWeapon(isWeaponType(item.weaponType) ? { ...next, weaponType: item.weaponType } : next);
   }
   return next;
 }

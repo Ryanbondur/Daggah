@@ -143,6 +143,7 @@ export function aiGearFor(
       slot,
       setId,
       icon: setId === 'clanforged' ? 'k' : setId === 'nightscar-regalia' ? 'j' : undefined,
+      heroClass,
     });
   }
   return gear;

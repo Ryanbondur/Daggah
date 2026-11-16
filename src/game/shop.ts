@@ -134,6 +134,7 @@ export function buildDailyOffers(
       gearLevel: gl,
       rarity,
       setId,
+      heroClass,
     });
     // Stable id for the day so bag/equip flows stay unique after refresh.
     item.id = `shop_${seed.toString(36)}_${i}`;

@@ -1,14 +1,20 @@
 import type { HeroClass, Item, SkillId } from '../data/types';
+import { weaponIconPath } from '../data/weapons';
 
 const BASE = import.meta.env.BASE_URL;
 
 export const asset = (path: string): string => `${BASE}assets/${path}`;
 
-export const itemIcon = (item: Pick<Item, 'icon' | 'slot' | 'capeId'>): string => {
+export const itemIcon = (
+  item: Pick<Item, 'icon' | 'slot' | 'capeId'> & Partial<Pick<Item, 'name' | 'weaponType'>>,
+): string => {
   if (item.slot === 'cape' && item.capeId) {
     return asset(`icons/capes/${item.capeId}.webp`);
   }
   const icon = /^[a-k]$/.test(String(item.icon)) ? item.icon : 'a';
+  if (item.slot === 'weapon') {
+    return asset(weaponIconPath({ name: item.name ?? '', weaponType: item.weaponType, icon }));
+  }
   return asset(`icons/gear-${icon}/${item.slot}.webp`);
 };
 
