@@ -11,6 +11,11 @@ export const HERO_X = 0.24;
 export const STEP = 0.05;
 /** Engage line for Clan Raid boss so a 4-hero party fits on the left. */
 export const RAID_BOSS_LINE = 0.58;
+/**
+ * Act / dungeon pack spawn X (east of the hero). Trash packs stagger by +0.07.
+ * Walk-in moves west toward {@link HERO_X}; left-facing enemy art must stay unflipped.
+ */
+export const ENEMY_APPROACH_SPAWN_X = 1.08;
 
 export interface HeroInput {
   level: number;
@@ -477,7 +482,9 @@ export class Battle {
       default:
         break;
     }
-    ids.forEach((spec, i) => this.spawnEnemy(spec.id, node.tier, 1.08 + i * 0.07, spec.hpMul ?? 1));
+    ids.forEach((spec, i) =>
+      this.spawnEnemy(spec.id, node.tier, ENEMY_APPROACH_SPAWN_X + i * 0.07, spec.hpMul ?? 1),
+    );
     this.setState('fight');
     this.autoT = Math.min(this.autoT, 0.5);
     this.aiT = 0.1;
@@ -846,7 +853,12 @@ export class Battle {
       const adds = this.isClanRaid ? 3 : 2;
       for (let i = 0; i < adds; i++) {
         const id = this.rng.pick(this.run.trash);
-        this.spawnEnemy(id, e.tier, 1.05 + (alive + i) * 0.07, this.isClanRaid ? 1.1 : 0.8);
+        this.spawnEnemy(
+          id,
+          e.tier,
+          ENEMY_APPROACH_SPAWN_X - 0.03 + (alive + i) * 0.07,
+          this.isClanRaid ? 1.1 : 0.8,
+        );
       }
     }
     if (e.hp <= 0) this.killEnemy(e);
@@ -868,7 +880,7 @@ export class Battle {
       const alive = this.alive.length;
       for (let i = 0; i < 2; i++) {
         const id = this.rng.pick(this.run.trash);
-        this.spawnEnemy(id, e.tier + 0.4, 1.08 + (alive + i) * 0.07, 1.25);
+        this.spawnEnemy(id, e.tier + 0.4, ENEMY_APPROACH_SPAWN_X + (alive + i) * 0.07, 1.25);
       }
     }
   }
