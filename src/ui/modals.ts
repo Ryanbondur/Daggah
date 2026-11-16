@@ -1,6 +1,16 @@
 import { getDungeon } from '../data/acts';
-import { RARITIES, SETS, computeHero, lootCompareHighlight, setCounts } from '../data/gear';
-import type { HeroClass, RarityId, SetId, StatKey } from '../data/types';
+import {
+  RARITIES,
+  SETS,
+  computeHero,
+  formatStat,
+  lootCompareHighlight,
+  rarityBelow,
+  salvageValue,
+  sellValue,
+  setCounts,
+} from '../data/gear';
+import type { HeroClass, Item, RarityId, SetId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_LABEL } from '../data/types';
 import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
 import { CLAN_CREATE_COST, TOKEN_DAY_CAP } from '../game/clan';
@@ -39,7 +49,6 @@ import {
   dungeonKeyCost,
   formatDungeonKeyCost,
 } from '../game/state';
-import { formatStat } from '../data/gear';
 import { CLASS_PLAYSTYLES } from '../data/skills';
 import type { UIContext } from './context';
 import { fmt } from './context';
@@ -326,6 +335,12 @@ export function showClassPick(ctx: UIContext): void {
   });
 }
 
+function salvageBtnLabel(item: Item): string {
+  const v = salvageValue(item);
+  if (v.crystals > 0) return `Salvage · +${v.dust} dust · +${v.crystals}✦`;
+  return `Salvage · +${v.dust} dust`;
+}
+
 export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 'bag'): void {
   const g = ctx.game;
   const list = source === 'pending' ? g.save.pending : g.save.bag;
@@ -334,6 +349,9 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
   const info = g.compareFor(item);
   let auto = g.save.settings.autoSalvageReplaced;
   const total = source === 'pending' ? g.save.pending.length : 0;
+  const isUpgrade = info.cpDelta > 0 && info.levelOk;
+  const emptySlot = !info.current;
+  const replacePrimary = (isUpgrade || emptySlot) && info.levelOk;
 
   const left = cardHtml(info.current, {
     gear: g.save.gear,
@@ -341,15 +359,26 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
     assumeEquipped: true,
     loadout: g.save.loadout,
   });
+  const replaceLabel = !info.levelOk
+    ? `Need Lv.${item.gearLevel}`
+    : emptySlot
+      ? 'Equip'
+      : isUpgrade
+        ? 'Replace'
+        : 'Replace anyway';
+  // Upgrade → Replace is one-tap primary (gold). Downgrade → Salvage is primary.
+  const replaceCls = `btn ${replacePrimary ? 'gold' : 'stone'} ${info.levelOk ? '' : 'disabled'}`;
+  const salvageCls = `btn ${replacePrimary ? 'tan' : 'gold'}`;
   const rightFooter = `
-    <div class="autochk ${auto ? 'on' : ''}" data-action="auto-toggle">
-      <div class="box">${CHECK_SVG}</div><div>Auto-salvage replaced gear</div>
+    <div class="autochk ${auto ? 'on' : ''}" data-action="auto-toggle" title="Salvage the piece you replace">
+      <div class="box">${CHECK_SVG}</div><div>Auto-salvage old piece</div>
     </div>
     <div class="cmp-btns">
-      <button class="btn tan" data-action="cmp-salvage">Salvage</button>
-      <button class="btn red ${info.levelOk ? '' : 'disabled'}" data-action="cmp-replace">${
-        info.levelOk ? 'Replace' : `Lv.${item.gearLevel}`
-      }</button>
+      <button class="${salvageCls}" data-action="cmp-salvage">${salvageBtnLabel(item)}</button>
+      <button class="${replaceCls}" data-action="cmp-replace">${replaceLabel}</button>
+    </div>
+    <div class="cmp-btns cmp-secondary">
+      <button class="btn stone" data-action="cmp-keep">${source === 'pending' ? 'Keep in bag' : 'Back to bag'}</button>
     </div>`;
   const right = cardHtml(item, {
     gear: g.save.gear,
@@ -362,8 +391,12 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
   });
   const counter =
     source === 'pending'
-      ? `Pickup 1/${total}  -  tap outside to keep in bag`
-      : 'Tap outside to close';
+      ? `Pickup 1/${total}  ·  Keep = bag, no confirm`
+      : 'Compare · one tap to decide';
+
+  const returnToBag = (): void => {
+    if (source === 'bag') showBag(ctx);
+  };
 
   const el = ctx.openModal(
     `<div class="cmp-wrap"><div class="cmp">${left}${right}</div><div class="cmp-counter">${counter}</div></div>`,
@@ -371,6 +404,7 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
       onDismiss: () => {
         if (source === 'pending') g.keepInBag(item);
         ctx.closeModal();
+        returnToBag();
       },
     },
   );
@@ -385,11 +419,17 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
     } else if (action === 'cmp-salvage') {
       g.salvage(item);
       ctx.closeModal();
+      returnToBag();
     } else if (action === 'cmp-replace') {
       if (g.equip(item, auto)) {
         ctx.flashSlot(item.slot);
         ctx.closeModal();
+        returnToBag();
       }
+    } else if (action === 'cmp-keep') {
+      if (source === 'pending') g.keepInBag(item);
+      ctx.closeModal();
+      returnToBag();
     }
   });
 }
@@ -412,30 +452,73 @@ export function showItemInfo(ctx: UIContext, slot: string): void {
 const BAG_BULK_CEILINGS: RarityId[] = ['rare', 'epic', 'legendary'];
 let bagBulkCeiling: RarityId = 'rare';
 
+function bagBelowTotals(bag: Item[], ceiling: RarityId): { count: number; dust: number; crystals: number; gold: number } {
+  let dust = 0;
+  let crystals = 0;
+  let gold = 0;
+  let count = 0;
+  for (const it of bag) {
+    if (!rarityBelow(it, ceiling)) continue;
+    count += 1;
+    const v = salvageValue(it);
+    dust += v.dust;
+    crystals += v.crystals;
+    gold += sellValue(it);
+  }
+  return { count, dust, crystals, gold };
+}
+
 export function showBag(ctx: UIContext): void {
   const g = ctx.game;
   const bag = g.save.bag;
   const cells: string[] = [];
-  for (const it of bag) cells.push(slotHtml(it, { action: 'bag-item' }));
+  for (const it of bag) {
+    const hi = lootCompareHighlight(g.save.level, g.save.gear, it, g.save.heroClass, g.save.loadout);
+    cells.push(slotHtml(it, { action: 'bag-item', bisBadge: hi.badge }));
+  }
   for (let i = bag.length; i < BAG_CAP; i++) cells.push('<div class="bag-empty"></div>');
   const ceil = bagBulkCeiling;
   const ceilChips = BAG_BULK_CEILINGS.map(
     (r) =>
       `<button class="chip ${ceil === r ? 'on' : ''}" data-action="bag-ceil" data-r="${r}">Below ${RARITIES[r].label}</button>`,
   ).join('');
+  const below = bagBelowTotals(bag, ceil);
+  const junk = bag.filter((it) => !g.isUpgrade(it));
+  let junkDust = 0;
+  let junkCrystals = 0;
+  for (const it of junk) {
+    const v = salvageValue(it);
+    junkDust += v.dust;
+    junkCrystals += v.crystals;
+  }
+  const salvagePreview =
+    below.count > 0
+      ? `Salvage ${below.count}: +${below.dust} dust${below.crystals ? `, +${below.crystals}✦` : ''}`
+      : 'Nothing below this rarity';
+  const sellPreview = below.count > 0 ? `Sell ${below.count}: +${below.gold} gold` : 'Nothing to sell';
+  const junkPreview =
+    junk.length > 0
+      ? `Salvage ${junk.length} non-upgrades: +${junkDust} dust${junkCrystals ? `, +${junkCrystals}✦` : ''}`
+      : 'No non-upgrades in bag';
   const el = ctx.openModal(
     `<div class="sheet">
       <h2>Bag <small style="font-size:3.2cqw;font-family:var(--font-ui)">${bag.length}/${BAG_CAP}</small></h2>
       <div class="body">
-        <p>Tap a piece to compare it with what you have equipped.</p>
+        <p>Tap a piece to compare — Replace / Salvage is one tap, then you return here.</p>
         <div class="bag-grid">${cells.join('')}</div>
-        <h3>Clear overflow</h3>
+        <h3>Quick clear</h3>
+        <p class="bag-yield">${escapeHtml(junkPreview)}</p>
+        <div class="btns bag-quick">
+          <button class="btn gold ${junk.length ? '' : 'disabled'}" data-action="bag-salvage-junk"${junk.length ? '' : ' disabled'}>Salvage non-upgrades</button>
+        </div>
+        <h3>Clear by rarity</h3>
         <div class="chip-row bag-ceil-row">${ceilChips}</div>
-        <p class="tagline">Salvage → dust/crystals. Sell → gold. Both target items strictly below the chip rarity.</p>
+        <p class="bag-yield">${escapeHtml(salvagePreview)} · ${escapeHtml(sellPreview)}</p>
+        <p class="tagline">Salvage → dust/crystals. Sell → gold. No confirm unless you wipe upgrades.</p>
       </div>
       <div class="btns">
-        <button class="btn stone" data-action="bag-salvage-below">Salvage all below</button>
-        <button class="btn stone" data-action="bag-sell-below">Sell all below</button>
+        <button class="btn stone ${below.count ? '' : 'disabled'}" data-action="bag-salvage-below"${below.count ? '' : ' disabled'}>Salvage all below</button>
+        <button class="btn stone ${below.count ? '' : 'disabled'}" data-action="bag-sell-below"${below.count ? '' : ' disabled'}>Sell all below</button>
         <button class="btn gold" data-action="bag-close">Close</button>
       </div>
     </div>`,
@@ -459,6 +542,10 @@ export function showBag(ctx: UIContext): void {
       showBag(ctx);
     } else if (t.dataset.action === 'bag-sell-below') {
       g.sellBagBelow(bagBulkCeiling);
+      ctx.closeModal();
+      showBag(ctx);
+    } else if (t.dataset.action === 'bag-salvage-junk') {
+      g.salvageBagNonUpgrades();
       ctx.closeModal();
       showBag(ctx);
     }

@@ -67,6 +67,24 @@ describe('bag overflow salvage / sell', () => {
     expect(game.save.bag).toHaveLength(1);
     expect(game.save.bag[0].rarity).toBe('epic');
   });
+
+  it('salvageBagNonUpgrades clears junk and returns dust/crystal totals', () => {
+    const game = new Game(memoryStorage(), mulberry32(7));
+    game.pickClass('Warrior');
+    const junk = rollItem(mulberry32(31), { gearLevel: 1, rarity: 'common', slot: 'ring' });
+    // Force worse-than-equipped stats so isUpgrade is false.
+    junk.stats = { ...junk.stats, atk: 0, def: 0, hp: 1, critRate: 0, critDmg: 0, skillPower: 0, haste: 0, energyRegen: 0 };
+    const upgrade = rollItem(mulberry32(32), { gearLevel: 1, rarity: 'epic', slot: 'helmet' });
+    upgrade.stats = { ...upgrade.stats, atk: 0, def: 80, hp: 400, critRate: 5, critDmg: 0, skillPower: 0, haste: 0, energyRegen: 0 };
+    game.save.bag.push(junk, upgrade);
+    const beforeDust = game.save.dust;
+    const beforeCrystals = game.save.crystals;
+    const result = game.salvageBagNonUpgrades();
+    expect(result.count).toBeGreaterThanOrEqual(1);
+    expect(game.save.dust).toBe(beforeDust + result.dust);
+    expect(game.save.crystals).toBe(beforeCrystals + result.crystals);
+    expect(game.save.bag.every((i) => game.isUpgrade(i))).toBe(true);
+  });
 });
 
 describe('mute persists', () => {

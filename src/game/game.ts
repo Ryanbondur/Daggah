@@ -42,6 +42,7 @@ import {
   cpDelta,
   computeHero,
   filterSetsForClass,
+  formatSalvageYield,
   itemAllowedForClass,
   lootCompareHighlight,
   rarityAtMost,
@@ -1218,15 +1219,21 @@ export class Game {
   /** Put drops into the pickup queue (or auto-salvage by threshold / non-upgrade rules). */
   queueLoot(items: Item[], salvageNonUpgrades = this.save.settings.autoSalvageWorse): void {
     let salvaged = 0;
+    let dust = 0;
+    let crystals = 0;
     for (const item of items) {
       if (this.shouldAutoSalvage(item, salvageNonUpgrades)) {
-        this.applySalvage(item);
+        const v = this.applySalvage(item);
         salvaged += 1;
+        dust += v.dust;
+        crystals += v.crystals;
       } else {
         this.save.pending.push(item);
       }
     }
-    if (salvaged > 0) this.toast(`Auto-salvaged ${salvaged} item${salvaged > 1 ? 's' : ''}`, 'info');
+    if (salvaged > 0) {
+      this.toast(`Auto-salvaged ${salvaged}: ${formatSalvageYield(dust, crystals)}`, 'good');
+    }
     const best = items.find((i) => i.rarity === 'legendary') ?? items.find((i) => i.rarity === 'epic');
     if (best) this.say(`Found ${RARITIES[best.rarity].label} ${best.name}!`);
     this.changed();
@@ -1253,35 +1260,65 @@ export class Game {
     this.save.bag = this.save.bag.filter((i) => i.id !== item.id);
   }
 
-  private applySalvage(item: Item): void {
+  private applySalvage(item: Item): { dust: number; crystals: number } {
     const v = salvageValue(item);
     this.save.dust += v.dust;
     this.save.crystals += v.crystals;
     this.save.salvageCount += 1;
     this.bumpDaily('salvage');
+    return v;
   }
 
   salvage(item: Item): void {
     this.removeFromQueues(item);
-    this.applySalvage(item);
+    const v = this.applySalvage(item);
     this.advanceTutorial('first-drop');
-    this.toast(`Salvaged: +${salvageValue(item).dust} dust${salvageValue(item).crystals ? `, +${salvageValue(item).crystals} crystals` : ''}`, 'info');
+    this.toast(`Salvaged: ${formatSalvageYield(v.dust, v.crystals)}`, 'good');
     this.changed();
   }
 
   /** Salvage every bag item strictly below the given rarity ceiling. */
   salvageBagBelow(ceiling: RarityId): number {
     const targets = this.save.bag.filter((i) => rarityBelow(i, ceiling));
+    let dust = 0;
+    let crystals = 0;
     for (const item of targets) {
       this.removeFromQueues(item);
-      this.applySalvage(item);
+      const v = this.applySalvage(item);
+      dust += v.dust;
+      crystals += v.crystals;
     }
     if (targets.length) {
       this.advanceTutorial('first-drop');
-      this.toast(`Salvaged ${targets.length} below ${RARITIES[ceiling].label}`, 'info');
+      this.toast(
+        `Salvaged ${targets.length} below ${RARITIES[ceiling].label}: ${formatSalvageYield(dust, crystals)}`,
+        'good',
+      );
       this.changed();
     }
     return targets.length;
+  }
+
+  /** Salvage every bag item that is not a CP upgrade (no rarity filter). */
+  salvageBagNonUpgrades(): { count: number; dust: number; crystals: number } {
+    const targets = this.save.bag.filter((i) => !this.isUpgrade(i));
+    let dust = 0;
+    let crystals = 0;
+    for (const item of targets) {
+      this.removeFromQueues(item);
+      const v = this.applySalvage(item);
+      dust += v.dust;
+      crystals += v.crystals;
+    }
+    if (targets.length) {
+      this.advanceTutorial('first-drop');
+      this.toast(
+        `Salvaged ${targets.length} non-upgrade${targets.length > 1 ? 's' : ''}: ${formatSalvageYield(dust, crystals)}`,
+        'good',
+      );
+      this.changed();
+    }
+    return { count: targets.length, dust, crystals };
   }
 
   /** Sell every bag item strictly below the given rarity for gold (no dust/crystals). */
@@ -1294,7 +1331,7 @@ export class Game {
     }
     if (targets.length) {
       this.save.gold += gold;
-      this.toast(`Sold ${targets.length} below ${RARITIES[ceiling].label} for ${gold} gold`, 'info');
+      this.toast(`Sold ${targets.length} below ${RARITIES[ceiling].label}: +${gold} gold`, 'good');
       this.changed();
     }
     return { count: targets.length, gold };
