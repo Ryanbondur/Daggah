@@ -32,6 +32,7 @@ import { escapeHtml } from './escape';
 import { renderAdventure, renderCamp, renderClan, renderSkill } from './panes';
 import { ICON } from './svg';
 import { heroSprite } from './assets';
+import { portraitImgStyle } from './portrait';
 
 const NODE_ICON: Record<NodeType, string> = {
   camp: ICON.camp,
@@ -55,7 +56,7 @@ export function mountUI(
       <div class="stage-vignette"></div>
       <div class="stage-chrome">
         <div class="plate">
-          <div class="avatar"><img id="hero-avatar" src="${heroSprite(game.save.heroClass)}" alt="" draggable="false" /></div>
+          <div class="avatar"><img id="hero-avatar" src="${heroSprite(game.save.heroClass)}" style="${portraitImgStyle(game.save.heroClass)}" alt="" draggable="false" /></div>
           <div class="name">Adventurer I</div>
           <div class="power">${ICON.star}<span id="cp">0</span></div>
           <div class="cp-rec" id="cp-rec"></div>
@@ -248,6 +249,8 @@ export function mountUI(
     if (av) {
       const next = heroSprite(game.save.heroClass);
       if (av.getAttribute('src') !== next) av.src = next;
+      const framing = portraitImgStyle(game.save.heroClass);
+      if (av.getAttribute('style') !== framing) av.setAttribute('style', framing);
     }
 
     const nodes = game.trackNodes;

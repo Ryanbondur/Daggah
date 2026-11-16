@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { HERO_CLASSES } from '../data/types';
 import { HERO_X, RAID_BOSS_LINE } from '../game/combat';
 import { campHeroVisual, enemyFaceTowardX, enemyFlipX } from './visual';
 
@@ -49,13 +52,24 @@ describe('enemyFaceTowardX', () => {
 });
 
 describe('campHeroVisual', () => {
-  it('uses Warrior seated sleep art at camp', () => {
-    expect(campHeroVisual('Warrior').key).toBe('hero-sleep');
-  });
-
-  it('binds camp idle to the selected class instead of Warrior sleep default', () => {
+  it('rests every class in its own combat sprite (Warrior no longer uses the off-model sleep art)', () => {
+    expect(campHeroVisual('Warrior').key).toBe('hero-warrior');
     expect(campHeroVisual('Mage').key).toBe('hero-mage');
     expect(campHeroVisual('Ranger').key).toBe('hero-ranger');
     expect(campHeroVisual('Rogue').key).toBe('hero-rogue');
+  });
+
+  it('maps each class to a distinct texture whose file exists', () => {
+    const keys = HERO_CLASSES.map((c) => campHeroVisual(c).key);
+    expect(new Set(keys).size).toBe(HERO_CLASSES.length);
+    for (const k of keys) {
+      expect(existsSync(resolve(__dirname, `../../public/assets/sprites/${k}.webp`))).toBe(true);
+    }
+    expect(keys).not.toContain('hero-sleep');
+  });
+
+  it('keeps the sprite aspect per class (no stretch)', () => {
+    expect(campHeroVisual('Mage').aspect).toBeCloseTo(317 / 360, 5);
+    expect(campHeroVisual('Warrior').aspect).toBeCloseTo(360 / 342, 5);
   });
 });

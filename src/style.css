@@ -142,9 +142,6 @@ button {
 }
 .plate .avatar img {
   position: absolute;
-  width: 250%;
-  left: -62%;
-  top: -22%;
   max-width: none;
 }
 .plate .name {

@@ -76,7 +76,6 @@ export class StageScene extends Phaser.Scene {
     for (const c of ['Warrior', 'Mage', 'Ranger', 'Rogue'] as HeroClass[]) {
       this.load.image(`hero-${c.toLowerCase()}`, heroSprite(c));
     }
-    this.load.image('hero-sleep', asset('sprites/hero-sleeping.webp'));
     this.load.image('camp', asset('sprites/camp-tent-fire.webp'));
     for (const key of ENEMY_SPRITES) this.load.image(key, asset(`sprites/${key}.webp`));
     for (const id of SKILL_IDS) this.load.image(`skill-${id}`, skillIcon(id));
@@ -106,7 +105,7 @@ export class StageScene extends Phaser.Scene {
     this.campProps = this.add.image(0, 0, 'camp').setOrigin(0.5, 1).setDepth(1);
     this.fireGlow = this.add.circle(0, 0, 40, 0xff8a24, 0.35).setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
     const campHero = campHeroVisual(this.game_.save.heroClass);
-    const sleepKey = this.textures.exists(campHero.key) ? campHero.key : 'hero-sleep';
+    const sleepKey = this.textures.exists(campHero.key) ? campHero.key : this.heroKey;
     this.heroSleep = this.add.image(0, 0, sleepKey).setOrigin(0.5, 1).setDepth(6);
     this.bubble = this.add.circle(0, 0, 10, 0xcfe9ff, 0.55).setDepth(7);
     this.bubble.setStrokeStyle(2, 0xffffff, 0.7);
@@ -281,7 +280,7 @@ export class StageScene extends Phaser.Scene {
 
     const pulse = 0.7 + 0.3 * Math.sin(this.clock * 1.6);
     this.bubble.setVisible(true);
-    this.bubble.setPosition(hx + sh * 0.18, groundY - sh * 0.42);
+    this.bubble.setPosition(hx + sh * campHero.aspect * 0.4, groundY - sh * 0.9);
     this.bubble.setRadius(H * 0.028 * pulse + H * 0.01);
     this.tag.setVisible(true);
     this.tag.setText('Zzz');
@@ -295,7 +294,7 @@ export class StageScene extends Phaser.Scene {
       strokeThickness: Math.max(2, Math.round(H * 0.01)),
       padding: { x: 0, y: 0 },
     });
-    this.tag.setPosition(hx - sh * 0.05, groundY - sh * 0.72 + Math.sin(this.clock * 2.2) * H * 0.008);
+    this.tag.setPosition(hx + sh * campHero.aspect * 0.2, groundY - sh * 1.04 + Math.sin(this.clock * 2.2) * H * 0.008);
     this.tag.setAlpha(0.85 + 0.15 * Math.sin(this.clock * 2.2));
   }
 
