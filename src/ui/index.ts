@@ -46,6 +46,8 @@ export function mountUI(
   root: HTMLElement,
   opts: { ensureStage: () => Promise<void> },
 ): { phaserParent: HTMLElement } {
+  // Playtest/debug hook (Settings Playtest tools also cover most flows).
+  (window as unknown as { __daggahGame?: Game }).__daggahGame = game;
   root.innerHTML = `
   <div id="frame">
     <section id="stage">

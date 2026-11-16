@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { BackgroundId } from '../data/acts';
 import type { SkillId } from '../data/types';
-import type { BattleEvent, Enemy } from '../game/combat';
+import type { BattleEvent, Enemy, RaidAlly } from '../game/combat';
 import { HERO_X } from '../game/combat';
 import type { Game, PvpPlaybackFighter } from '../game/game';
 import type { PvpEvent } from '../game/pvp';
@@ -303,12 +303,6 @@ export class StageScene extends Phaser.Scene {
     const groundY = GROUND * H;
     this.heroSleep.setVisible(false);
     this.bubble.setVisible(false);
-    this.hero.setVisible(true);
-    const want = `hero-${this.game_.save.heroClass.toLowerCase()}`;
-    if (want !== this.heroKey && this.textures.exists(want)) {
-      this.heroKey = want;
-      this.hero.setTexture(want);
-    }
 
     const walkPx = H * 0.5;
     if (b.state === 'walk') this.bgScroll += walkPx * dt * this.game_.speed;
@@ -333,6 +327,21 @@ export class StageScene extends Phaser.Scene {
       this.fireGlow.setVisible(false);
       this.embers.emitting = false;
       this.embers.setVisible(false);
+    }
+
+    // Clan Raid: 4v4-style party lanes (you + 3 AI) vs boss on the right.
+    if (b.isClanRaid && b.raidAllies.length) {
+      this.renderRaidParty(b, W, H, groundY);
+      this.syncEnemies(b, W, H, groundY);
+      return;
+    }
+
+    this.clearRaidAllyViews();
+    this.hero.setVisible(true);
+    const want = `hero-${this.game_.save.heroClass.toLowerCase()}`;
+    if (want !== this.heroKey && this.textures.exists(want)) {
+      this.heroKey = want;
+      this.hero.setTexture(want);
     }
 
     const hH = H * 0.34;
@@ -366,6 +375,129 @@ export class StageScene extends Phaser.Scene {
     this.drawHeroFx(b, hx, hy, hH, W, H);
 
     this.syncEnemies(b, W, H, groundY);
+  }
+
+  private clearRaidAllyViews(): void {
+    // Reuse pvpViews for raid allies; clear when leaving raid layout.
+    if (!this.game_.battle?.isClanRaid) {
+      for (const v of this.pvpViews.values()) {
+        v.sprite.destroy();
+        v.bar.destroy();
+        v.tag?.destroy();
+      }
+      this.pvpViews.clear();
+    }
+  }
+
+  private renderRaidParty(
+    b: NonNullable<Game['battle']>,
+    W: number,
+    H: number,
+    groundY: number,
+  ): void {
+    this.hideSoloActors();
+    const seen = new Set<string>();
+    const player = b.raidAllies.find((a) => a.isPlayer);
+    for (const a of b.raidAllies) {
+      seen.add(a.id);
+      let view = this.pvpViews.get(a.id);
+      if (!view) {
+        const key = `hero-${a.heroClass.toLowerCase()}`;
+        const sprite = this.add.image(0, 0, key).setOrigin(0.5, 1).setDepth(6);
+        const bar = this.add.graphics().setDepth(11);
+        let tag: Phaser.GameObjects.Text | null = null;
+        if (a.isPlayer) {
+          tag = this.add
+            .text(0, 0, '1P', {
+              fontFamily: 'Inter, sans-serif',
+              fontStyle: '800',
+              fontSize: '11px',
+              color: '#ffffff',
+              backgroundColor: '#2a6fe0',
+              padding: { x: 4, y: 1 },
+            })
+            .setOrigin(0.5, 1)
+            .setDepth(12);
+        }
+        view = { sprite, bar, tag };
+        this.pvpViews.set(a.id, view);
+      }
+      this.updateRaidAllyView(view, a, W, H, groundY);
+    }
+    for (const [id, view] of this.pvpViews) {
+      if (!seen.has(id)) {
+        view.sprite.destroy();
+        view.bar.destroy();
+        view.tag?.destroy();
+        this.pvpViews.delete(id);
+      }
+    }
+    // Buff chips / FX anchored on the player lane.
+    if (player) {
+      const hx = player.x * W;
+      const hH = H * 0.22;
+      const hy = groundY + H * 0.01;
+      this.drawBuffs(b, hx, hy - hH, H);
+      this.drawHeroFx(b, hx, hy, hH, W, H);
+    }
+  }
+
+  private updateRaidAllyView(
+    view: PvpFighterView,
+    a: RaidAlly,
+    W: number,
+    H: number,
+    groundY: number,
+  ): void {
+    const hH = H * 0.22;
+    const hW = hH * (360 / 343);
+    let x = a.x * W;
+    let y = groundY + H * 0.01;
+    let rot = 0;
+    if (!a.dead) {
+      y -= Math.abs(Math.sin(this.clock * 9 + a.x * 20)) * H * 0.006;
+      if (a.swingAnim > 0) {
+        const p = 1 - a.swingAnim / 0.28;
+        x += Math.sin(Math.PI * Math.min(1, p)) * W * 0.035;
+        rot = Math.sin(Math.PI * Math.min(1, p)) * 0.18;
+      }
+    }
+    const s = view.sprite;
+    s.setDisplaySize(hW, hH);
+    s.setPosition(x, y);
+    s.setRotation(rot);
+    if (a.dead) {
+      const p = Math.min(1, a.deathT / 0.7);
+      s.setAlpha(1 - p);
+      s.setRotation(p * 0.7);
+      s.x += p * W * 0.03;
+      s.y -= Math.sin(p * Math.PI) * H * 0.025;
+      s.setTintFill(0xffffff);
+      view.bar.clear();
+      view.tag?.setVisible(false);
+      return;
+    }
+    s.setAlpha(1);
+    if (a.hitFlash > 0) s.setTintFill(0xffffff);
+    else s.clearTint();
+
+    const bar = view.bar;
+    bar.clear();
+    const bw = Math.max(H * 0.11, hW * 0.72);
+    const bh = H * 0.018;
+    const bx = x - bw / 2;
+    const by = y - hH - H * 0.015;
+    bar.fillStyle(0x120808, 0.92);
+    bar.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    bar.fillStyle(0xd23030, 1);
+    bar.fillRect(bx, by, bw * Math.max(0, a.hp / a.maxHp), bh);
+    bar.lineStyle(1, 0xffffff, 0.3);
+    for (let i = 1; i < 4; i++) bar.lineBetween(bx + (bw * i) / 4, by, bx + (bw * i) / 4, by + bh);
+
+    if (view.tag) {
+      view.tag.setVisible(true);
+      view.tag.setPosition(x, by - H * 0.008);
+    }
   }
 
   private drawHeroBar(b: NonNullable<Game['battle']>, x: number, topY: number, H: number): void {

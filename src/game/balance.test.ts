@@ -147,3 +147,61 @@ describe('Nightscar clearability without BiS', () => {
     expect(ACTS[9].dungeon?.endgame).toBe(true);
   });
 });
+
+describe('Clan Raid clear times (party of 4)', () => {
+  function equipFull(game: Game, level: number, rarity: RarityId, setId: string, seed: number) {
+    const rng = mulberry32(seed);
+    game.save.level = level;
+    game.save.xp = 0;
+    const gear: Gear = {};
+    for (const slot of SLOTS) {
+      gear[slot] = rollItem(rng, {
+        slot,
+        rarity,
+        gearLevel: level,
+        setId: setId as 'nightscar-regalia',
+      });
+    }
+    game.save.gear = gear;
+    game.save.loadout = [...DEFAULT_LOADOUT.Warrior];
+  }
+
+  function clearRaid(seed: number, rarity: RarityId, maxSec = 600) {
+    const game = new Game(memoryStorage(), mulberry32(seed));
+    game.pickClass('Warrior');
+    game.devUnlockThroughAct(10);
+    equipFull(game, 19, rarity, 'nightscar-regalia', seed + 99);
+    game.save.crystals = 500;
+    expect(game.createClan('Raid Time')).toBeNull();
+    expect(game.startClanRaid()).toBeNull();
+    expect(game.battle?.raidAllies).toHaveLength(4);
+    let t = 0;
+    const dt = 0.25;
+    while (t < maxSec && game.battle) {
+      game.tick(dt);
+      t += dt;
+    }
+    return { success: game.mode === 'camp' && !game.battle, seconds: t, timedOut: !!game.battle };
+  }
+
+  it('takes about ~3 minutes on full epic (non-BiS) with 3 AI allies', () => {
+    const runs = [11, 29, 47].map((seed) => clearRaid(seed, 'epic'));
+    const wins = runs.filter((r) => r.success && !r.timedOut);
+    expect(wins.length).toBe(runs.length);
+    const avg = wins.reduce((a, r) => a + r.seconds, 0) / wins.length;
+    // Target ~180s; allow band for gear roll variance.
+    expect(avg).toBeGreaterThan(150);
+    expect(avg).toBeLessThan(250);
+  });
+
+  it('clears faster on Legendary BiS — about ~1:50 lucky edge', () => {
+    const epic = clearRaid(101, 'epic');
+    const legendary = clearRaid(101, 'legendary');
+    expect(epic.success).toBe(true);
+    expect(legendary.success).toBe(true);
+    expect(legendary.seconds).toBeLessThan(epic.seconds * 0.7);
+    expect(legendary.seconds).toBeGreaterThan(80);
+    expect(legendary.seconds).toBeLessThan(140);
+  });
+});
+

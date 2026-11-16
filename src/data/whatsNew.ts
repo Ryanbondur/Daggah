@@ -3,7 +3,7 @@
  * Bump this string on meaningful publishes so returning players see the notes once.
  * Independent of SaveData.version (schema).
  */
-export const APP_CONTENT_VERSION = '2026.11.15-ascended';
+export const APP_CONTENT_VERSION = '2026.11.15-raid-buff';
 
 export interface WhatsNewEntry {
   version: string;
@@ -16,9 +16,9 @@ export const WHATS_NEW: WhatsNewEntry = {
   version: APP_CONTENT_VERSION,
   title: "What's new",
   bullets: [
+    'Clan Raid — harder boss (~3 min clear); fight with 3 clan AI on a 4v4-style stage.',
+    'Raid rewards stay Seals / Fragments only (no marks or chests).',
     'Ascended Nightscar — harder Apex (6 Keys + 1 Seal) with better BiS odds.',
-    'Clan Raid — weekly boss drops Ascended Seals or Fragments only.',
-    'Craft Fragments → Seals in Adventure (5 → 1). Seal count on the currency strip.',
   ],
 };
 

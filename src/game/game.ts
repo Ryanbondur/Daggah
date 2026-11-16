@@ -21,9 +21,15 @@ import {
   sealsCraftableFrom,
 } from './ascended';
 import {
+  CLAN_RAID_ALLY_SWING_MUL,
+  CLAN_RAID_BOSS_ATK_MUL,
+  CLAN_RAID_BOSS_HP_MUL,
+  CLAN_RAID_BOSS_TIER_EXTRA,
   CLAN_RAID_DUNGEON,
   CLAN_RAID_STAGE_FLOOR,
+  CLAN_RAID_TIER_BUMP,
   CLAN_RAID_WEEKLY_ATTEMPTS,
+  buildClanRaidAllies,
   clanRaidWeekKey,
   formatClanRaidReward,
   isClanRaidDungeon,
@@ -807,11 +813,11 @@ export class Game {
     const a = getAct(d.actId);
     const ascended = isAscendedDungeon(d);
     const raid = isClanRaidDungeon(d);
-    const bump = ascended ? ASCENDED_TIER_BUMP : raid ? 3.2 : 0;
+    const bump = ascended ? ASCENDED_TIER_BUMP : raid ? CLAN_RAID_TIER_BUMP : 0;
     const baseTier = stageTier(d.actId, 5) + 0.3 + bump;
     const rec = stageRecLevel(d.actId, 5);
     const nodes = raid
-      ? ([{ type: 'boss' as const, tier: baseTier + 1.2, recLevel: rec }] as const)
+      ? ([{ type: 'boss' as const, tier: baseTier + CLAN_RAID_BOSS_TIER_EXTRA, recLevel: rec }] as const)
       : Array.from({ length: d.floors }, (_, i) => {
           const floor = i + 1;
           const type: NodeType = floor === d.floors ? 'boss' : floor === 5 ? 'miniboss' : 'trash';
@@ -820,7 +826,7 @@ export class Game {
     return {
       kind: 'dungeon',
       title: d.name,
-      bg: a.bg,
+      bg: raid ? 'clan' : a.bg,
       actId: d.actId,
       nodes: [...nodes],
       trash: a.trash,
@@ -1857,7 +1863,7 @@ export class Game {
   /**
    * Start weekly Clan Raid boss on the Phaser stage.
    * Rewards: Ascended Seal or Fragments only (no marks / chests / bracket bonus).
-   * Shared multiplayer HP is stubbed — solo AI boss.
+   * Shared multiplayer HP is stubbed — party of 4 (you + 3 AI) vs boss.
    */
   startClanRaid(): string | null {
     if (this.mode === 'pvp' || this.mode === 'dungeon') return 'Finish your current fight first.';
@@ -1870,15 +1876,35 @@ export class Game {
     if (this.save.clanRaidAttemptsUsed >= CLAN_RAID_WEEKLY_ATTEMPTS) {
       return `No Clan Raid attempts left this week (${CLAN_RAID_WEEKLY_ATTEMPTS}/${CLAN_RAID_WEEKLY_ATTEMPTS}).`;
     }
+    // Ensure AI fillers so the stage always shows a full 4-hero party.
+    this.fillAiClanRoster();
+    const input = this.heroInput();
+    const allies = buildClanRaidAllies(
+      this.save.clan,
+      this.save.heroClass,
+      this.save.level,
+      {
+        atk: input.stats.atk,
+        def: input.stats.def,
+        hp: input.stats.hp,
+        haste: input.stats.haste,
+      },
+      this.rng,
+    );
     this.save.clanRaidAttemptsUsed += 1;
     const d = CLAN_RAID_DUNGEON;
     this.dungeonCtx = { dungeon: d, loot: [], xp: 0, clanRaid: true };
-    this.battle = new Battle(this.buildDungeonRun(d), this.heroInput(), this.rng);
+    this.battle = new Battle(this.buildDungeonRun(d), input, this.rng, {
+      raidAllies: allies,
+      raidBossHpMul: CLAN_RAID_BOSS_HP_MUL,
+      raidBossAtkMul: CLAN_RAID_BOSS_ATK_MUL,
+      allySwingMul: CLAN_RAID_ALLY_SWING_MUL,
+    });
     this.mode = 'dungeon';
     this.lives = MAX_LIVES;
     this.acc = 0;
     this.say(
-      `Clan Raid begun (${this.clanRaidAttemptsLeft()}/${CLAN_RAID_WEEKLY_ATTEMPTS} left). Seals & fragments only.`,
+      `Clan Raid begun — party of ${allies.length} (${this.clanRaidAttemptsLeft()}/${CLAN_RAID_WEEKLY_ATTEMPTS} left). Seals & fragments only.`,
     );
     this.emit({ t: 'run' });
     this.changed();

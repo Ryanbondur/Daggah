@@ -450,7 +450,7 @@ function renderClanHallPane(ctx: UIContext): string {
     ? 'Clear Nightscar Depths (Act 10) to unlock Clan Raid.'
     : raid.attemptsLeft <= 0
       ? `No attempts left this week (${CLAN_RAID_WEEKLY_ATTEMPTS}/${CLAN_RAID_WEEKLY_ATTEMPTS}).`
-      : 'Solo AI boss stub — seals & fragments only (no marks / chests / bracket bonus).';
+      : 'Party of 4 (you + 3 clan AI) vs raid boss — seals & fragments only (no marks / chests / bracket bonus).';
 
   return `<div class="clan-panel">
     <div class="clan-banner clan-banner-pane">
