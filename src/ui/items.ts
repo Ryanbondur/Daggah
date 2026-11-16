@@ -62,6 +62,13 @@ export function statValue(key: StatKey, v: number): string {
 
 const ORDER: StatKey[] = ['atk', 'def', 'hp', 'critRate', 'critDmg', 'skillPower', 'haste', 'energyRegen'];
 
+/** Signed delta text for compare rows (e.g. +3, −1.5%). */
+export function formatStatDelta(key: StatKey, delta: number): string {
+  if (delta === 0) return '';
+  const sign = delta > 0 ? '+' : '−';
+  return `${sign}${statValue(key, Math.abs(delta))}`;
+}
+
 export function statRows(
   item: Item,
   other?: Item,
@@ -76,9 +83,12 @@ export function statRows(
         return `<div class="st"><span>${STAT_LABEL[k]}</span><b>${statValue(k, v)}</b></div>`;
       }
       const o = other?.stats[k] ?? 0;
-      const cls = v > o ? 'up' : v < o ? 'down' : '';
-      const arrow = v > o ? '<i class="arr"></i>' : v < o ? '<i class="arr down"></i>' : '';
-      return `<div class="st ${cls}"><span>${STAT_LABEL[k]}</span><b>${statValue(k, v)}${arrow}</b></div>`;
+      const d = v - o;
+      const cls = d > 0 ? 'up' : d < 0 ? 'down' : '';
+      const arrow = d > 0 ? '<i class="arr"></i>' : d < 0 ? '<i class="arr down"></i>' : '';
+      const delta =
+        d !== 0 ? `<em class="delta">${escapeHtml(formatStatDelta(k, d))}</em>` : '';
+      return `<div class="st ${cls}"><span>${STAT_LABEL[k]}</span><b>${statValue(k, v)}${delta}${arrow}</b></div>`;
     })
     .join('');
 }
@@ -131,17 +141,21 @@ export function cardHtml(
       <div class="band">${o.label ?? 'Current Gear'}</div>
     </div>`;
   }
-  const band =
-    o.cp !== undefined
-      ? `<div class="band"><span class="cp">CP <i class="${o.cp < 0 ? 'neg' : ''}">${
-          o.cp >= 0 ? '+' : ''
-        }${o.cp}</i>${o.cp > 0 ? '<em class="bis-tag">BiS upgrade</em>' : ''}</span></div>`
-      : `<div class="band">${o.label ?? 'Current Gear'}</div>`;
-  const req =
-    o.reqLevel && o.heroLevel && o.reqLevel > o.heroLevel
-      ? `<div class="req">Requires hero Lv.${o.reqLevel}</div>`
-      : '';
-  return `<div class="card">
+  const levelLocked =
+    o.reqLevel !== undefined && o.heroLevel !== undefined && o.reqLevel > o.heroLevel;
+  let band: string;
+  if (o.cp !== undefined) {
+    const verdict = levelLocked ? 'LOCKED' : o.cp > 0 ? 'BETTER' : o.cp < 0 ? 'WORSE' : 'EVEN';
+    const vCls = levelLocked ? 'locked' : o.cp > 0 ? 'better' : o.cp < 0 ? 'worse' : 'even';
+    const sign = o.cp > 0 ? '+' : '';
+    band = `<div class="band cmp-verdict ${vCls}"><span class="cp"><em class="verdict">${verdict}</em> <i class="${
+      o.cp < 0 ? 'neg' : ''
+    }">${sign}${o.cp} CP</i>${o.cp > 0 && !levelLocked ? '<em class="bis-tag">BiS</em>' : ''}</span></div>`;
+  } else {
+    band = `<div class="band">${o.label ?? 'Current Gear'}</div>`;
+  }
+  const req = levelLocked ? `<div class="req">Requires hero Lv.${o.reqLevel}</div>` : '';
+  return `<div class="card ${o.cp !== undefined ? `cmp-side ${levelLocked ? 'locked' : o.cp > 0 ? 'better' : o.cp < 0 ? 'worse' : 'even'}` : ''}">
     <div class="hd">
       <div>
         <div class="nm">${escapeHtml(item.name)}</div>

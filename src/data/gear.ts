@@ -896,6 +896,12 @@ export function salvageValue(item: Item): { dust: number; crystals: number } {
   return RARITIES[item.rarity].salvage;
 }
 
+/** Toast / bag preview line for salvage returns (dust always, crystals when > 0). */
+export function formatSalvageYield(dust: number, crystals: number): string {
+  if (crystals > 0) return `+${dust} dust, +${crystals} crystals`;
+  return `+${dust} dust`;
+}
+
 /** Vendor junk price — gold from dust/crystals salvage yield. */
 export function sellValue(item: Item): number {
   const v = salvageValue(item);
