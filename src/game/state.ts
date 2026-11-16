@@ -1,10 +1,10 @@
 import { CAPES } from '../data/capes';
 import type { Gear } from '../data/gear';
-import { cpFromStats, SLOTS, starterGear } from '../data/gear';
+import { cpFromStats, SETS, SLOTS, starterGear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import { defaultTutorial, TUTORIAL_STEPS, type TutorialState } from '../data/tutorial';
 import { APP_CONTENT_VERSION } from '../data/whatsNew';
-import type { CapeId, HeroClass, Item, RarityId, SkillId, SlotId, Stats } from '../data/types';
+import type { CapeId, HeroClass, IconPack, Item, RarityId, SetId, SkillId, SlotId, Stats } from '../data/types';
 import { emptyStats, HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { sanitizeDomId, sanitizePlainText } from '../util/text';
 import type { ClanData, SeasonData } from './clan';
@@ -331,16 +331,39 @@ function isCapeId(v: unknown): v is CapeId {
   return typeof v === 'string' && v in CAPES;
 }
 
+const ICON_PACKS: readonly IconPack[] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k'];
+
+function sanitizeIconPack(v: unknown): IconPack {
+  return ICON_PACKS.includes(v as IconPack) ? (v as IconPack) : 'a';
+}
+
+function sanitizeItemStats(raw: unknown): Partial<Stats> {
+  const out: Partial<Stats> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  const src = raw as Record<string, unknown>;
+  for (const k of STAT_KEYS) {
+    const v = src[k];
+    if (typeof v === 'number' && Number.isFinite(v)) out[k] = Math.max(-1e6, Math.min(1e6, v));
+  }
+  return out;
+}
+
 /** Harden item display strings / ids from save or import blobs. */
 export function sanitizeItem(item: Item): Item {
   const slot = coerceSlotId(item.slot);
+  const gl = typeof item.gearLevel === 'number' && Number.isFinite(item.gearLevel) ? item.gearLevel : 1;
   const next: Item = {
-    ...item,
     id: sanitizeDomId(typeof item.id === 'string' ? item.id : 'id', 80),
     name: sanitizePlainText(typeof item.name === 'string' ? item.name : '', 64) || 'Unknown Item',
     slot,
     rarity: isRarityId(item.rarity) ? item.rarity : 'common',
+    gearLevel: Math.max(1, Math.min(99, Math.floor(gl))),
+    icon: sanitizeIconPack(item.icon),
+    stats: sanitizeItemStats(item.stats),
   };
+  if (typeof item.setId === 'string' && Object.prototype.hasOwnProperty.call(SETS, item.setId)) {
+    next.setId = item.setId as SetId;
+  }
   if (slot === 'cape') {
     if (isCapeId(item.capeId)) next.capeId = item.capeId;
     else delete next.capeId;

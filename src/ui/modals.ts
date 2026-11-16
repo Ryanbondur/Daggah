@@ -75,7 +75,10 @@ const STAT_ORDER: StatKey[] = [
 function friendlyAuthError(code: string): string {
   switch (code) {
     case 'username_taken':
-      return 'That username is taken';
+    case 'registration_failed':
+      return "Couldn't create that account — try a different username";
+    case 'registration_closed':
+      return 'New accounts are paused — play as guest';
     case 'invalid_credentials':
       return 'Wrong username or password';
     case 'invalid_username':

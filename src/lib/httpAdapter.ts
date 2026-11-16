@@ -6,9 +6,6 @@ import {
 } from '../../api/_lib/authApi';
 import { GET, OPTIONS, PUT } from '../../api/_lib/saveApi';
 import { GET as pingGet } from '../../api/ping';
-import { GET as pingCryptoGet } from '../../api/ping-crypto';
-import { GET as pingDbGet } from '../../api/ping-db';
-import { GET as pingPgGet } from '../../api/ping-pg';
 
 /** Convert a Node IncomingMessage into a web Request for local Vite / start adapters. */
 export async function nodeToWebRequest(req: IncomingMessage): Promise<Request> {
@@ -53,9 +50,6 @@ export async function handleDaggahSaveApi(
 
   const pingRoutes: Record<string, () => Promise<Response>> = {
     '/api/ping': pingGet,
-    '/api/ping-crypto': pingCryptoGet,
-    '/api/ping-db': pingDbGet,
-    '/api/ping-pg': pingPgGet,
   };
   const pingHandler = pingRoutes[path ?? ''];
   if (pingHandler) {

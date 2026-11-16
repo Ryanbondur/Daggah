@@ -18,9 +18,20 @@ import {
   resolveSessionToken,
   updatePassword,
   validatePassword,
+  verifyAgainstDummy,
   verifyPassword,
 } from './auth';
-import { isDatabaseUnavailable, isUndefinedTable } from './db';
+import { isDatabaseUnavailable, isUndefinedTable, sql } from './db';
+import { clearRateLimit, hitRateLimit, peekRateLimit } from './rateLimit';
+
+const MAX_USERS = 50_000;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+function limited(result: { ok: false; retryAfterSec: number }): Response {
+  return json({ error: 'rate_limited', retryAfterSec: result.retryAfterSec }, 429, {
+    'retry-after': String(result.retryAfterSec),
+  });
+}
 
 const NO_STORE = { 'cache-control': 'private, no-store' } as const;
 
@@ -104,14 +115,17 @@ export async function POST(request: Request): Promise<Response> {
     const ip = clientIp(request);
 
     if (action === 'register' || action === 'login') {
-      const limited = rateLimit(`auth:${action}:${ip}`, 20, 15 * 60 * 1000);
-      if (!limited.ok) {
-        return json(
-          { error: 'rate_limited', retryAfterSec: limited.retryAfterSec },
-          429,
-          { 'retry-after': String(limited.retryAfterSec) },
-        );
-      }
+      // Global bucket first: bounds total work/rows regardless of spoofed IPs or usernames.
+      const globalHit =
+        action === 'register'
+          ? await hitRateLimit('auth:register:global', 100, 60 * 60 * 1000)
+          : await hitRateLimit('auth:login:global', 3000, LOGIN_WINDOW_MS);
+      if (!globalHit.ok) return limited(globalHit);
+      const ipHit =
+        action === 'register'
+          ? await hitRateLimit(`auth:register:ip:${ip}`, 5, 60 * 60 * 1000)
+          : await hitRateLimit(`auth:login:ip:${ip}`, 20, LOGIN_WINDOW_MS);
+      if (!ipHit.ok) return limited(ipHit);
 
       const username = normalizeUsername(typeof obj.username === 'string' ? obj.username : '');
       if (!username) {
@@ -128,6 +142,10 @@ export async function POST(request: Request): Promise<Response> {
       if (pwErr) return json({ error: 'weak_password', hint: pwErr }, 400);
 
       if (action === 'register') {
+        const countRows = await sql<{ n: number | string }>(`select count(*) as n from users`);
+        if (Number(countRows[0]?.n ?? 0) >= MAX_USERS) {
+          return json({ error: 'registration_closed', hint: 'New accounts are paused. Play as guest.' }, 503);
+        }
         try {
           const user = await createUser(username, password);
           const session = await createSession(user.id);
@@ -140,19 +158,27 @@ export async function POST(request: Request): Promise<Response> {
           });
         } catch (error) {
           if (isUniqueViolation(error)) {
-            return json({ error: 'username_taken' }, 409);
+            return json(
+              { error: 'registration_failed', hint: "Couldn't create that account. Try a different username." },
+              409,
+            );
           }
           throw error;
         }
       }
 
-      // login
+      // login — failures are also limited per username so rotating IPs cannot brute-force one account.
+      const userKey = `auth:login:user:${username.toLowerCase()}`;
+      const userBlocked = await peekRateLimit(userKey, 10);
+      if (!userBlocked.ok) return limited(userBlocked);
       const user = await findUserByUsername(username);
-      // Constant-ish work: always verify against a dummy hash shape when missing.
       const ok = user ? await verifyPassword(password, user.password_hash) : false;
+      if (!user) await verifyAgainstDummy(password);
       if (!user || !ok) {
+        await hitRateLimit(userKey, 10, LOGIN_WINDOW_MS);
         return json({ error: 'invalid_credentials' }, 401);
       }
+      await clearRateLimit(userKey);
       const session = await createSession(user.id);
       return json({
         ok: true,

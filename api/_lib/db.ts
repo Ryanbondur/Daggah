@@ -94,7 +94,7 @@ async function ensurePostgresSchema(c: ReturnType<typeof postgres>): Promise<voi
   return schemaReady;
 }
 
-/** Mirrors migrations/001 + 002 as individual statements (postgres.js-safe). */
+/** Mirrors migrations/001 – 003 as individual statements (postgres.js-safe). */
 const INLINE_SCHEMA_STATEMENTS = [
   `create table if not exists saves (
     owner_key text primary key,
@@ -141,6 +141,12 @@ const INLINE_SCHEMA_STATEMENTS = [
   )`,
   `create index if not exists sessions_user_id_idx on sessions (user_id)`,
   `create index if not exists sessions_expires_at_idx on sessions (expires_at)`,
+  `create table if not exists rate_limits (
+    key text primary key,
+    count integer not null default 0,
+    reset_at timestamptz not null
+  )`,
+  `create index if not exists rate_limits_reset_at_idx on rate_limits (reset_at)`,
 ];
 
 /** Test helper: drop cached client / local registration so the next sql() rebuilds. */

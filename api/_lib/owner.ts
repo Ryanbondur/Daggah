@@ -70,9 +70,7 @@ export async function resolveOwner(request: Request): Promise<OwnerRef | Respons
   }
 
   const header = request.headers.get(ACCOUNT_CODE_HEADER) ?? '';
-  const url = new URL(request.url);
-  const fromQuery = url.searchParams.get('accountCode') ?? '';
-  const code = normalizeAccountCode(header || fromQuery);
+  const code = normalizeAccountCode(header);
   if (!code) {
     return Response.json(
       {

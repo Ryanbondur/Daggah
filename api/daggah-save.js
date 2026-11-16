@@ -112,7 +112,13 @@ var INLINE_SCHEMA_STATEMENTS = [
     created_at timestamptz not null default now()
   )`,
   `create index if not exists sessions_user_id_idx on sessions (user_id)`,
-  `create index if not exists sessions_expires_at_idx on sessions (expires_at)`
+  `create index if not exists sessions_expires_at_idx on sessions (expires_at)`,
+  `create table if not exists rate_limits (
+    key text primary key,
+    count integer not null default 0,
+    reset_at timestamptz not null
+  )`,
+  `create index if not exists rate_limits_reset_at_idx on rate_limits (reset_at)`
 ];
 
 // cursor/identity.dev.ts
@@ -530,6 +536,15 @@ function extractSessionToken(request) {
   if (m?.[1]) return m[1].trim();
   return null;
 }
+function clientIp(request) {
+  const xf = request.headers.get("x-forwarded-for");
+  if (xf) {
+    const hops = xf.split(",").map((h) => h.trim()).filter(Boolean);
+    const last = hops[hops.length - 1];
+    if (last) return last.slice(0, 64);
+  }
+  return "local";
+}
 
 // api/_lib/owner.ts
 var ACCOUNT_CODE_PREFIX = "DGAC";
@@ -578,9 +593,7 @@ async function resolveOwner(request) {
     };
   }
   const header = request.headers.get(ACCOUNT_CODE_HEADER) ?? "";
-  const url = new URL(request.url);
-  const fromQuery = url.searchParams.get("accountCode") ?? "";
-  const code = normalizeAccountCode(header || fromQuery);
+  const code = normalizeAccountCode(header);
   if (!code) {
     return Response.json(
       {
@@ -596,6 +609,35 @@ async function resolveOwner(request) {
     ownerKey: `ac:${await hashAccountCode(code)}`,
     code
   };
+}
+
+// api/_lib/rateLimit.ts
+function retryAfter(resetAt) {
+  const t = resetAt instanceof Date ? resetAt.getTime() : new Date(resetAt).getTime();
+  return Math.max(1, Math.ceil((t - Date.now()) / 1e3));
+}
+function maybePrune() {
+  if (Math.random() < 0.02) {
+    void sql(`delete from rate_limits where reset_at < now() - interval '1 hour'`).catch(
+      () => void 0
+    );
+  }
+}
+async function hitRateLimit(key, limit, windowMs) {
+  maybePrune();
+  const rows = await sql(
+    `insert into rate_limits (key, count, reset_at)
+     values ($1, 1, now() + ($2::int * interval '1 millisecond'))
+     on conflict (key) do update set
+       count = case when rate_limits.reset_at <= now() then 1 else rate_limits.count + 1 end,
+       reset_at = case when rate_limits.reset_at <= now()
+         then now() + ($2::int * interval '1 millisecond') else rate_limits.reset_at end
+     returning count, reset_at`,
+    [key, Math.floor(windowMs)]
+  );
+  const row = rows[0];
+  if (!row) return { ok: true };
+  return Number(row.count) > limit ? { ok: false, retryAfterSec: retryAfter(row.reset_at) } : { ok: true };
 }
 
 // api/_lib/saves.ts
@@ -668,6 +710,16 @@ function toIso(value) {
 }
 
 // api/_lib/saveApi.ts
+var MAX_ACCOUNT_CODE_SAVES = 2e4;
+function rateLimited(retryAfterSec) {
+  return Response.json(
+    { error: "rate_limited", retryAfterSec },
+    {
+      status: 429,
+      headers: { "cache-control": "private, no-store", "retry-after": String(retryAfterSec) }
+    }
+  );
+}
 var NO_STORE = { "cache-control": "private, no-store" };
 function json(data, status = 200) {
   return Response.json(data, { status, headers: NO_STORE });
@@ -728,6 +780,8 @@ async function PUT(request) {
   try {
     const owner = await resolveOwner(request);
     if (owner instanceof Response) return owner;
+    const writeHit = await hitRateLimit(`save:put:${owner.ownerKey}`, 60, 10 * 60 * 1e3);
+    if (!writeHit.ok) return rateLimited(writeHit.retryAfterSec);
     let body;
     try {
       body = await readBody(request);
@@ -742,6 +796,18 @@ async function PUT(request) {
     const url = new URL(request.url);
     const force = url.searchParams.get("force") === "1";
     const existing = await getSave(owner.ownerKey);
+    if (!existing && owner.kind === "account") {
+      const globalNew = await hitRateLimit("save:new-account:global", 200, 60 * 60 * 1e3);
+      if (!globalNew.ok) return rateLimited(globalNew.retryAfterSec);
+      const ipNew = await hitRateLimit(`save:new-account:ip:${clientIp(request)}`, 10, 60 * 60 * 1e3);
+      if (!ipNew.ok) return rateLimited(ipNew.retryAfterSec);
+      const rows = await sql(
+        `select count(*) as n from saves where owner_key like 'ac:%'`
+      );
+      if (Number(rows[0]?.n ?? 0) >= MAX_ACCOUNT_CODE_SAVES) {
+        return json({ error: "guest_saves_full", hint: "Guest cloud saves are full. Log in to sync." }, 503);
+      }
+    }
     if (existing && !force) {
       const cloudSave = parseStoredPayload(existing.payload);
       const cloudSavedAt = cloudSave && typeof cloudSave.savedAt === "number" ? cloudSave.savedAt : 0;
