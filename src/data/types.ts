@@ -71,7 +71,8 @@ export type SlotId =
   | 'boots'
   | 'amulet'
   | 'medal'
-  | 'ring';
+  | 'ring'
+  | 'cape';
 
 export type RarityId = 'common' | 'rare' | 'epic' | 'legendary';
 
@@ -92,6 +93,21 @@ export type SetId =
   | 'nightscar-regalia'
   | 'clanforged';
 
+/** Class-locked unique-effect cape IDs (not set pieces). */
+export type CapeId =
+  | 'bulwark-mantle'
+  | 'bloodhowl-cape'
+  | 'warlords-drape'
+  | 'ashveil-cloak'
+  | 'frostspire-cape'
+  | 'arcane-loom'
+  | 'quillwind-cape'
+  | 'deadeye-shroud'
+  | 'hawkflight-mantle'
+  | 'nightstalker-cape'
+  | 'shadowweave-cloak'
+  | 'deathveil-drape';
+
 export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k';
 
 export interface Item {
@@ -101,6 +117,8 @@ export interface Item {
   gearLevel: number;
   name: string;
   setId?: SetId;
+  /** Present on cape-slot items; mutually exclusive with setId. */
+  capeId?: CapeId;
   icon: IconPack;
   stats: Partial<Stats>;
 }

@@ -29,10 +29,12 @@ import {
   isClanRaidDungeon,
   rollClanRaidReward,
 } from './clanRaid';
+import { dungeonAllowsCapes } from '../data/capes';
 import type { DropSource } from '../data/gear';
 import {
   DROP_SET_IDS,
   RARITIES,
+  capeDropChance,
   cpDelta,
   computeHero,
   filterSetsForClass,
@@ -40,6 +42,7 @@ import {
   lootCompareHighlight,
   rarityAtMost,
   rarityBelow,
+  rollCape,
   rollItem,
   rollRarity,
   salvageValue,
@@ -1170,10 +1173,21 @@ export class Game {
       : d.endgame
         ? this.save.nightscarPity
         : 0;
+    const rarity = rollRarity(this.rng, source, pity);
+    // Late acts / Nightscar / Ascended: chance for a class-locked cape (not a set piece).
+    if (dungeonAllowsCapes(d.actId, d.endgame) && this.rng.chance(capeDropChance(source))) {
+      const cape = rollCape(this.rng, {
+        gearLevel: gl,
+        rarity,
+        heroClass: this.save.heroClass,
+        actId: d.actId,
+      });
+      if (cape) return cape;
+    }
     const setPool = filterSetsForClass(d.sets, this.save.heroClass);
     return rollItem(this.rng, {
       gearLevel: gl,
-      rarity: rollRarity(this.rng, source, pity),
+      rarity,
       // Wrong-class set pools (e.g. Warrior in Quillstorm dungeon) → plain gear.
       setId: setPool.length ? this.rng.pick(setPool) : undefined,
     });
@@ -1297,7 +1311,7 @@ export class Game {
       return false;
     }
     if (!itemAllowedForClass(item, this.save.heroClass)) {
-      this.toast('Wrong class for this set', 'bad');
+      this.toast(item.capeId ? 'Wrong class for this cape' : 'Wrong class for this set', 'bad');
       return false;
     }
     this.removeFromQueues(item);
@@ -1514,7 +1528,7 @@ export class Game {
     if (!offer) return 'Unknown offer.';
     if (offer.purchased || this.save.shop.purchased.includes(index)) return 'Already purchased today.';
     if (!itemAllowedForClass(offer.item, this.save.heroClass)) {
-      return 'Wrong class for this set.';
+      return offer.item.capeId ? 'Wrong class for this cape.' : 'Wrong class for this set.';
     }
     if (this.save.gold < offer.price) return `Need ${offer.price} gold.`;
     this.save.gold -= offer.price;

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ACTS } from '../data/acts';
-import { rollItem } from '../data/gear';
-import type { SlotId } from '../data/types';
+import { SET_SLOTS, rollItem } from '../data/gear';
 import { Game } from './game';
 import {
   OFFLINE_CAP_MS,
@@ -22,20 +21,6 @@ function memoryStorage(): Storage {
   };
 }
 
-const SLOTS: SlotId[] = [
-  'weapon',
-  'chest',
-  'belt',
-  'helmet',
-  'gloves',
-  'bracers',
-  'shoulders',
-  'boots',
-  'amulet',
-  'medal',
-  'ring',
-];
-
 /** Overgear a fresh Warrior so early stages clear quickly in headless sim. */
 function gearedWarrior(seed = 99): Game {
   const rng = mulberry32(seed);
@@ -43,7 +28,7 @@ function gearedWarrior(seed = 99): Game {
   game.pickClass('Warrior');
   game.save.level = 10;
   game.save.settings.speed = 2;
-  for (const slot of SLOTS) {
+  for (const slot of SET_SLOTS) {
     game.save.gear[slot] = rollItem(rng, {
       gearLevel: 8,
       rarity: 'legendary',

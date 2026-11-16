@@ -120,7 +120,7 @@ function renderCampGear(ctx: UIContext): string {
     : '';
   /* Direct pane-inner children (no .camp-gear wrapper / shop CTA) so .gear-grid
      flex:1 fills the parchment like the pre-Daily-Shop layout. */
-  return `<div class="gear-grid">${slots}<div class="wing-fill">${ICON.wings}</div></div>
+  return `<div class="gear-grid">${slots}</div>
     <div class="bottom-row">
       ${quest}
       <div class="round-btns">

@@ -73,7 +73,7 @@ describe('xp and progression', () => {
 
 describe('gear', () => {
   it('fills all 11 slots with starter gear (single boots)', () => {
-    expect(Object.keys(starterGear('Ranger'))).toHaveLength(11);
+    expect(Object.keys(starterGear('Ranger'))).toHaveLength(11); // 12 slots; cape empty until late drops
     expect(starterGear('Ranger').boots?.slot).toBe('boots');
     expect(starterGear('Ranger')).not.toHaveProperty('legs');
     expect(starterGear('Mage').weapon?.name).toContain('Staff');

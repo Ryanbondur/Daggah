@@ -545,6 +545,8 @@ export class Battle {
     const node = this.node;
     const soft = this.heroInput.level <= node.recLevel - 3 ? 1.5 : 1;
     let dmg = Math.max(1, Math.round(e.atk * this.rng.range(0.9, 1.1) * mitigation * soft));
+    const dr = this.heroInput.effects.dmgTakenReductionPct;
+    if (dr > 0) dmg = Math.max(1, Math.round(dmg * (1 - dr / 100)));
     let absorbed = false;
     if (b.shield > 0) {
       absorbed = true;
@@ -695,6 +697,11 @@ export class Battle {
     e.hp -= final;
     e.hitFlash = 0.12;
     this.events.push({ t: 'hit', enemyId: e.id, dmg: final, crit, skill: opts.skill, aoe: opts.aoe });
+    if (crit && inp.effects.onCritHealPct > 0) {
+      const amount = Math.max(1, Math.round(this.hero.maxHp * (inp.effects.onCritHealPct / 100)));
+      this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + amount);
+      this.events.push({ t: 'heal', amount });
+    }
     if (e.def.role === 'boss' && !e.phaseDone && e.hp > 0 && e.hp <= e.maxHp * 0.5) {
       e.phaseDone = true;
       this.events.push({ t: 'shout', text: 'Reinforcements!' });
@@ -869,6 +876,8 @@ export class Battle {
   private cast(id: SkillId): void {
     const def = SKILL_BY_ID[id];
     this.hero.energy -= this.skillCost(id);
+    const refund = this.heroInput.effects.skillEnergyRefund;
+    if (refund > 0) this.gainEnergy(refund, false);
     if (id === 'shadowstep' && this.buffs.shadowCharges > 1) {
       this.buffs.shadowCharges -= 1;
       this.cds[id] = 1;

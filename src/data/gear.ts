@@ -1,6 +1,8 @@
 import type { Rng } from '../game/rng';
 import { applyNightscarSoftPity } from '../game/nightscarPity';
+import { CAPES, applyEquippedCapeEffects, capePoolFor } from './capes';
 import type {
+  CapeId,
   HeroClass,
   IconPack,
   Item,
@@ -28,7 +30,11 @@ export const SLOTS: SlotId[] = [
   'amulet',
   'medal',
   'ring',
+  'cape',
 ];
+
+/** Slots that appear on set pieces / random non-cape rolls. Capes are catalog-only. */
+export const SET_SLOTS = SLOTS.filter((s): s is Exclude<SlotId, 'cape'> => s !== 'cape');
 
 export const SLOT_LABEL: Record<SlotId, string> = {
   weapon: 'Weapon',
@@ -42,6 +48,7 @@ export const SLOT_LABEL: Record<SlotId, string> = {
   amulet: 'Amulet',
   medal: 'Medal',
   ring: 'Ring',
+  cape: 'Cape',
 };
 
 export interface RarityDef {
@@ -158,6 +165,8 @@ const ARMOR_WEIGHT: Partial<Record<SlotId, number>> = {
   belt: 0.7,
   gloves: 0.6,
   bracers: 0.6,
+  /** Cape: light armor + specialty; power is mostly the unique effect. */
+  cape: 0.85,
 };
 
 const SUBSTAT_POOL: StatKey[] = ['critRate', 'critDmg', 'haste', 'energyRegen', 'skillPower'];
@@ -199,6 +208,12 @@ export function baseStatsForSlot(slot: SlotId, gl: number, mult: number): Partia
   } else if (slot === 'medal') {
     s.haste = round1((1 + 0.6 * gl) * mult);
     s.critDmg = round1((3 + 2 * gl) * mult);
+  } else if (slot === 'cape') {
+    // Capes: modest HP/DEF + a haste or skill-power secondary; unique effect is the hook.
+    const w = ARMOR_WEIGHT.cape ?? 0.85;
+    s.hp = Math.round((10 + 8 * gl) * w * mult);
+    s.def = Math.max(1, Math.round((0.8 + 0.9 * gl) * w * mult));
+    s.haste = round1((0.6 + 0.25 * gl) * mult);
   } else {
     const w = ARMOR_WEIGHT[slot] ?? 1;
     s.hp = Math.round((10 + 8 * gl) * w * mult);
@@ -219,6 +234,7 @@ const BASE_NAMES: Record<SlotId, string[]> = {
   amulet: ['Amulet', 'Fang Charm'],
   medal: ['Medal', 'War Token'],
   ring: ['Ring', 'Band'],
+  cape: ['Cape', 'Cloak', 'Mantle', 'Drape'],
 };
 
 const PREFIX: Record<RarityId, string[]> = {
@@ -464,6 +480,12 @@ export interface SetEffects {
   pvpCpPct: number;
   /** Clanforged 4pc — token reward multiplier. */
   tokenGainPct: number;
+  /** Cape: flat damage-taken reduction (enemy hits). */
+  dmgTakenReductionPct: number;
+  /** Cape: flat energy refunded after each skill cast. */
+  skillEnergyRefund: number;
+  /** Cape: heal % Max HP on critical hits. */
+  onCritHealPct: number;
 }
 
 export function emptySetEffects(): SetEffects {
@@ -499,6 +521,9 @@ export function emptySetEffects(): SetEffects {
     ultimateDmgPct: 0,
     pvpCpPct: 0,
     tokenGainPct: 0,
+    dmgTakenReductionPct: 0,
+    skillEnergyRefund: 0,
+    onCritHealPct: 0,
   };
 }
 
@@ -647,6 +672,8 @@ export function computeSetEffects(gear: Gear, loadout?: SkillId[]): SetEffects {
   if (n('nightscar-regalia') >= 6) fx.ultimateDmgPct += 20;
   if (n('clanforged') >= 2) fx.pvpCpPct += 8;
   if (n('clanforged') >= 4) fx.tokenGainPct += 10;
+  // Capes are not set pieces; fold their unique effect into the same combat bag.
+  applyEquippedCapeEffects(fx, gear.cape);
   return fx;
 }
 
@@ -771,7 +798,11 @@ export interface RollOptions {
 }
 
 export function rollItem(rng: Rng, opts: RollOptions): Item {
-  const slot = opts.slot ?? rng.pick(SLOTS);
+  // Capes never roll from the generic set/plain pool — use `rollCape`.
+  const slot = opts.slot ?? rng.pick(SET_SLOTS);
+  if (slot === 'cape') {
+    throw new Error('rollItem cannot create capes; use rollCape');
+  }
   const rarity = RARITIES[opts.rarity];
   const gl = Math.max(1, opts.gearLevel);
   const stats = baseStatsForSlot(slot, gl, rarity.mult);
@@ -800,6 +831,66 @@ export function rollItem(rng: Rng, opts: RollOptions): Item {
   };
 }
 
+export interface RollCapeOptions {
+  gearLevel: number;
+  rarity: RarityId;
+  heroClass: HeroClass;
+  actId: number;
+  capeId?: CapeId;
+}
+
+/** Roll a class-locked cape. Never attaches setId. */
+export function rollCape(rng: Rng, opts: RollCapeOptions): Item | null {
+  const capeId =
+    opts.capeId ??
+    (() => {
+      const pool = capePoolFor(opts.heroClass, opts.actId);
+      return pool.length ? rng.pick(pool) : null;
+    })();
+  if (!capeId) return null;
+  const def = CAPES[capeId];
+  if (def.heroClass !== opts.heroClass) return null;
+  const rarity = RARITIES[opts.rarity];
+  const gl = Math.max(1, opts.gearLevel);
+  const stats = baseStatsForSlot('cape', gl, rarity.mult);
+  const subPool = SUBSTAT_POOL.filter((k) => stats[k] === undefined);
+  for (let i = 0; i < rarity.substats && subPool.length > 0; i++) {
+    const idx = Math.floor(rng.next() * subPool.length);
+    const key = subPool.splice(idx, 1)[0];
+    stats[key] = substatValue(key, gl, rarity.mult);
+  }
+  return {
+    id: newId(),
+    slot: 'cape',
+    rarity: opts.rarity,
+    gearLevel: gl,
+    name: def.name,
+    capeId: def.id,
+    icon: def.icon,
+    stats,
+  };
+}
+
+/** Chance a dungeon drop becomes a cape instead of set/plain gear. */
+export function capeDropChance(source: DropSource): number {
+  switch (source) {
+    case 'dungeon-floor':
+    case 'nightscar-floor':
+    case 'ascended-floor':
+      return 0.08;
+    case 'dungeon-mini':
+    case 'nightscar-mini':
+    case 'ascended-mini':
+      return 0.12;
+    case 'dungeon-boss':
+    case 'nightscar-boss':
+    case 'ascended-boss':
+      return 0.18;
+    default:
+      return 0;
+  }
+}
+
 const STARTER_WEAPON: Record<HeroClass, string> = {
   Warrior: 'Rusty Axe',
   Mage: 'Splintered Staff',
@@ -807,7 +898,7 @@ const STARTER_WEAPON: Record<HeroClass, string> = {
   Rogue: 'Notched Daggers',
 };
 
-const STARTER_NAMES: Record<Exclude<SlotId, 'weapon'>, string> = {
+const STARTER_NAMES: Record<Exclude<SlotId, 'weapon' | 'cape'>, string> = {
   chest: 'Worn Jerkin',
   belt: 'Frayed Belt',
   helmet: 'Dented Helm',
@@ -820,9 +911,10 @@ const STARTER_NAMES: Record<Exclude<SlotId, 'weapon'>, string> = {
   ring: 'Useless Ring',
 };
 
+/** Starter kit fills every slot except Cape (late-act drops only). */
 export function starterGear(heroClass: HeroClass = 'Warrior'): Gear {
   const gear: Gear = {};
-  for (const slot of SLOTS) {
+  for (const slot of SET_SLOTS) {
     gear[slot] = {
       id: `starter_${slot}`,
       slot,
@@ -856,11 +948,15 @@ export function setAllowedForClass(setId: SetId, heroClass: HeroClass): boolean 
   return locked == null || locked === heroClass;
 }
 
-/** Plain (non-set) gear is always allowed; set pieces follow `setAllowedForClass`. */
+/**
+ * Capes are always class-locked via capeId.
+ * Plain (non-set, non-cape) gear is always allowed; set pieces follow `setAllowedForClass`.
+ */
 export function itemAllowedForClass(
-  item: Pick<Item, 'setId'>,
+  item: Pick<Item, 'setId' | 'capeId'>,
   heroClass: HeroClass,
 ): boolean {
+  if (item.capeId) return CAPES[item.capeId].heroClass === heroClass;
   if (!item.setId) return true;
   return setAllowedForClass(item.setId, heroClass);
 }
@@ -923,7 +1019,8 @@ export function rarityAtMost(item: Item, max: RarityId): boolean {
 export function estimateStageRecCp(level: number): number {
   const gl = Math.max(1, level);
   const gear: Gear = {};
-  for (const slot of SLOTS) {
+  // Benchmark kit excludes cape so early-act recommended CP stays stable.
+  for (const slot of SET_SLOTS) {
     gear[slot] = {
       id: `rec_${slot}`,
       slot,

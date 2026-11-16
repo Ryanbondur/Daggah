@@ -6,7 +6,7 @@ import {
   projectedDungeonXp,
   projectedStageXp,
 } from '../data/acts';
-import { dropWeightsFor, rollItem, SLOTS, type Gear } from '../data/gear';
+import { dropWeightsFor, rollItem, SET_SLOTS, type Gear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import type { RarityId } from '../data/types';
 import { addXp, MAX_LEVEL, XP_TO_NEXT } from '../data/xp';
@@ -87,7 +87,7 @@ describe('Nightscar clearability without BiS', () => {
     game.save.level = level;
     game.save.xp = 0;
     const gear: Gear = {};
-    for (const slot of SLOTS) {
+    for (const slot of SET_SLOTS) {
       gear[slot] = rollItem(rng, {
         slot,
         rarity,
