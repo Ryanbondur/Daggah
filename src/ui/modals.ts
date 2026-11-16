@@ -342,8 +342,9 @@ export function showClassPick(ctx: UIContext): void {
 
 export function salvageRewardLabel(item: Item): string {
   const v = salvageValue(item);
-  if (v.crystals > 0) return `+${v.dust} dust  +${v.crystals}✦`;
-  return `+${v.dust} dust`;
+  const dust = `<span class="chip">+${v.dust} dust</span>`;
+  if (v.crystals > 0) return `${dust} <span class="chip">+${v.crystals}✦</span>`;
+  return dust;
 }
 
 export function cmpBtnLabel(title: string, sub: string): string {

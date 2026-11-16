@@ -13,7 +13,7 @@ describe('compare prompt button labels', () => {
   it('puts the salvage reward on one compact line', () => {
     const item = rollItem(mulberry32(3), { gearLevel: 5, rarity: 'rare', slot: 'weapon' });
     const label = salvageRewardLabel(item);
-    expect(label).toMatch(/^\+\d+ dust( {2}\+\d+✦)?$/);
+    expect(label).toMatch(/^<span class="chip">\+\d+ dust<\/span>( <span class="chip">\+\d+✦<\/span>)?$/);
     expect(label).not.toContain('Salvage');
   });
 });
