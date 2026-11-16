@@ -8,7 +8,8 @@ export const itemIcon = (item: Pick<Item, 'icon' | 'slot' | 'capeId'>): string =
   if (item.slot === 'cape' && item.capeId) {
     return asset(`icons/capes/${item.capeId}.webp`);
   }
-  return asset(`icons/gear-${item.icon}/${item.slot}.webp`);
+  const icon = /^[a-k]$/.test(String(item.icon)) ? item.icon : 'a';
+  return asset(`icons/gear-${icon}/${item.slot}.webp`);
 };
 
 export const skillIcon = (id: SkillId): string => asset(`icons/skills/${id}.webp`);

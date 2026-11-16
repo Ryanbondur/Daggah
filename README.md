@@ -47,7 +47,7 @@ Out of scope: clan leaderboard / season standings (DB stubs ready); server match
 ## Project layout
 
 ```
-api/         hosted routes: ping*.ts (probes) + daggah-auth.js / daggah-save.js (bundled)
+api/         hosted routes: ping.ts (health) + daggah-auth.js / daggah-save.js (bundled)
 api/_lib/    auth/save/db source (edit here, then npm run bundle:api)
 src/data/    types, XP, skills (all classes), gear/sets/CP, acts 1-10 + enemies, quests
 src/game/    combat engine, clan/PvP, Game controller, save, tests

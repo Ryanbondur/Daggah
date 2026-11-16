@@ -205,13 +205,26 @@ export function resetRateLimitsForTests(): void {
   rateBuckets.clear();
 }
 
+/**
+ * Best-effort client IP. Uses the right-most X-Forwarded-For hop (the one appended by the
+ * host's own proxy); left-hand values are client-controlled and never trusted. Limits that
+ * matter also key on username / a global bucket, so a spoofed IP alone cannot bypass them.
+ */
 export function clientIp(request: Request): string {
   const xf = request.headers.get('x-forwarded-for');
   if (xf) {
-    const first = xf.split(',')[0]?.trim();
-    if (first) return first.slice(0, 64);
+    const hops = xf.split(',').map((h) => h.trim()).filter(Boolean);
+    const last = hops[hops.length - 1];
+    if (last) return last.slice(0, 64);
   }
   return 'local';
+}
+
+let dummyHash: Promise<string> | undefined;
+/** Burn the same PBKDF2 work for unknown usernames so login timing does not leak existence. */
+export async function verifyAgainstDummy(password: string): Promise<void> {
+  dummyHash ??= hashPassword('daggah-dummy-password');
+  await verifyPassword(password, await dummyHash);
 }
 
 export function isUniqueViolation(error: unknown): boolean {

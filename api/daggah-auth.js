@@ -131,7 +131,13 @@ var INLINE_SCHEMA_STATEMENTS = [
     created_at timestamptz not null default now()
   )`,
   `create index if not exists sessions_user_id_idx on sessions (user_id)`,
-  `create index if not exists sessions_expires_at_idx on sessions (expires_at)`
+  `create index if not exists sessions_expires_at_idx on sessions (expires_at)`,
+  `create table if not exists rate_limits (
+    key text primary key,
+    count integer not null default 0,
+    reset_at timestamptz not null
+  )`,
+  `create index if not exists rate_limits_reset_at_idx on rate_limits (reset_at)`
 ];
 
 // api/_lib/webCrypto.ts
@@ -313,10 +319,16 @@ function rateLimit(key, limit, windowMs) {
 function clientIp(request) {
   const xf = request.headers.get("x-forwarded-for");
   if (xf) {
-    const first = xf.split(",")[0]?.trim();
-    if (first) return first.slice(0, 64);
+    const hops = xf.split(",").map((h) => h.trim()).filter(Boolean);
+    const last = hops[hops.length - 1];
+    if (last) return last.slice(0, 64);
   }
   return "local";
+}
+var dummyHash;
+async function verifyAgainstDummy(password) {
+  dummyHash ??= hashPassword("daggah-dummy-password");
+  await verifyPassword(password, await dummyHash);
 }
 function isUniqueViolation(error) {
   if (!error || typeof error !== "object") return false;
@@ -326,7 +338,55 @@ function isUniqueViolation(error) {
   return msg.includes("unique") || msg.includes("duplicate");
 }
 
+// api/_lib/rateLimit.ts
+function retryAfter(resetAt) {
+  const t = resetAt instanceof Date ? resetAt.getTime() : new Date(resetAt).getTime();
+  return Math.max(1, Math.ceil((t - Date.now()) / 1e3));
+}
+function maybePrune() {
+  if (Math.random() < 0.02) {
+    void sql(`delete from rate_limits where reset_at < now() - interval '1 hour'`).catch(
+      () => void 0
+    );
+  }
+}
+async function hitRateLimit(key, limit, windowMs) {
+  maybePrune();
+  const rows = await sql(
+    `insert into rate_limits (key, count, reset_at)
+     values ($1, 1, now() + ($2::int * interval '1 millisecond'))
+     on conflict (key) do update set
+       count = case when rate_limits.reset_at <= now() then 1 else rate_limits.count + 1 end,
+       reset_at = case when rate_limits.reset_at <= now()
+         then now() + ($2::int * interval '1 millisecond') else rate_limits.reset_at end
+     returning count, reset_at`,
+    [key, Math.floor(windowMs)]
+  );
+  const row = rows[0];
+  if (!row) return { ok: true };
+  return Number(row.count) > limit ? { ok: false, retryAfterSec: retryAfter(row.reset_at) } : { ok: true };
+}
+async function peekRateLimit(key, limit) {
+  const rows = await sql(
+    `select count, reset_at from rate_limits where key = $1 and reset_at > now()`,
+    [key]
+  );
+  const row = rows[0];
+  if (row && Number(row.count) >= limit) return { ok: false, retryAfterSec: retryAfter(row.reset_at) };
+  return { ok: true };
+}
+async function clearRateLimit(key) {
+  await sql(`delete from rate_limits where key = $1`, [key]);
+}
+
 // api/_lib/authApi.ts
+var MAX_USERS = 5e4;
+var LOGIN_WINDOW_MS = 15 * 60 * 1e3;
+function limited(result) {
+  return json({ error: "rate_limited", retryAfterSec: result.retryAfterSec }, 429, {
+    "retry-after": String(result.retryAfterSec)
+  });
+}
 var NO_STORE = { "cache-control": "private, no-store" };
 function json(data, status = 200, extraHeaders = {}) {
   return Response.json(data, { status, headers: { ...NO_STORE, ...extraHeaders } });
@@ -400,14 +460,10 @@ async function POST(request) {
     const action = typeof obj.action === "string" ? obj.action : "";
     const ip = clientIp(request);
     if (action === "register" || action === "login") {
-      const limited = rateLimit(`auth:${action}:${ip}`, 20, 15 * 60 * 1e3);
-      if (!limited.ok) {
-        return json(
-          { error: "rate_limited", retryAfterSec: limited.retryAfterSec },
-          429,
-          { "retry-after": String(limited.retryAfterSec) }
-        );
-      }
+      const globalHit = action === "register" ? await hitRateLimit("auth:register:global", 100, 60 * 60 * 1e3) : await hitRateLimit("auth:login:global", 3e3, LOGIN_WINDOW_MS);
+      if (!globalHit.ok) return limited(globalHit);
+      const ipHit = action === "register" ? await hitRateLimit(`auth:register:ip:${ip}`, 5, 60 * 60 * 1e3) : await hitRateLimit(`auth:login:ip:${ip}`, 20, LOGIN_WINDOW_MS);
+      if (!ipHit.ok) return limited(ipHit);
       const username = normalizeUsername(typeof obj.username === "string" ? obj.username : "");
       if (!username) {
         return json(
@@ -422,6 +478,10 @@ async function POST(request) {
       const pwErr = validatePassword(password);
       if (pwErr) return json({ error: "weak_password", hint: pwErr }, 400);
       if (action === "register") {
+        const countRows = await sql(`select count(*) as n from users`);
+        if (Number(countRows[0]?.n ?? 0) >= MAX_USERS) {
+          return json({ error: "registration_closed", hint: "New accounts are paused. Play as guest." }, 503);
+        }
         try {
           const user2 = await createUser(username, password);
           const session2 = await createSession(user2.id);
@@ -434,16 +494,25 @@ async function POST(request) {
           });
         } catch (error) {
           if (isUniqueViolation(error)) {
-            return json({ error: "username_taken" }, 409);
+            return json(
+              { error: "registration_failed", hint: "Couldn't create that account. Try a different username." },
+              409
+            );
           }
           throw error;
         }
       }
+      const userKey = `auth:login:user:${username.toLowerCase()}`;
+      const userBlocked = await peekRateLimit(userKey, 10);
+      if (!userBlocked.ok) return limited(userBlocked);
       const user = await findUserByUsername(username);
       const ok = user ? await verifyPassword(password, user.password_hash) : false;
+      if (!user) await verifyAgainstDummy(password);
       if (!user || !ok) {
+        await hitRateLimit(userKey, 10, LOGIN_WINDOW_MS);
         return json({ error: "invalid_credentials" }, 401);
       }
+      await clearRateLimit(userKey);
       const session = await createSession(user.id);
       return json({
         ok: true,
@@ -462,12 +531,12 @@ async function POST(request) {
       const auth = await requireUser(request);
       if ("error" in auth && auth.error) return auth.error;
       const { token, user } = auth;
-      const limited = rateLimit(`auth:change-password:${user.id}`, 10, 15 * 60 * 1e3);
-      if (!limited.ok) {
+      const limited2 = rateLimit(`auth:change-password:${user.id}`, 10, 15 * 60 * 1e3);
+      if (!limited2.ok) {
         return json(
-          { error: "rate_limited", retryAfterSec: limited.retryAfterSec },
+          { error: "rate_limited", retryAfterSec: limited2.retryAfterSec },
           429,
-          { "retry-after": String(limited.retryAfterSec) }
+          { "retry-after": String(limited2.retryAfterSec) }
         );
       }
       const currentPassword = typeof obj.currentPassword === "string" ? obj.currentPassword : "";

@@ -4,8 +4,10 @@
  *
  * Auth: username session (primary), else Cursor identity, else x-daggah-account-code.
  */
-import { isDatabaseUnavailable, isUndefinedTable } from './db';
+import { isDatabaseUnavailable, isUndefinedTable, sql } from './db';
 import { resolveOwner } from './owner';
+import { hitRateLimit } from './rateLimit';
+import { clientIp } from './auth';
 import {
   getSave,
   parseStoredPayload,
@@ -13,6 +15,19 @@ import {
   toIso,
   upsertSave,
 } from './saves';
+
+/** Hard ceiling on guest (account-code) rows: codes are client-minted, so cap what they can create. */
+const MAX_ACCOUNT_CODE_SAVES = 20_000;
+
+function rateLimited(retryAfterSec: number): Response {
+  return Response.json(
+    { error: 'rate_limited', retryAfterSec },
+    {
+      status: 429,
+      headers: { 'cache-control': 'private, no-store', 'retry-after': String(retryAfterSec) },
+    },
+  );
+}
 
 const NO_STORE = { 'cache-control': 'private, no-store' } as const;
 
@@ -83,6 +98,9 @@ export async function PUT(request: Request): Promise<Response> {
     const owner = await resolveOwner(request);
     if (owner instanceof Response) return owner;
 
+    const writeHit = await hitRateLimit(`save:put:${owner.ownerKey}`, 60, 10 * 60 * 1000);
+    if (!writeHit.ok) return rateLimited(writeHit.retryAfterSec);
+
     let body: unknown;
     try {
       body = await readBody(request);
@@ -99,6 +117,19 @@ export async function PUT(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const force = url.searchParams.get('force') === '1';
     const existing = await getSave(owner.ownerKey);
+
+    if (!existing && owner.kind === 'account') {
+      const globalNew = await hitRateLimit('save:new-account:global', 200, 60 * 60 * 1000);
+      if (!globalNew.ok) return rateLimited(globalNew.retryAfterSec);
+      const ipNew = await hitRateLimit(`save:new-account:ip:${clientIp(request)}`, 10, 60 * 60 * 1000);
+      if (!ipNew.ok) return rateLimited(ipNew.retryAfterSec);
+      const rows = await sql<{ n: number | string }>(
+        `select count(*) as n from saves where owner_key like 'ac:%'`,
+      );
+      if (Number(rows[0]?.n ?? 0) >= MAX_ACCOUNT_CODE_SAVES) {
+        return json({ error: 'guest_saves_full', hint: 'Guest cloud saves are full. Log in to sync.' }, 503);
+      }
+    }
 
     if (existing && !force) {
       const cloudSave = parseStoredPayload(existing.payload) as { savedAt?: number } | null;
