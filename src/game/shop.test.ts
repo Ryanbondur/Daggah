@@ -80,6 +80,31 @@ describe('shopPrice by rarity', () => {
     });
     expect(shopPrice(setPiece)).toBeGreaterThan(shopPrice(plain));
   });
+
+  it('scales with gear level so endgame shop is a real gold sink', () => {
+    const rng = mulberry32(11);
+    const early = rollItem(rng, { gearLevel: 3, rarity: 'rare', slot: 'weapon' });
+    const late = rollItem(rng, { gearLevel: 20, rarity: 'rare', slot: 'weapon' });
+    expect(shopPrice(late)).toBeGreaterThan(shopPrice(early) * 2);
+
+    // Absolute anchors (sellValue × rarity mult × gl mult) — keep sink intentional.
+    const commonEarly = rollItem(rng, { gearLevel: 1, rarity: 'common', slot: 'ring' });
+    const rareMid = rollItem(rng, { gearLevel: 10, rarity: 'rare', slot: 'chest' });
+    const epicLate = rollItem(rng, { gearLevel: 18, rarity: 'epic', slot: 'weapon' });
+    const legLate = rollItem(rng, { gearLevel: 20, rarity: 'legendary', slot: 'weapon' });
+    const legSet = rollItem(rng, {
+      gearLevel: 20,
+      rarity: 'legendary',
+      slot: 'weapon',
+      setId: 'ember-raider',
+    });
+    expect(shopPrice(commonEarly)).toBeGreaterThanOrEqual(50);
+    expect(shopPrice(commonEarly)).toBeLessThan(200);
+    expect(shopPrice(rareMid)).toBeGreaterThanOrEqual(1_000);
+    expect(shopPrice(epicLate)).toBeGreaterThanOrEqual(12_000);
+    expect(shopPrice(legLate)).toBeGreaterThanOrEqual(90_000);
+    expect(shopPrice(legSet)).toBeGreaterThan(shopPrice(legLate));
+  });
 });
 
 describe('daily shop refresh', () => {
@@ -87,7 +112,7 @@ describe('daily shop refresh', () => {
     const store = memStore();
     const game = new Game(store, mulberry32(99));
     game.pickClass('Mage');
-    game.save.gold = 50_000;
+    game.save.gold = 250_000;
 
     const dayA = Date.parse('2026-11-14T12:00:00Z');
     game.refreshShop(dayA);
