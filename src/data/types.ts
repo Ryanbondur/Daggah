@@ -110,6 +110,9 @@ export type CapeId =
 
 export type IconPack = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h' | 'i' | 'j' | 'k';
 
+/** Weapon family; decides icon art and base names. Warrior is `melee` (axe/mace/sword/hammer). */
+export type WeaponType = 'melee' | 'staff' | 'bow' | 'dagger';
+
 export interface Item {
   id: string;
   slot: SlotId;
@@ -119,6 +122,8 @@ export interface Item {
   setId?: SetId;
   /** Present on cape-slot items; mutually exclusive with setId. */
   capeId?: CapeId;
+  /** Weapon-slot only. Absent on legacy items; see `resolveWeaponType`. */
+  weaponType?: WeaponType;
   icon: IconPack;
   stats: Partial<Stats>;
 }
