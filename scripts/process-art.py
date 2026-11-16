@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Chroma-key and slice the generated art in art-src/ into public/assets/.
 
-Usage: python3 scripts/process-art.py   (requires pillow, numpy, scipy)
+Usage: python3 scripts/process-art.py [capes]   (requires pillow, numpy, scipy)
+"capes" reprocesses only the 12 class cape icons.
 """
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -280,10 +282,25 @@ SKILLS_RANGER = ["piercing-shot", "arrow-rain", "multishot", "storm-of-quills",
                  "aimed-shot", "hunters-mark", "explosive-trap", "kill-shot"]
 SKILLS_ROGUE = ["backstab", "garrote", "ambush", "death-mark",
                 "shadowstep", "smoke-bomb", "flurry", "cloak-of-shadows"]
+CAPES = [
+    "bulwark-mantle", "bloodhowl-cape", "warlords-drape",
+    "ashveil-cloak", "frostspire-cape", "arcane-loom",
+    "quillwind-cape", "deadeye-shroud", "hawkflight-mantle",
+    "nightstalker-cape", "shadowweave-cloak", "deathveil-drape",
+]
 NAV = ["camp", "skill", "adventure", "town", "crystal", "key"]
 
 
+def process_capes() -> None:
+    """One cape per art-src/cape-<id>.jpg (magenta bg) -> icons/capes/<id>.webp."""
+    for cape in CAPES:
+        single(f"cape-{cape}", f"icons/capes/{cape}.webp", 256)
+
+
 def main() -> None:
+    if "capes" in sys.argv[1:]:
+        process_capes()
+        return
     for bg in (
         "bg-deep-cavern",
         "bg-ember-hollow",
@@ -340,6 +357,7 @@ def main() -> None:
     slice_sheet("icons-skills-ranger", "icons/skills", SKILLS_RANGER, 160, dilate=6)
     slice_sheet("icons-skills-rogue", "icons/skills", SKILLS_ROGUE, 160, dilate=6)
     slice_sheet("icons-nav", "icons/nav", NAV, 160)
+    process_capes()
 
     single("ui-gargoyle", "ui/gargoyle.webp", 420)
     single("ui-hooded-statue", "ui/hooded-statue.webp", 420)
