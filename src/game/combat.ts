@@ -9,6 +9,8 @@ import type { Rng } from './rng';
 
 export const HERO_X = 0.24;
 export const STEP = 0.05;
+/** Engage line for Clan Raid boss so a 4-hero party fits on the left. */
+export const RAID_BOSS_LINE = 0.58;
 
 export interface HeroInput {
   level: number;
@@ -17,6 +19,37 @@ export interface HeroInput {
   effects: SetEffects;
   loadout: SkillId[];
   primary: SkillId | null;
+}
+
+/** Clan Raid AI/player party member (visual + auto-swing DPS). */
+export interface RaidAlly {
+  id: string;
+  name: string;
+  heroClass: HeroClass;
+  isPlayer: boolean;
+  isAi: boolean;
+  x: number;
+  hp: number;
+  maxHp: number;
+  atk: number;
+  defense: number;
+  haste: number;
+  swingT: number;
+  swingAnim: number;
+  hitFlash: number;
+  dead: boolean;
+  deathT: number;
+}
+
+export interface BattleOpts {
+  /** Clan Raid party (you + 3 AI). When set, stage uses 4v4-style lanes. */
+  raidAllies?: RaidAlly[];
+  /** Extra HP mul applied to boss spawns (Clan Raid). */
+  raidBossHpMul?: number;
+  /** Extra ATK mul applied to boss spawns (Clan Raid). */
+  raidBossAtkMul?: number;
+  /** AI ally auto-swing damage factor. */
+  allySwingMul?: number;
 }
 
 export interface RunNode {
@@ -83,6 +116,9 @@ export interface Enemy {
   dead: boolean;
   deathT: number;
   phaseDone: boolean;
+  /** Extra raid phase shouts (75% / 25%) beyond the default 50% adds. */
+  raidPhase75: boolean;
+  raidPhase25: boolean;
   tier: number;
   engaged: boolean;
 }
@@ -166,6 +202,10 @@ export class Battle {
   scroll = 0;
   enemies: Enemy[] = [];
   events: BattleEvent[] = [];
+  /** Clan Raid party — empty outside raids. */
+  raidAllies: RaidAlly[] = [];
+  readonly raidBossHpMul: number;
+  readonly raidBossAtkMul: number;
 
   hero: { hp: number; maxHp: number; energy: number; maxEnergy: number };
   heroInput: HeroInput;
@@ -179,11 +219,17 @@ export class Battle {
   private aiT = 0;
   private nextEnemyId = 1;
   private rng: Rng;
+  /** Ally swing damage factor (Clan Raid). */
+  private allySwingMul: number;
 
-  constructor(run: RunDef, hero: HeroInput, rng: Rng) {
+  constructor(run: RunDef, hero: HeroInput, rng: Rng, opts: BattleOpts = {}) {
     this.run = run;
     this.rng = rng;
     this.heroInput = hero;
+    this.raidAllies = opts.raidAllies ? opts.raidAllies.map((a) => ({ ...a })) : [];
+    this.raidBossHpMul = opts.raidBossHpMul ?? 1;
+    this.raidBossAtkMul = opts.raidBossAtkMul ?? 1;
+    this.allySwingMul = opts.allySwingMul ?? 0.78;
     const maxHp = hero.stats.hp;
     const maxEn = maxEnergy(hero.level);
     this.hero = { hp: maxHp, maxHp, energy: maxEn * run.startEnergy, maxEnergy: maxEn };
@@ -195,6 +241,20 @@ export class Battle {
       this.state = 'walk';
       this.nodeIndex = run.startNode;
     }
+  }
+
+  get isClanRaid(): boolean {
+    return this.raidAllies.length > 0;
+  }
+
+  /** Sync player RaidAlly HP with Battle.hero (skills/UI). */
+  private syncPlayerAlly(): void {
+    const me = this.raidAllies.find((a) => a.isPlayer);
+    if (!me || me.dead) return;
+    me.hp = this.hero.hp;
+    me.maxHp = this.hero.maxHp;
+    me.hitFlash = Math.max(me.hitFlash, this.heroHitFlash);
+    me.swingAnim = Math.max(me.swingAnim, this.heroSwingAnim);
   }
 
   get node(): RunNode {
@@ -245,6 +305,11 @@ export class Battle {
     this.time += dt;
     this.heroSwingAnim = Math.max(0, this.heroSwingAnim - dt);
     this.heroHitFlash = Math.max(0, this.heroHitFlash - dt);
+    for (const a of this.raidAllies) {
+      a.hitFlash = Math.max(0, a.hitFlash - dt);
+      a.swingAnim = Math.max(0, a.swingAnim - dt);
+      if (a.dead) a.deathT += dt;
+    }
     for (const e of this.enemies) {
       e.hitFlash = Math.max(0, e.hitFlash - dt);
       e.attackAnim = Math.max(0, e.attackAnim - dt);
@@ -262,6 +327,7 @@ export class Battle {
       case 'rest':
         this.stateT += dt;
         this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + this.hero.maxHp * 0.6 * dt);
+        this.syncPlayerAlly();
         if (this.stateT >= REST_TIME) {
           this.events.push({ t: 'nodeClear', index: this.nodeIndex, type: 'camp' });
           this.nodeIndex += 1;
@@ -272,6 +338,7 @@ export class Battle {
         this.stateT += dt;
         this.scroll += dt;
         this.hero.hp = Math.min(this.hero.maxHp, this.hero.hp + this.hero.maxHp * 0.04 * dt);
+        this.syncPlayerAlly();
         if (this.stateT >= this.run.walkTime) this.spawnNode();
         break;
       case 'fight':
@@ -414,16 +481,19 @@ export class Battle {
   private spawnEnemy(defId: string, tier: number, x: number, hpMul: number): Enemy {
     const def = ENEMIES[defId];
     const sc = enemyScale(tier, def.role);
-    const hp = Math.round(sc.hp * def.hpMul * hpMul);
+    const raidBoss = this.isClanRaid && def.role === 'boss';
+    const hpExtra = raidBoss ? this.raidBossHpMul : 1;
+    const atkExtra = raidBoss ? this.raidBossAtkMul : 1;
+    const hp = Math.round(sc.hp * def.hpMul * hpMul * hpExtra);
     const enemy: Enemy = {
       id: this.nextEnemyId++,
       def,
       hp,
       maxHp: hp,
-      atk: sc.atk * def.atkMul,
-      defense: sc.def,
+      atk: sc.atk * def.atkMul * atkExtra,
+      defense: sc.def * (raidBoss ? 1.15 : 1),
       xp: sc.xp,
-      x,
+      x: raidBoss ? Math.max(x, 1.15) : x,
       atkT: def.atkInterval * this.rng.range(0.6, 1),
       stunT: 0,
       shredT: 0,
@@ -441,6 +511,8 @@ export class Battle {
       dead: false,
       deathT: 0,
       phaseDone: false,
+      raidPhase75: false,
+      raidPhase25: false,
       tier,
       engaged: false,
     };
@@ -453,7 +525,32 @@ export class Battle {
     this.updateEnemies(dt);
     if (this.hero.hp <= 0) return;
     this.updateHero(dt);
+    this.updateRaidAllies(dt);
+    this.syncPlayerAlly();
     if (this.alive.length === 0) this.finishNode();
+  }
+
+  private updateRaidAllies(dt: number): void {
+    if (!this.raidAllies.length) return;
+    const boss = this.alive.find((e) => e.def.role === 'boss') ?? this.frontEnemy();
+    if (!boss) return;
+    for (const a of this.raidAllies) {
+      if (a.dead || a.isPlayer) continue;
+      a.swingT -= dt;
+      if (a.swingT > 0) continue;
+      const interval = Math.max(0.55, 1.15 * (1 - a.haste / 200));
+      a.swingT = interval * this.rng.range(0.9, 1.1);
+      a.swingAnim = 0.28;
+      // Simplified auto-swings — skills stay on the human player.
+      let dmg = a.atk * this.allySwingMul * this.rng.range(0.92, 1.08);
+      dmg *= 100 / (100 + boss.defense * 1.5);
+      const final = Math.max(1, Math.round(dmg));
+      boss.hp -= final;
+      boss.hitFlash = 0.12;
+      this.events.push({ t: 'hit', enemyId: boss.id, dmg: final, crit: false });
+      if (boss.hp <= 0) this.killEnemy(boss);
+      else this.checkRaidPhases(boss);
+    }
   }
 
   private finishNode(): void {
@@ -492,9 +589,11 @@ export class Battle {
   private updateEnemies(dt: number): void {
     const alive = this.enemies.filter((e) => !e.dead).sort((a, b) => a.x - b.x);
     let offset = 0;
+    const raid = this.isClanRaid;
     alive.forEach((e) => {
       const gap = e.def.role === 'boss' ? 0.12 : e.def.role === 'elite' ? 0.085 : 0.062;
-      const targetX = HERO_X + 0.13 + offset + gap * 0.5;
+      const baseLine = raid && e.def.role === 'boss' ? RAID_BOSS_LINE : HERO_X + 0.13;
+      const targetX = baseLine + offset + gap * 0.5;
       offset += gap;
       e.rootT = Math.max(0, e.rootT - dt);
       e.slowT = Math.max(0, e.slowT - dt);
@@ -521,6 +620,15 @@ export class Battle {
 
   private enemyAttack(e: Enemy): void {
     e.attackAnim = 0.25;
+    // Clan Raid: sometimes batter an AI ally instead of the player.
+    if (this.isClanRaid && this.rng.chance(0.55)) {
+      const livingAi = this.raidAllies.filter((a) => !a.dead && !a.isPlayer);
+      if (livingAi.length) {
+        const target = this.rng.pick(livingAi);
+        this.hitRaidAlly(e, target);
+        return;
+      }
+    }
     const b = this.buffs;
     if (b.immuneT > 0) return;
     if (b.smokeT > 0 && this.rng.chance(0.4)) {
@@ -561,10 +669,31 @@ export class Battle {
     this.heroHitFlash = 0.15;
     this.gainEnergy(2, false);
     this.events.push({ t: 'heroHit', dmg, enemyId: e.id, absorbed });
+    this.syncPlayerAlly();
     if (this.hero.hp <= 0) {
       this.hero.hp = 0;
+      const me = this.raidAllies.find((a) => a.isPlayer);
+      if (me) {
+        me.hp = 0;
+        me.dead = true;
+        me.deathT = 0;
+      }
       this.setState('defeat');
       this.events.push({ t: 'heroDeath' });
+    }
+  }
+
+  private hitRaidAlly(e: Enemy, ally: RaidAlly): void {
+    const mitigation = 1 - ally.defense / (ally.defense + 90);
+    const dmg = Math.max(1, Math.round(e.atk * this.rng.range(0.85, 1.05) * mitigation * 0.85));
+    ally.hp -= dmg;
+    ally.hitFlash = 0.15;
+    this.events.push({ t: 'heroHit', dmg, enemyId: e.id, absorbed: false });
+    if (ally.hp <= 0) {
+      ally.hp = 0;
+      ally.dead = true;
+      ally.deathT = 0;
+      this.events.push({ t: 'shout', text: `${ally.name} down!` });
     }
   }
 
@@ -695,17 +824,39 @@ export class Battle {
     e.hp -= final;
     e.hitFlash = 0.12;
     this.events.push({ t: 'hit', enemyId: e.id, dmg: final, crit, skill: opts.skill, aoe: opts.aoe });
+    this.checkRaidPhases(e);
     if (e.def.role === 'boss' && !e.phaseDone && e.hp > 0 && e.hp <= e.maxHp * 0.5) {
       e.phaseDone = true;
       this.events.push({ t: 'shout', text: 'Reinforcements!' });
       const alive = this.alive.length;
-      for (let i = 0; i < 2; i++) {
+      const adds = this.isClanRaid ? 3 : 2;
+      for (let i = 0; i < adds; i++) {
         const id = this.rng.pick(this.run.trash);
-        this.spawnEnemy(id, e.tier, 1.05 + (alive + i) * 0.07, 0.8);
+        this.spawnEnemy(id, e.tier, 1.05 + (alive + i) * 0.07, this.isClanRaid ? 1.1 : 0.8);
       }
     }
     if (e.hp <= 0) this.killEnemy(e);
     return final;
+  }
+
+  /** Extra Clan Raid phase beats at 75% / 25% HP. */
+  private checkRaidPhases(e: Enemy): void {
+    if (!this.isClanRaid || e.def.role !== 'boss' || e.hp <= 0) return;
+    if (!e.raidPhase75 && e.hp <= e.maxHp * 0.75) {
+      e.raidPhase75 = true;
+      e.atk *= 1.12;
+      this.events.push({ t: 'shout', text: 'The Hungering stirs…' });
+    }
+    if (!e.raidPhase25 && e.hp <= e.maxHp * 0.25) {
+      e.raidPhase25 = true;
+      e.atk *= 1.18;
+      this.events.push({ t: 'shout', text: 'Final hunger!' });
+      const alive = this.alive.length;
+      for (let i = 0; i < 2; i++) {
+        const id = this.rng.pick(this.run.trash);
+        this.spawnEnemy(id, e.tier + 0.4, 1.08 + (alive + i) * 0.07, 1.25);
+      }
+    }
   }
 
   private killEnemy(e: Enemy): void {

@@ -72,13 +72,17 @@ describe('Clan Raid flow', () => {
     expect(game.startClanRaid()).toMatch(/Nightscar|Act 10/i);
   });
 
-  it('starts a single-boss run and spends a weekly attempt', () => {
+  it('starts a single-boss run with a party of 4 and spends a weekly attempt', () => {
     const game = raidReadyGame();
     expect(game.clanRaidAttemptsLeft()).toBe(CLAN_RAID_WEEKLY_ATTEMPTS);
     expect(game.startClanRaid()).toBeNull();
     expect(game.mode).toBe('dungeon');
     expect(game.battle?.run.nodes).toHaveLength(1);
     expect(game.battle?.run.nodes[0]?.type).toBe('boss');
+    expect(game.battle?.isClanRaid).toBe(true);
+    expect(game.battle?.raidAllies).toHaveLength(4);
+    expect(game.battle?.raidAllies.filter((a) => a.isPlayer)).toHaveLength(1);
+    expect(game.battle?.raidAllies.filter((a) => a.isAi)).toHaveLength(3);
     expect(game.clanRaidAttemptsLeft()).toBe(CLAN_RAID_WEEKLY_ATTEMPTS - 1);
   });
 
