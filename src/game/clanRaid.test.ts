@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getDungeon } from '../data/acts';
+import { ASCENDED_SEAL_FRAGMENTS_PER_SEAL } from './ascended';
 import {
   CLAN_RAID_DUNGEON,
   CLAN_RAID_FRAGMENT_MAX,
@@ -7,6 +8,7 @@ import {
   CLAN_RAID_SEAL_CHANCE,
   CLAN_RAID_WEEKLY_ATTEMPTS,
   clanRaidWeekKey,
+  expectedSealsPerClanRaidWeek,
   formatClanRaidReward,
   isClanRaidDungeon,
   rollClanRaidReward,
@@ -58,6 +60,19 @@ describe('clanRaid helpers', () => {
     expect(seals + frags).toBeGreaterThan(0);
     expect(CLAN_RAID_SEAL_CHANCE).toBeGreaterThan(0);
     expect(formatClanRaidReward({ ascendedSeals: 1, ascendedSealFragments: 0 })).toMatch(/Seal/);
+  });
+
+  it('targets ~2–3 seals/week after craft for a full-attempt raider', () => {
+    expect(CLAN_RAID_WEEKLY_ATTEMPTS).toBe(3);
+    expect(CLAN_RAID_SEAL_CHANCE).toBe(0.4);
+    expect(CLAN_RAID_FRAGMENT_MIN).toBe(2);
+    expect(CLAN_RAID_FRAGMENT_MAX).toBe(4);
+    expect(ASCENDED_SEAL_FRAGMENTS_PER_SEAL).toBe(5);
+    const week = expectedSealsPerClanRaidWeek();
+    expect(week).toBeGreaterThanOrEqual(2);
+    expect(week).toBeLessThanOrEqual(3);
+    // Closed form: 3 * (0.4 + 0.6 * 3/5) = 2.28
+    expect(week).toBeCloseTo(2.28, 5);
   });
 });
 
