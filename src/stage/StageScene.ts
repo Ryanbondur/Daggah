@@ -7,9 +7,11 @@ import type { Game, PvpPlaybackFighter } from '../game/game';
 import type { PvpEvent } from '../game/pvp';
 import { ENEMY_SPRITES, SKILL_IDS, asset, heroSprite, skillIcon } from '../ui/assets';
 import type { HeroClass } from '../data/types';
+import { footOriginY, groundLineY, spriteTopY } from './ground';
 import { campHeroVisual, enemyFaceTowardX, enemyFlipX } from './visual';
 
-const GROUND = 0.86;
+/** Where the backdrop's floor edge (BG_GROUND_LINE of the art) sits; independent of the actor ground line. */
+const BG_FLOOR_ANCHOR = 0.86;
 const BG_GROUND_LINE = 0.765;
 const BG_SRC_H = 720;
 const BG_SRC_W = 1280;
@@ -102,14 +104,14 @@ export class StageScene extends Phaser.Scene {
     g.generateTexture('spark', 16, 16);
     g.destroy();
 
-    this.campProps = this.add.image(0, 0, 'camp').setOrigin(0.5, 1).setDepth(1);
+    this.campProps = this.add.image(0, 0, 'camp').setOrigin(0.5, footOriginY('camp')).setDepth(1);
     this.fireGlow = this.add.circle(0, 0, 40, 0xff8a24, 0.35).setDepth(2).setBlendMode(Phaser.BlendModes.ADD);
     const campHero = campHeroVisual(this.game_.save.heroClass);
     const sleepKey = this.textures.exists(campHero.key) ? campHero.key : this.heroKey;
-    this.heroSleep = this.add.image(0, 0, sleepKey).setOrigin(0.5, 1).setDepth(6);
+    this.heroSleep = this.add.image(0, 0, sleepKey).setOrigin(0.5, footOriginY(sleepKey)).setDepth(6);
     this.bubble = this.add.circle(0, 0, 10, 0xcfe9ff, 0.55).setDepth(7);
     this.bubble.setStrokeStyle(2, 0xffffff, 0.7);
-    this.hero = this.add.image(0, 0, this.heroKey).setOrigin(0.5, 1).setDepth(6);
+    this.hero = this.add.image(0, 0, this.heroKey).setOrigin(0.5, footOriginY(this.heroKey)).setDepth(6);
     this.fx = this.add.graphics().setDepth(10);
     this.heroBar = this.add.graphics().setDepth(11);
     this.tag = this.add
@@ -239,7 +241,7 @@ export class StageScene extends Phaser.Scene {
     }
     const sprite = this.bgSprites[bg];
     if (!sprite) return;
-    const scale = (GROUND * H) / (BG_GROUND_LINE * BG_SRC_H);
+    const scale = (BG_FLOOR_ANCHOR * H) / (BG_GROUND_LINE * BG_SRC_H);
     sprite.setVisible(true);
     sprite.setSize(W, H);
     sprite.setTileScale(scale, scale);
@@ -248,7 +250,7 @@ export class StageScene extends Phaser.Scene {
   }
 
   private renderCamp(W: number, H: number): void {
-    const groundY = GROUND * H;
+    const groundY = groundLineY(H);
     this.hero.setVisible(false);
     this.heroBar.clear();
     for (const c of this.chips) c.img.setVisible(false);
@@ -256,10 +258,10 @@ export class StageScene extends Phaser.Scene {
     const propW = Math.min(W * 0.82, H * 1.15);
     this.campProps.setVisible(true);
     this.campProps.setDisplaySize(propW, propW * (224 / 520));
-    this.campProps.setPosition(W * 0.68, groundY + H * 0.01);
+    this.campProps.setPosition(W * 0.68, groundY);
 
     const fireX = this.campProps.x - propW * 0.5 + propW * 0.18;
-    const fireY = this.campProps.y - propW * 0.08;
+    const fireY = this.campProps.getBottomCenter().y - propW * 0.08;
     this.fireGlow.setVisible(true);
     this.fireGlow.setPosition(fireX, fireY);
     this.fireGlow.setRadius(H * 0.11 * (1 + 0.1 * Math.sin(this.clock * 9)));
@@ -272,10 +274,11 @@ export class StageScene extends Phaser.Scene {
     if (this.textures.exists(campHero.key) && this.heroSleep.texture.key !== campHero.key) {
       this.heroSleep.setTexture(campHero.key);
     }
+    this.heroSleep.setOrigin(0.5, footOriginY(this.heroSleep.texture.key));
     this.heroSleep.setVisible(true);
     this.heroSleep.setDisplaySize(sh * campHero.aspect, sh);
     const hx = W * 0.28;
-    this.heroSleep.setPosition(hx, groundY + H * 0.008);
+    this.heroSleep.setPosition(hx, groundY);
     this.heroSleep.y += Math.sin(this.clock * 1.6) * 0.8;
 
     const pulse = 0.7 + 0.3 * Math.sin(this.clock * 1.6);
@@ -299,7 +302,7 @@ export class StageScene extends Phaser.Scene {
   }
 
   private renderBattle(b: NonNullable<Game['battle']>, W: number, H: number, dt: number): void {
-    const groundY = GROUND * H;
+    const groundY = groundLineY(H);
     this.heroSleep.setVisible(false);
     this.bubble.setVisible(false);
 
@@ -313,9 +316,9 @@ export class StageScene extends Phaser.Scene {
       const px = W * 0.68 - slide;
       this.campProps.setVisible(true);
       this.campProps.setDisplaySize(propW, propW * (224 / 520));
-      this.campProps.setPosition(px, groundY + H * 0.01);
+      this.campProps.setPosition(px, groundY);
       const fireX = px - propW * 0.5 + propW * 0.18;
-      const fireY = this.campProps.y - propW * 0.08;
+      const fireY = this.campProps.getBottomCenter().y - propW * 0.08;
       this.fireGlow.setVisible(true).setPosition(fireX, fireY);
       this.fireGlow.setRadius(H * 0.11 * (1 + 0.1 * Math.sin(this.clock * 9)));
       this.fireGlow.setAlpha(0.32 + 0.12 * Math.sin(this.clock * 13));
@@ -347,7 +350,7 @@ export class StageScene extends Phaser.Scene {
     const hW = hH * (360 / 343);
     this.hero.setDisplaySize(hW, hH);
     let hx = HERO_X * W;
-    let hy = groundY + H * 0.012;
+    let hy = groundY;
     let rot = 0;
     if (b.state === 'walk') {
       const t = this.clock * 11 * this.game_.speed;
@@ -364,13 +367,14 @@ export class StageScene extends Phaser.Scene {
     if (b.buffs.spinT > 0) rot = this.clock * 18;
     this.hero.setPosition(hx, hy);
     this.hero.setRotation(b.buffs.spinT > 0 ? 0 : rot);
-    this.hero.setOrigin(0.5, 1);
+    this.hero.setOrigin(0.5, footOriginY(this.heroKey));
     if (b.heroHitFlash > 0) this.hero.setTint(0xff7777);
     else this.hero.clearTint();
     this.hero.setAlpha(b.state === 'defeat' ? 0.5 : 1);
 
-    this.drawHeroBar(b, hx, hy - hH, H);
-    this.drawBuffs(b, hx, hy - hH, H);
+    const heroTop = spriteTopY(hy, hH, this.heroKey);
+    this.drawHeroBar(b, hx, heroTop, H);
+    this.drawBuffs(b, hx, heroTop, H);
     this.drawHeroFx(b, hx, hy, hH, W, H);
 
     this.syncEnemies(b, W, H, groundY);
@@ -402,7 +406,7 @@ export class StageScene extends Phaser.Scene {
       let view = this.pvpViews.get(a.id);
       if (!view) {
         const key = `hero-${a.heroClass.toLowerCase()}`;
-        const sprite = this.add.image(0, 0, key).setOrigin(0.5, 1).setDepth(6);
+        const sprite = this.add.image(0, 0, key).setOrigin(0.5, footOriginY(key)).setDepth(6);
         const bar = this.add.graphics().setDepth(11);
         let tag: Phaser.GameObjects.Text | null = null;
         if (a.isPlayer) {
@@ -435,8 +439,8 @@ export class StageScene extends Phaser.Scene {
     if (player) {
       const hx = player.x * W;
       const hH = H * 0.22;
-      const hy = groundY + H * 0.01;
-      this.drawBuffs(b, hx, hy - hH, H);
+      const hy = groundY;
+      this.drawBuffs(b, hx, spriteTopY(hy, hH, `hero-${player.heroClass.toLowerCase()}`), H);
       this.drawHeroFx(b, hx, hy, hH, W, H);
     }
   }
@@ -451,7 +455,7 @@ export class StageScene extends Phaser.Scene {
     const hH = H * 0.22;
     const hW = hH * (360 / 343);
     let x = a.x * W;
-    let y = groundY + H * 0.01;
+    let y = groundY;
     let rot = 0;
     if (!a.dead) {
       y -= Math.abs(Math.sin(this.clock * 9 + a.x * 20)) * H * 0.006;
@@ -485,7 +489,7 @@ export class StageScene extends Phaser.Scene {
     const bw = Math.max(H * 0.11, hW * 0.72);
     const bh = H * 0.018;
     const bx = x - bw / 2;
-    const by = y - hH - H * 0.015;
+    const by = spriteTopY(y, hH, `hero-${a.heroClass.toLowerCase()}`) - H * 0.015;
     bar.fillStyle(0x120808, 0.92);
     bar.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
     bar.fillStyle(0xd23030, 1);
@@ -635,7 +639,7 @@ export class StageScene extends Phaser.Scene {
       seen.add(e.id);
       let view = this.enemyViews.get(e.id);
       if (!view) {
-        const sprite = this.add.image(0, 0, e.def.sprite).setOrigin(0.5, 1).setDepth(5);
+        const sprite = this.add.image(0, 0, e.def.sprite).setOrigin(0.5, footOriginY(e.def.sprite)).setDepth(5);
         this.applyEnemyFacing(sprite, e.x, faceX);
         sprite.preFX?.addGlow(0xffe0b0, 1.6, 0, false, 0.1, 6);
         const bar = this.add.graphics().setDepth(11);
@@ -674,7 +678,7 @@ export class StageScene extends Phaser.Scene {
     const h = H * e.def.size;
     const w = h * (tex.width / tex.height);
     let x = e.x * W;
-    let y = groundY + H * 0.01;
+    let y = groundY;
     if (!e.dead) {
       const walking = e.x > HERO_X + 0.2 && e.stunT <= 0;
       if (walking) y -= Math.abs(Math.sin(this.clock * 12 + e.id)) * H * 0.012;
@@ -705,7 +709,7 @@ export class StageScene extends Phaser.Scene {
     const bw = Math.max(H * 0.14, w * 0.7);
     const bh = H * (e.def.role === 'trash' ? 0.016 : 0.022);
     const bx = x - bw / 2;
-    const by = y - h - H * 0.02;
+    const by = spriteTopY(y, h, e.def.sprite) - H * 0.02;
     bar.fillStyle(0x120808, 0.92);
     bar.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
     bar.fillStyle(e.def.role === 'trash' ? 0xd23030 : 0xe8742a, 1);
@@ -737,14 +741,14 @@ export class StageScene extends Phaser.Scene {
 
   private renderPvp(fighters: PvpPlaybackFighter[], W: number, H: number): void {
     this.hideSoloActors();
-    const groundY = GROUND * H;
+    const groundY = groundLineY(H);
     const seen = new Set<string>();
     for (const f of fighters) {
       seen.add(f.id);
       let view = this.pvpViews.get(f.id);
       if (!view) {
         const key = `hero-${f.heroClass.toLowerCase()}`;
-        const sprite = this.add.image(0, 0, key).setOrigin(0.5, 1).setDepth(f.team === 'ally' ? 6 : 5);
+        const sprite = this.add.image(0, 0, key).setOrigin(0.5, footOriginY(key)).setDepth(f.team === 'ally' ? 6 : 5);
         if (f.team === 'enemy') {
           sprite.setFlipX(true);
           sprite.setTint(0xffc0c0);
@@ -789,7 +793,7 @@ export class StageScene extends Phaser.Scene {
     const hH = H * 0.22;
     const hW = hH * (360 / 343);
     let x = f.x * W;
-    let y = groundY + H * 0.01;
+    let y = groundY;
     let rot = 0;
     if (!f.dead) {
       y -= Math.abs(Math.sin(this.clock * 9 + f.x * 20)) * H * 0.006;
@@ -825,7 +829,7 @@ export class StageScene extends Phaser.Scene {
     const bw = Math.max(H * 0.11, hW * 0.72);
     const bh = H * 0.018;
     const bx = x - bw / 2;
-    const by = y - hH - H * 0.015;
+    const by = spriteTopY(y, hH, `hero-${f.heroClass.toLowerCase()}`) - H * 0.015;
     bar.fillStyle(0x120808, 0.92);
     bar.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
     bar.fillStyle(f.team === 'ally' ? 0xd23030 : 0xe8742a, 1);
@@ -846,7 +850,7 @@ export class StageScene extends Phaser.Scene {
     H: number,
   ): { x: number; y: number } {
     const pb = this.game_.pvpPlayback;
-    const groundY = GROUND * H;
+    const groundY = groundLineY(H);
     if (!pb || !name) return { x: W * 0.5, y: groundY - H * 0.12 };
     const f = pb.fighters.find((x) => x.name === name && (!team || x.team === team));
     if (!f) return { x: W * 0.5, y: groundY - H * 0.12 };
@@ -933,7 +937,7 @@ export class StageScene extends Phaser.Scene {
 
   private enemyPos(id: number, W: number, H: number): { x: number; y: number } {
     const v = this.enemyViews.get(id);
-    const groundY = GROUND * H;
+    const groundY = groundLineY(H);
     if (v) return { x: v.sprite.x, y: v.sprite.y - v.sprite.displayHeight * 0.55 };
     return { x: W * 0.5, y: groundY - H * 0.12 };
   }
@@ -941,7 +945,7 @@ export class StageScene extends Phaser.Scene {
   private handleEvent(ev: BattleEvent, W: number, H: number): void {
     const b = this.game_.battle;
     const heroX = HERO_X * W;
-    const heroTop = GROUND * H - H * 0.34;
+    const heroTop = groundLineY(H) - H * 0.34;
     switch (ev.t) {
       case 'hit': {
         const p = this.enemyPos(ev.enemyId, W, H);
