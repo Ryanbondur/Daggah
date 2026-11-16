@@ -14,11 +14,13 @@ import type {
   StatKey,
   Stats,
   WeaponType,
+  ArmorType,
 } from './types';
 import { STAT_KEYS } from './types';
 import { PLAYSTYLES, playstyleCommitted } from './skills';
 import { heroBaseStats } from './xp';
 import { CLASS_WEAPON_TYPE, STARTER_WEAPON_NAME, weaponBaseNames } from './weapons';
+import { CLASS_ARMOR_TYPE, STARTER_ARMOR_NAME, armorBaseNames, isArmorSlot } from './armor';
 
 export const SLOTS: SlotId[] = [
   'weapon',
@@ -227,14 +229,8 @@ export function baseStatsForSlot(slot: SlotId, gl: number, mult: number): Partia
   return s;
 }
 
-const BASE_NAMES: Record<Exclude<SlotId, 'weapon'>, string[]> = {
-  chest: ['Breastplate', 'Cuirass', 'Hauberk'],
-  belt: ['Belt', 'Girdle'],
-  helmet: ['Helm', 'Greathelm'],
-  gloves: ['Gloves', 'Gauntlets'],
-  bracers: ['Bracers', 'Wristguards'],
-  shoulders: ['Pauldrons', 'Spaulders'],
-  boots: ['Boots', 'Treads', 'Greaves', 'Legguards'],
+/** Class-neutral slots; armor-slot names are class-specific (see armor.ts). */
+const BASE_NAMES: Record<'amulet' | 'medal' | 'ring' | 'cape', string[]> = {
   amulet: ['Amulet', 'Fang Charm'],
   medal: ['Medal', 'War Token'],
   ring: ['Ring', 'Band'],
@@ -799,7 +795,7 @@ export interface RollOptions {
   slot?: SlotId;
   setId?: SetId;
   icon?: IconPack;
-  /** Class receiving the drop; picks weapon type / art. Defaults to Warrior. */
+  /** Class receiving the drop; picks weapon / armor type, names and art. Defaults to Warrior. */
   heroClass?: HeroClass;
 }
 
@@ -822,10 +818,14 @@ export function rollItem(rng: Rng, opts: RollOptions): Item {
 
   const icon: IconPack = opts.icon ?? (opts.setId ? SETS[opts.setId].icon : 'a');
   let weaponType: WeaponType | undefined;
+  let armorType: ArmorType | undefined;
   let base: string;
   if (slot === 'weapon') {
     weaponType = CLASS_WEAPON_TYPE[opts.heroClass ?? 'Warrior'];
     base = rng.pick(weaponBaseNames(weaponType, icon));
+  } else if (isArmorSlot(slot)) {
+    armorType = CLASS_ARMOR_TYPE[opts.heroClass ?? 'Warrior'];
+    base = rng.pick(armorBaseNames(armorType, slot));
   } else {
     base = rng.pick(BASE_NAMES[slot]);
   }
@@ -842,6 +842,7 @@ export function rollItem(rng: Rng, opts: RollOptions): Item {
     setId: opts.setId,
     icon,
     ...(weaponType ? { weaponType } : {}),
+    ...(armorType ? { armorType } : {}),
     stats,
   };
 }
@@ -906,14 +907,7 @@ export function capeDropChance(source: DropSource): number {
   }
 }
 
-const STARTER_NAMES: Record<Exclude<SlotId, 'weapon' | 'cape'>, string> = {
-  chest: 'Worn Jerkin',
-  belt: 'Frayed Belt',
-  helmet: 'Dented Helm',
-  gloves: 'Torn Gloves',
-  bracers: 'Cracked Bracers',
-  shoulders: 'Patched Pauldrons',
-  boots: 'Muddy Boots',
+const STARTER_NAMES: Record<'amulet' | 'medal' | 'ring', string> = {
   amulet: 'Bone Charm',
   medal: 'Dull Medal',
   ring: 'Useless Ring',
@@ -928,9 +922,15 @@ export function starterGear(heroClass: HeroClass = 'Warrior'): Gear {
       slot,
       rarity: 'common',
       gearLevel: 1,
-      name: slot === 'weapon' ? STARTER_WEAPON_NAME[heroClass] : STARTER_NAMES[slot],
+      name:
+        slot === 'weapon'
+          ? STARTER_WEAPON_NAME[heroClass]
+          : isArmorSlot(slot)
+            ? STARTER_ARMOR_NAME[heroClass][slot]
+            : STARTER_NAMES[slot],
       icon: 'a',
       ...(slot === 'weapon' ? { weaponType: CLASS_WEAPON_TYPE[heroClass] } : {}),
+      ...(isArmorSlot(slot) ? { armorType: CLASS_ARMOR_TYPE[heroClass] } : {}),
       stats: baseStatsForSlot(slot, 1, 1),
     };
   }

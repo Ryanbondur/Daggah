@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Chroma-key and slice the generated art in art-src/ into public/assets/.
 
-Usage: python3 scripts/process-art.py [capes|weapons]   (requires pillow, numpy, scipy)
+Usage: python3 scripts/process-art.py [capes|weapons|armor]   (requires pillow, numpy, scipy)
 "capes" reprocesses only the 12 class cape icons.
 "weapons" reprocesses only the Mage staff / Ranger bow / Rogue dagger icon sets.
+"armor" reprocesses only the Mage cloth / Ranger leather / Rogue leather armor icon sets.
 """
 import sys
 from pathlib import Path
@@ -231,7 +232,7 @@ def _detect_grid_cols(img: Image.Image, n_names: int) -> int:
 
 
 def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate: int = 14,
-                keyer=None) -> None:
+                keyer=None, rows: list[int] | None = None) -> None:
     """Slice a magenta-keyed icon sheet.
 
     Gear sheets mix layouts (packs b/c/d are 3×4; most others are 4×3). Fixed
@@ -248,6 +249,8 @@ def slice_sheet(name: str, outdir: str, names: list[str], max_side: int, dilate:
             continue
         ordered, row_lens = _cluster_rows(boxes)
         if sum(row_lens) != len(names):
+            continue
+        if rows is not None and row_lens != rows:
             continue
         chosen = (d, boxes, labels, ordered, row_lens)
         break
@@ -318,6 +321,15 @@ WEAPON_SHEETS = {
     "bow": ["a", "c", "e", "f", "h", "i", "j", "k"],
     "dagger": ["a", "c", "g", "f", "h", "i", "j", "k"],
 }
+# Class armor: one 7-up sheet (4 + 3 layout) per armor type and gear-pack theme,
+# art-src/armor-<type>-<pack>.jpg -> icons/armor/<type>/<pack>/<slot>.webp.
+# Warrior plate keeps the per-pack art in icons/gear-<pack>/<slot>.webp.
+ARMOR_SLOTS = ["chest", "helmet", "shoulders", "belt", "gloves", "bracers", "boots"]
+ARMOR_SHEETS = {
+    "cloth": ["a", "c", "d", "f", "h", "i", "j", "k"],
+    "ranger-leather": ["a", "c", "e", "f", "h", "i", "j", "k"],
+    "rogue-leather": ["a", "c", "g", "f", "h", "i", "j", "k"],
+}
 NAV = ["camp", "skill", "adventure", "town", "crystal", "key"]
 
 
@@ -334,7 +346,28 @@ def process_weapons() -> None:
                     keyer=key_distance)
 
 
+def process_armor(only: list[str] | None = None) -> None:
+    """armor-<type>-<pack>.jpg (7-up) -> icons/armor/<type>/<pack>/<slot>.webp.
+
+    `only` limits the run to sheet names like "rogue-leather-c" (python3 scripts/process-art.py
+    armor rogue-leather-c).
+    """
+    for atype, packs in ARMOR_SHEETS.items():
+        for pack in packs:
+            name = f"armor-{atype}-{pack}"
+            if only and f"{atype}-{pack}" not in only:
+                continue
+            if not (SRC / f"{name}.jpg").exists():
+                print(f"skip {name}: sheet missing (runtime falls back to pack a)")
+                continue
+            slice_sheet(name, f"icons/armor/{atype}/{pack}", ARMOR_SLOTS, 160, dilate=6,
+                        keyer=key_distance, rows=[4, 3])
+
+
 def main() -> None:
+    if "armor" in sys.argv[1:]:
+        process_armor([a for a in sys.argv[1:] if a != "armor"])
+        return
     if "capes" in sys.argv[1:]:
         process_capes()
         return
@@ -399,6 +432,7 @@ def main() -> None:
     slice_sheet("icons-nav", "icons/nav", NAV, 160)
     process_capes()
     process_weapons()
+    process_armor()
 
     single("ui-gargoyle", "ui/gargoyle.webp", 420)
     single("ui-hooded-statue", "ui/hooded-statue.webp", 420)
