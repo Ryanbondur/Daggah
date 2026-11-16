@@ -358,7 +358,6 @@ def main() -> None:
 
     for hero in ("warrior", "mage", "ranger", "rogue"):
         single(f"hero-{hero}", f"sprites/hero-{hero}.webp", 360)
-    single("hero-sleeping", "sprites/hero-sleeping.webp", 360)
     single("camp-tent-fire", "sprites/camp-tent-fire.webp", 520)
 
     enemies = [

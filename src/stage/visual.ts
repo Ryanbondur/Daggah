@@ -1,5 +1,6 @@
 import type { HeroClass } from '../data/types';
 import { ENEMY_APPROACH_SPAWN_X, HERO_X } from '../game/combat';
+import { heroSpriteAspect } from '../ui/portrait';
 
 /**
  * Enemy / boss sprites are authored facing **left** (toward the usual hero side).
@@ -41,17 +42,14 @@ export function actApproachShouldFlipX(enemyX: number): boolean {
 export { ENEMY_APPROACH_SPAWN_X };
 
 /**
- * Camp idle texture for the resting hero.
- * `hero-sleep` is Warrior-only seated art; other classes use their combat sprite
- * so Mage/Ranger/Rogue do not appear as a Warrior at camp.
+ * Camp idle texture for the resting hero. Every class rests in its own combat
+ * sprite so the camp model always matches the hero (the old Warrior-only
+ * `hero-sleep` art was a different character: no horns, grey helm).
  */
 export function campHeroVisual(heroClass: HeroClass): {
   key: string;
   /** width / height for setDisplaySize */
   aspect: number;
 } {
-  if (heroClass === 'Warrior') {
-    return { key: 'hero-sleep', aspect: 203 / 360 };
-  }
-  return { key: `hero-${heroClass.toLowerCase()}`, aspect: 360 / 343 };
+  return { key: `hero-${heroClass.toLowerCase()}`, aspect: heroSpriteAspect(heroClass) };
 }
