@@ -6,13 +6,20 @@ import {
   projectedDungeonXp,
   projectedStageXp,
 } from '../data/acts';
-import { dropWeightsFor, rollItem, SLOTS, type Gear } from '../data/gear';
+import { dropWeightsFor, rollItem, SLOTS, type DropSource, type Gear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import type { RarityId } from '../data/types';
 import { addXp, MAX_LEVEL, XP_TO_NEXT } from '../data/xp';
 import { Game, type RunResult } from './game';
 import { mulberry32 } from './rng';
 import type { Storage } from './state';
+
+/** Legendary share of a Nightscar / Ascended drop table (pity 0). */
+function legShare(source: DropSource): number {
+  const w = dropWeightsFor(source, 0);
+  const total = w.common + w.rare + w.epic + w.legendary;
+  return w.legendary / total;
+}
 
 function memoryStorage(): Storage {
   const m = new Map<string, string>();
@@ -125,6 +132,35 @@ describe('Nightscar clearability without BiS', () => {
     expect(boss.legendary).toBeLessThanOrEqual(10);
     // Floors offer enough Epic weight to assemble a non-BiS clear set.
     expect(dropWeightsFor('nightscar-floor', 0).epic).toBeGreaterThanOrEqual(10);
+  });
+
+  it('keeps Ascended Legendary weights above Apex at every tier (DG-88)', () => {
+    for (const tier of ['floor', 'mini', 'boss'] as const) {
+      const night = dropWeightsFor(`nightscar-${tier}`, 0).legendary;
+      const asc = dropWeightsFor(`ascended-${tier}`, 0).legendary;
+      expect(asc).toBeGreaterThan(night);
+    }
+  });
+
+  it('targets ~42% 6pc Legendary Regalia by day 30 for regular raiders (DG-96)', () => {
+    // Closed-form base E[Legendary] per clear (pity ignored — dry runs are rare with Epic floors).
+    // Apex: 8 floor + 1 mini + 2 boss. Ascended same layout.
+    const eApex =
+      8 * legShare('nightscar-floor') +
+      legShare('nightscar-mini') +
+      2 * legShare('nightscar-boss');
+    const eAsc =
+      8 * legShare('ascended-floor') +
+      legShare('ascended-mini') +
+      2 * legShare('ascended-boss');
+    // Regular raider: 2 Apex/day × 30 + ~6.5 Ascended from Clan Raid seals.
+    const eLegs = 2 * 30 * eApex + 6.5 * eAsc;
+    // Coupon: 11 slots, need ≥6 unique → ~42% when E[legs] ≈ 7.
+    expect(eApex).toBeGreaterThan(0.05);
+    expect(eApex).toBeLessThan(0.12);
+    expect(eAsc).toBeGreaterThan(eApex * 2);
+    expect(eLegs).toBeGreaterThan(6);
+    expect(eLegs).toBeLessThan(8.5);
   });
 
   it('clears Nightscar Apex on a full epic (non-BiS) set at endgame level', () => {
