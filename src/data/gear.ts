@@ -111,14 +111,15 @@ const DROP_WEIGHTS: Record<DropSource, Record<RarityId, number>> = {
   'dungeon-mini': { common: 45, rare: 35, epic: 16, legendary: 4 },
   'dungeon-boss': { common: 35, rare: 40, epic: 20, legendary: 5 },
   // Floors lean Epic enough to assemble a full non-BiS clear set; Legendary stays
-  // a lucky seasonal BiS chase (speed + clan CP), not a clear gate. GDD §6.8.
-  'nightscar-floor': { common: 60, rare: 28, epic: 11, legendary: 1 },
-  'nightscar-mini': { common: 46, rare: 34, epic: 17, legendary: 3 },
-  'nightscar-boss': { common: 22, rare: 42, epic: 28, legendary: 8 },
-  // Ascended Nightscar: higher BiS odds; still lucky, not guaranteed.
-  'ascended-floor': { common: 48, rare: 30, epic: 17, legendary: 5 },
-  'ascended-mini': { common: 32, rare: 34, epic: 24, legendary: 10 },
-  'ascended-boss': { common: 10, rare: 28, epic: 40, legendary: 22 },
+  // a lucky seasonal BiS chase (speed + clan CP), not a clear gate. Tuned so
+  // ~42% of regular raiders complete a 6pc Legendary Regalia by day 30 (GDD §6.8).
+  'nightscar-floor': { common: 60, rare: 28, epic: 11.7, legendary: 0.3 },
+  'nightscar-mini': { common: 46, rare: 34, epic: 19, legendary: 1 },
+  'nightscar-boss': { common: 22, rare: 42, epic: 33.6, legendary: 2.4 },
+  // Ascended Nightscar: higher BiS odds than Apex; still lucky, not guaranteed.
+  'ascended-floor': { common: 48, rare: 30, epic: 20.4, legendary: 1.6 },
+  'ascended-mini': { common: 32, rare: 34, epic: 30.9, legendary: 3.1 },
+  'ascended-boss': { common: 10, rare: 28, epic: 53.2, legendary: 8.8 },
 };
 
 /** Base drop weights for a source (before Nightscar soft pity). */
