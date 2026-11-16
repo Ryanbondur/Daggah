@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { POST as authPost } from '../../api/_lib/authApi';
 import { GET as saveGet, PUT as savePut } from '../../api/_lib/saveApi';
+import { readJsonBody } from '../../api/_lib/readBody';
+import { getIdentity } from '../../cursor/identity';
 import { itemIcon } from '../ui/assets';
 import { generateAccountCode } from '../game/accountCode';
 import { sanitizeItem } from '../game/state';
@@ -40,12 +42,20 @@ beforeEach(() => {
   resetRateLimitsForTests();
   process.env.CURSOR_APP_ID = 'daggah-test';
   process.env.CURSOR_APP_IDENTITY_ISSUER = 'https://example.invalid';
+  delete process.env.DAGGAH_MAX_USERS;
+  delete process.env.DAGGAH_MAX_ACCOUNT_CODE_SAVES;
+  delete process.env.DAGGAH_GUEST_SAVE_TTL_DAYS;
+  delete process.env.DAGGAH_INACTIVE_USER_DAYS;
 });
 afterEach(() => {
   resetPgliteForTests();
   resetRateLimitsForTests();
   delete process.env.CURSOR_APP_ID;
   delete process.env.CURSOR_APP_IDENTITY_ISSUER;
+  delete process.env.DAGGAH_MAX_USERS;
+  delete process.env.DAGGAH_MAX_ACCOUNT_CODE_SAVES;
+  delete process.env.DAGGAH_GUEST_SAVE_TTL_DAYS;
+  delete process.env.DAGGAH_INACTIVE_USER_DAYS;
 });
 
 describe('save-code item hardening', () => {
@@ -171,5 +181,105 @@ describe('auth abuse limits', () => {
     const wrong = await auth({ action: 'login', username: 'taken_one', password: 'x-pass-123' }, '3.3.3.4');
     expect(unknown.status).toBe(401);
     expect(await unknown.json()).toEqual(await wrong.json());
+  });
+
+  it('rate-limits login per IP without a shared global bucket starving other clients', async () => {
+    await auth({ action: 'register', username: 'shared', password: 'right-pass-1' }, '9.0.0.1');
+    for (let i = 0; i < 15; i++) {
+      const res = await auth(
+        { action: 'login', username: 'shared', password: 'right-pass-1' },
+        '9.0.0.2',
+      );
+      expect(res.status).toBe(200);
+    }
+    expect(
+      (await auth({ action: 'login', username: 'shared', password: 'right-pass-1' }, '9.0.0.2')).status,
+    ).toBe(429);
+    // A different client still has its own budget.
+    expect(
+      (await auth({ action: 'login', username: 'shared', password: 'right-pass-1' }, '9.0.0.3')).status,
+    ).toBe(200);
+  });
+
+  it('reclaims abandoned accounts when at the env-configured user cap', async () => {
+    process.env.DAGGAH_MAX_USERS = '2';
+    process.env.DAGGAH_INACTIVE_USER_DAYS = '30';
+    expect((await auth({ action: 'register', username: 'keep_me', password: 'right-pass-1' }, '2.0.0.1')).status).toBe(
+      200,
+    );
+    expect((await auth({ action: 'register', username: 'stale_one', password: 'right-pass-1' }, '2.0.0.2')).status).toBe(
+      200,
+    );
+    await sql(`delete from sessions`);
+    await sql(`update users set updated_at = now() - interval '60 days' where username = 'stale_one'`);
+    // keep_me stays recent so reclaim prefers stale_one only.
+    await sql(`update users set updated_at = now() where username = 'keep_me'`);
+    const next = await auth({ action: 'register', username: 'fresh_one', password: 'right-pass-1' }, '2.0.0.3');
+    expect(next.status).toBe(200);
+    const names = await sql<{ username: string }>(`select username from users order by username`);
+    expect(names.map((r) => r.username)).toEqual(['fresh_one', 'keep_me']);
+  });
+
+  it('rejects oversized auth bodies while reading (not after)', async () => {
+    const res = await authPost(
+      new Request('http://localhost/api/daggah-auth', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-forwarded-for': '4.0.0.1' },
+        body: 'x'.repeat(20_000),
+      }),
+    );
+    expect(res.status).toBe(413);
+  });
+});
+
+describe('readJsonBody size ceiling', () => {
+  it('throws too_large once streamed bytes exceed the limit', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"a":"'));
+        controller.enqueue(new TextEncoder().encode('y'.repeat(100)));
+        controller.enqueue(new TextEncoder().encode('"}'));
+        controller.close();
+      },
+    });
+    const request = new Request('http://localhost/', {
+      method: 'POST',
+      body: stream,
+      // Node requires duplex when the body is a stream.
+      duplex: 'half',
+    } as RequestInit);
+    await expect(readJsonBody(request, 50)).rejects.toThrow('too_large');
+  });
+
+  it('parses a body that stays under the limit', async () => {
+    const request = new Request('http://localhost/', {
+      method: 'POST',
+      body: JSON.stringify({ ok: true }),
+    });
+    await expect(readJsonBody(request, 1_000)).resolves.toEqual({ ok: true });
+  });
+});
+
+describe('identity simulated fallback', () => {
+  it('does not treat a missing header as a simulated admin when CURSOR_APP_ID is set', async () => {
+    const identity = await getIdentity(new Request('http://localhost/'));
+    expect(identity.verified).toBe(false);
+    if (!identity.verified) expect(identity.reason).toBe('missing_header');
+  });
+
+  it('does not use the simulated admin under NODE_ENV=production', async () => {
+    const prevApp = process.env.CURSOR_APP_ID;
+    const prevNode = process.env.NODE_ENV;
+    delete process.env.CURSOR_APP_ID;
+    process.env.NODE_ENV = 'production';
+    try {
+      const identity = await getIdentity(new Request('http://localhost/'));
+      expect(identity.verified).toBe(false);
+      if (!identity.verified) expect(identity.reason).toBe('missing_header');
+    } finally {
+      if (prevApp === undefined) delete process.env.CURSOR_APP_ID;
+      else process.env.CURSOR_APP_ID = prevApp;
+      process.env.NODE_ENV = prevNode;
+    }
   });
 });

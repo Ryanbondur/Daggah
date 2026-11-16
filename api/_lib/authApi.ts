@@ -21,14 +21,19 @@ import {
   verifyAgainstDummy,
   verifyPassword,
 } from './auth';
+import { maxUsers, reclaimInactiveUsers } from './capacity';
 import { isDatabaseUnavailable, isUndefinedTable, sql } from './db';
 import { clearRateLimit, hitRateLimit, peekRateLimit } from './rateLimit';
+import { readJsonBody } from './readBody';
 
-const MAX_USERS = 20_000;
 /** Failed logins tolerated per username+IP, and per username across all IPs (distributed guessing). */
 const LOGIN_FAILS_PER_IP = 8;
 const LOGIN_FAILS_PER_USER = 100;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+/** Per-client login / register budgets (fair; one visitor cannot exhaust others). */
+const LOGIN_PER_IP = 15;
+const REGISTER_PER_IP = 3;
+const AUTH_BODY_MAX_BYTES = 16_000;
 
 function limited(result: { ok: false; retryAfterSec: number }): Response {
   return json({ error: 'rate_limited', retryAfterSec: result.retryAfterSec }, 429, {
@@ -71,13 +76,6 @@ function internalError(error: unknown, where: string): Response {
   );
 }
 
-async function readBody(request: Request): Promise<unknown> {
-  const text = await request.text();
-  if (text.length > 16_000) throw new Error('too_large');
-  if (!text) return {};
-  return JSON.parse(text) as unknown;
-}
-
 async function requireUser(request: Request) {
   const token = extractSessionToken(request);
   if (!token) return { error: json({ error: 'unauthorized' }, 401) as Response };
@@ -101,7 +99,7 @@ export async function POST(request: Request): Promise<Response> {
   try {
     let body: unknown;
     try {
-      body = await readBody(request);
+      body = await readJsonBody(request, AUTH_BODY_MAX_BYTES);
     } catch (error) {
       if (error instanceof Error && error.message === 'too_large') {
         return json({ error: 'payload_too_large' }, 413);
@@ -132,22 +130,23 @@ export async function POST(request: Request): Promise<Response> {
       const pwErr = validatePassword(password);
       if (pwErr) return json({ error: 'weak_password', hint: pwErr }, 400);
 
-      // Only well-formed requests reach the expensive paths (hashing / inserts); limit those.
-      // Global bucket first: bounds total work/rows regardless of spoofed IPs or usernames.
-      const globalHit =
-        action === 'register'
-          ? await hitRateLimit('auth:register:global', 40, 60 * 60 * 1000)
-          : await hitRateLimit('auth:login:global', 1000, LOGIN_WINDOW_MS);
-      if (!globalHit.ok) return limited(globalHit);
+      // Only well-formed requests reach the expensive paths (hashing / inserts).
+      // Per-IP budgets only — shared global buckets let one visitor starve everyone else.
       const ipHit =
         action === 'register'
-          ? await hitRateLimit(`auth:register:ip:${ip}`, 3, 60 * 60 * 1000)
-          : await hitRateLimit(`auth:login:ip:${ip}`, 15, LOGIN_WINDOW_MS);
+          ? await hitRateLimit(`auth:register:ip:${ip}`, REGISTER_PER_IP, 60 * 60 * 1000)
+          : await hitRateLimit(`auth:login:ip:${ip}`, LOGIN_PER_IP, LOGIN_WINDOW_MS);
       if (!ipHit.ok) return limited(ipHit);
 
       if (action === 'register') {
+        const cap = maxUsers();
         const countRows = await sql<{ n: number | string }>(`select count(*) as n from users`);
-        if (Number(countRows[0]?.n ?? 0) >= MAX_USERS) {
+        let used = Number(countRows[0]?.n ?? 0);
+        if (used >= cap) {
+          const freed = await reclaimInactiveUsers(Math.max(1, used - cap + 1));
+          used -= freed;
+        }
+        if (used >= cap) {
           return json({ error: 'registration_closed', hint: 'New accounts are paused. Play as guest.' }, 503);
         }
         try {

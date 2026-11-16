@@ -258,20 +258,24 @@ function trimmed(value: string | undefined): string {
 }
 
 /**
- * What a request without the header resolves to. In a deployed app that is
- * missing_header, always: CURSOR_APP_ID is set by the platform for every
- * published app, and VERCEL by the host, so either one being present
- * ends the dev path before the sibling's viewer is even looked at, so the
- * sibling publishing with the app changes nothing in production. Only when
- * both are absent does the helper return that viewer, marked simulated,
- * with an empty token so a forwarded token fails closed. The viewer never
- * comes from the request, so a visitor cannot choose it.
+ * What a request without the header resolves to. In a deployed / production
+ * app that is missing_header, always: CURSOR_APP_ID is set by the platform for
+ * every published app, VERCEL by the host, and NODE_ENV=production on hosted
+ * builds — any of those ends the dev path before the sibling's viewer is
+ * looked at. Only a local non-production server (no hosted markers) returns
+ * that viewer, marked simulated, with an empty token so a forwarded token
+ * fails closed. The viewer never comes from the request, so a visitor cannot
+ * choose it.
  */
 function devViewer(): Identity {
   if (typeof process === "undefined") {
     return { verified: false, reason: "missing_header" };
   }
-  if (trimmed(process.env.CURSOR_APP_ID) !== "" || trimmed(process.env.VERCEL) !== "") {
+  if (
+    trimmed(process.env.CURSOR_APP_ID) !== "" ||
+    trimmed(process.env.VERCEL) !== "" ||
+    trimmed(process.env.NODE_ENV) === "production"
+  ) {
     return { verified: false, reason: "missing_header" };
   }
   const value: unknown = DEV_VIEWER;
