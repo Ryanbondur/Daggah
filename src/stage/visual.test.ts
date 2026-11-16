@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { HERO_X, RAID_BOSS_LINE } from '../game/combat';
-import { campHeroVisual, enemyFaceTowardX, enemyFlipX } from './visual';
+import { ENEMY_APPROACH_SPAWN_X, HERO_X, RAID_BOSS_LINE } from '../game/combat';
+import {
+  actApproachShouldFlipX,
+  campHeroVisual,
+  enemyFaceTowardX,
+  enemyFlipX,
+} from './visual';
 
 describe('enemyFlipX', () => {
   it('does not flip enemies on the hero’s right (left-facing art already looks toward them)', () => {
@@ -26,6 +31,32 @@ describe('enemyFlipX', () => {
     expect(enemyFlipX(1.15, partyX)).toBe(false);
     expect(enemyFlipX(RAID_BOSS_LINE, partyX)).toBe(false);
     expect(enemyFlipX(1.08, partyX)).toBe(false);
+  });
+});
+
+describe('Act approach facing (trash + boss walk-in)', () => {
+  it('keeps a trash pack unflipped from spawn through mid-approach and engage', () => {
+    // Spawn stagger matches Battle.spawnNode / ENEMY_APPROACH_SPAWN_X + i * 0.07
+    const packXs = [0, 1, 2, 3, 4].map((i) => ENEMY_APPROACH_SPAWN_X + i * 0.07);
+    for (const x of packXs) {
+      expect(actApproachShouldFlipX(x)).toBe(false);
+    }
+    // Mid-walk (still east of hero)
+    expect(actApproachShouldFlipX(0.75)).toBe(false);
+    expect(actApproachShouldFlipX(0.55)).toBe(false);
+    // Engage line (HERO_X + 0.13)
+    expect(actApproachShouldFlipX(HERO_X + 0.13)).toBe(false);
+  });
+
+  it('keeps Act bosses unflipped while approaching from the east', () => {
+    expect(actApproachShouldFlipX(ENEMY_APPROACH_SPAWN_X)).toBe(false);
+    expect(actApproachShouldFlipX(1.15)).toBe(false);
+    expect(actApproachShouldFlipX(0.86)).toBe(false);
+    expect(actApproachShouldFlipX(HERO_X + 0.13)).toBe(false);
+  });
+
+  it('would flip only if an Act foe somehow crossed left of the hero', () => {
+    expect(actApproachShouldFlipX(HERO_X - 0.02)).toBe(true);
   });
 });
 

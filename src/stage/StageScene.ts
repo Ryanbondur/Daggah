@@ -622,6 +622,10 @@ export class StageScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Act trash/boss walk-in, dungeon packs, and Clan Raid adds all render here.
+   * Left-facing art + east spawn → unflipped while approaching the party.
+   */
   private syncEnemies(b: NonNullable<Game['battle']>, W: number, H: number, groundY: number): void {
     const faceX = enemyFaceTowardX({
       heroX: HERO_X,
@@ -633,8 +637,7 @@ export class StageScene extends Phaser.Scene {
       let view = this.enemyViews.get(e.id);
       if (!view) {
         const sprite = this.add.image(0, 0, e.def.sprite).setOrigin(0.5, 1).setDepth(5);
-        // Enemy art faces left; flip only when they need to look right (see enemyFlipX).
-        sprite.setFlipX(enemyFlipX(e.x, faceX));
+        this.applyEnemyFacing(sprite, e.x, faceX);
         sprite.preFX?.addGlow(0xffe0b0, 1.6, 0, false, 0.1, 6);
         const bar = this.add.graphics().setDepth(11);
         view = { sprite, bar };
@@ -649,6 +652,15 @@ export class StageScene extends Phaser.Scene {
         this.enemyViews.delete(id);
       }
     }
+  }
+
+  /** Apply left-facing enemy art flip so the sprite looks toward `faceTowardX`. */
+  private applyEnemyFacing(
+    sprite: Phaser.GameObjects.Image,
+    enemyX: number,
+    faceTowardX: number,
+  ): void {
+    sprite.setFlipX(enemyFlipX(enemyX, faceTowardX));
   }
 
   private updateEnemyView(
@@ -673,7 +685,7 @@ export class StageScene extends Phaser.Scene {
     const s = view.sprite;
     s.setDisplaySize(w, h);
     s.setPosition(x, y);
-    s.setFlipX(enemyFlipX(e.x, faceTowardX));
+    this.applyEnemyFacing(s, e.x, faceTowardX);
     if (e.dead) {
       const p = Math.min(1, e.deathT / 0.7);
       s.setAlpha(1 - p);
