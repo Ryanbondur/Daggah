@@ -497,7 +497,7 @@ export class StageScene extends Phaser.Scene {
       let view = this.enemyViews.get(e.id);
       if (!view) {
         const sprite = this.add.image(0, 0, e.def.sprite).setOrigin(0.5, 1).setDepth(5);
-        // Art faces right; flip so they look toward the hero while approaching from the right.
+        // Enemy art faces left; flip only when they need to look right (see enemyFlipX).
         sprite.setFlipX(enemyFlipX(e.x));
         sprite.preFX?.addGlow(0xffe0b0, 1.6, 0, false, 0.1, 6);
         const bar = this.add.graphics().setDepth(11);

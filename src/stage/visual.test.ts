@@ -3,14 +3,14 @@ import { HERO_X } from '../game/combat';
 import { campHeroVisual, enemyFlipX } from './visual';
 
 describe('enemyFlipX', () => {
-  it('flips enemies on the hero’s right so right-facing art looks left toward the hero', () => {
-    expect(enemyFlipX(1.08)).toBe(true);
-    expect(enemyFlipX(HERO_X + 0.13)).toBe(true);
-    expect(enemyFlipX(HERO_X)).toBe(true);
+  it('does not flip enemies on the hero’s right (left-facing art already looks toward them)', () => {
+    expect(enemyFlipX(1.08)).toBe(false);
+    expect(enemyFlipX(HERO_X + 0.13)).toBe(false);
+    expect(enemyFlipX(HERO_X)).toBe(false);
   });
 
-  it('does not flip when an enemy is left of the hero (faces right, toward them)', () => {
-    expect(enemyFlipX(HERO_X - 0.05)).toBe(false);
+  it('flips when an enemy is left of the hero so left-facing art looks right toward them', () => {
+    expect(enemyFlipX(HERO_X - 0.05)).toBe(true);
   });
 });
 
