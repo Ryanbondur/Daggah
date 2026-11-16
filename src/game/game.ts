@@ -26,6 +26,8 @@ import {
   CLAN_RAID_BOSS_HP_MUL,
   CLAN_RAID_BOSS_TIER_EXTRA,
   CLAN_RAID_DUNGEON,
+  CLAN_RAID_ENEMY_ATK_MUL,
+  CLAN_RAID_ENEMY_HP_MUL,
   CLAN_RAID_STAGE_FLOOR,
   CLAN_RAID_TIER_BUMP,
   CLAN_RAID_WEEKLY_ATTEMPTS,
@@ -1950,6 +1952,8 @@ export class Game {
     this.dungeonCtx = { dungeon: d, loot: [], xp: 0, clanRaid: true };
     this.battle = new Battle(this.buildDungeonRun(d), input, this.rng, {
       raidAllies: allies,
+      raidEnemyHpMul: CLAN_RAID_ENEMY_HP_MUL,
+      raidEnemyAtkMul: CLAN_RAID_ENEMY_ATK_MUL,
       raidBossHpMul: CLAN_RAID_BOSS_HP_MUL,
       raidBossAtkMul: CLAN_RAID_BOSS_ATK_MUL,
       allySwingMul: CLAN_RAID_ALLY_SWING_MUL,

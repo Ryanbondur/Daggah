@@ -45,6 +45,9 @@ export interface BattleOpts {
   /** Clan Raid party (you + 3 AI). When set, stage uses 4v4-style lanes. */
   raidAllies?: RaidAlly[];
   /** Extra HP mul applied to boss spawns (Clan Raid). */
+  /** HP/ATK multiplier on every raid enemy (boss and adds); keeps the raid tuned independent of the stage curve. */
+  raidEnemyHpMul?: number;
+  raidEnemyAtkMul?: number;
   raidBossHpMul?: number;
   /** Extra ATK mul applied to boss spawns (Clan Raid). */
   raidBossAtkMul?: number;
@@ -204,6 +207,8 @@ export class Battle {
   events: BattleEvent[] = [];
   /** Clan Raid party — empty outside raids. */
   raidAllies: RaidAlly[] = [];
+  readonly raidEnemyHpMul: number;
+  readonly raidEnemyAtkMul: number;
   readonly raidBossHpMul: number;
   readonly raidBossAtkMul: number;
 
@@ -227,6 +232,8 @@ export class Battle {
     this.rng = rng;
     this.heroInput = hero;
     this.raidAllies = opts.raidAllies ? opts.raidAllies.map((a) => ({ ...a })) : [];
+    this.raidEnemyHpMul = opts.raidEnemyHpMul ?? 1;
+    this.raidEnemyAtkMul = opts.raidEnemyAtkMul ?? 1;
     this.raidBossHpMul = opts.raidBossHpMul ?? 1;
     this.raidBossAtkMul = opts.raidBossAtkMul ?? 1;
     this.allySwingMul = opts.allySwingMul ?? 0.78;
@@ -482,8 +489,8 @@ export class Battle {
     const def = ENEMIES[defId];
     const sc = enemyScale(tier, def.role);
     const raidBoss = this.isClanRaid && def.role === 'boss';
-    const hpExtra = raidBoss ? this.raidBossHpMul : 1;
-    const atkExtra = raidBoss ? this.raidBossAtkMul : 1;
+    const hpExtra = (this.isClanRaid ? this.raidEnemyHpMul : 1) * (raidBoss ? this.raidBossHpMul : 1);
+    const atkExtra = (this.isClanRaid ? this.raidEnemyAtkMul : 1) * (raidBoss ? this.raidBossAtkMul : 1);
     const hp = Math.round(sc.hp * def.hpMul * hpMul * hpExtra);
     const enemy: Enemy = {
       id: this.nextEnemyId++,

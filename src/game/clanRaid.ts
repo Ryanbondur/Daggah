@@ -70,6 +70,14 @@ export const CLAN_RAID_TIER_BUMP = 3.6;
 export const CLAN_RAID_BOSS_TIER_EXTRA = 1.4;
 
 /**
+ * Raid enemies sit at tier ~54, past the Act 10 stage curve. The stage curve was
+ * retuned (CP-gated, near-linear) in DG-act10-cp-gating; these factors restore the
+ * raid's original ~3:00 epic / ~1:50 BiS pacing for boss and adds alike.
+ */
+export const CLAN_RAID_ENEMY_HP_MUL = 0.711;
+export const CLAN_RAID_ENEMY_ATK_MUL = 0.649;
+
+/**
  * Flat HP multiplier after enemyScale × def.hpMul.
  * Tuned for party-of-4 DPS (player + 3 AI fillers).
  */
