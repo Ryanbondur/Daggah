@@ -340,10 +340,14 @@ export function showClassPick(ctx: UIContext): void {
   });
 }
 
-function salvageBtnLabel(item: Item): string {
+export function salvageRewardLabel(item: Item): string {
   const v = salvageValue(item);
-  if (v.crystals > 0) return `Salvage · +${v.dust} dust · +${v.crystals}✦`;
-  return `Salvage · +${v.dust} dust`;
+  if (v.crystals > 0) return `+${v.dust} dust  +${v.crystals}✦`;
+  return `+${v.dust} dust`;
+}
+
+export function cmpBtnLabel(title: string, sub: string): string {
+  return `<span class="bt">${title}</span><span class="bs">${sub}</span>`;
 }
 
 export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 'bag'): void {
@@ -365,12 +369,12 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
     loadout: g.save.loadout,
   });
   const replaceLabel = !info.levelOk
-    ? `Need Lv.${item.gearLevel}`
+    ? cmpBtnLabel(`Need Lv.${item.gearLevel}`, 'Locked')
     : emptySlot
-      ? 'Equip'
+      ? cmpBtnLabel('Equip', 'Empty slot')
       : isUpgrade
-        ? 'Replace'
-        : 'Replace anyway';
+        ? cmpBtnLabel('Replace', 'Upgrade')
+        : cmpBtnLabel('Replace', 'anyway');
   // Upgrade → Replace is one-tap primary (gold). Downgrade → Salvage is primary.
   const replaceCls = `btn ${replacePrimary ? 'gold' : 'stone'} ${info.levelOk ? '' : 'disabled'}`;
   const salvageCls = `btn ${replacePrimary ? 'tan' : 'gold'}`;
@@ -379,11 +383,11 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
       <div class="box">${CHECK_SVG}</div><div>Auto-salvage old piece</div>
     </div>
     <div class="cmp-btns">
-      <button class="${salvageCls}" data-action="cmp-salvage">${salvageBtnLabel(item)}</button>
+      <button class="${salvageCls}" data-action="cmp-salvage">${cmpBtnLabel('Salvage', salvageRewardLabel(item))}</button>
       <button class="${replaceCls}" data-action="cmp-replace">${replaceLabel}</button>
     </div>
     <div class="cmp-btns cmp-secondary">
-      <button class="btn stone" data-action="cmp-keep">${source === 'pending' ? 'Keep in bag' : 'Back to bag'}</button>
+      <button class="btn stone cmp-keep" data-action="cmp-keep">${source === 'pending' ? 'Keep in bag' : 'Back to bag'}</button>
     </div>`;
   const right = cardHtml(item, {
     gear: g.save.gear,
