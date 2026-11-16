@@ -1544,18 +1544,25 @@ button {
   gap: 0.4cqw;
   padding: 1.4cqw 0.8cqw;
   line-height: 1.1;
-  white-space: nowrap;
   clip-path: none;
   border-radius: 1.2cqw;
 }
 .cmp-btns > .btn .bt {
-  font-size: 3.8cqw;
+  font-size: 3.6cqw;
+  white-space: normal;
+  text-wrap: balance;
+}
+.cmp-btns > .btn .bs .chip {
+  display: inline-block;
+  white-space: nowrap;
 }
 .cmp-btns > .btn .bs {
   font-family: var(--font-body, inherit);
   font-size: 2.7cqw;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
+  white-space: normal;
+  text-wrap: balance;
   opacity: 0.9;
 }
 .cmp-btns.cmp-secondary {
