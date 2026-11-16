@@ -770,16 +770,19 @@ export interface EnemyScale {
 export const ENEMY_XP_BASE = 1.5;
 export const ENEMY_XP_GROWTH = 1.055;
 
-/** Enemy stats for a given tier and role. Tuned against hero progression in game/sim.test.ts. */
+/**
+ * Enemy stats for a given tier and role.
+ *
+ * One smooth curve for all tiers: the recommended-CP kit grows ~linearly with level, so enemy
+ * HP/ATK are near-linear (power-law, exponent ~1) rather than per-act exponentials. The previous
+ * piecewise `base^tier` with a lower base every 10 tiers dropped HP/ATK ~2x at each boundary,
+ * so Acts 9–10 cleared at ~50% of recommended CP while Acts 4/6 needed 110–140%.
+ * Calibrated (game/cpGating.test.ts) so a rec-level hero needs ~0.85–0.95 of recommended CP
+ * to clear Acts 4–10 (Acts 1–3 ramp up from ~0.55).
+ */
 export function enemyScale(tier: number, role: EnemyRole): EnemyScale {
-  // Soften after Act 2, 4, 6, then 8 so mid/late acts clear on act gear at GDD levels
-  // (not overleveled). Acts 9–10 stay clearable on a full non-BiS set (BiS = speed/CP).
-  const growth =
-    tier <= 9 ? 1.22 : tier <= 19 ? 1.16 : tier <= 29 ? 1.12 : tier <= 39 ? 1.08 : 1.055;
-  const atkGrowth =
-    tier <= 9 ? 1.15 : tier <= 19 ? 1.105 : tier <= 29 ? 1.085 : tier <= 39 ? 1.055 : 1.035;
-  const hp = 55 * Math.pow(growth, tier);
-  const atk = 9 * Math.pow(atkGrowth, tier);
+  const hp = 55 * Math.pow(1 + tier / 2.5, 1.04);
+  const atk = 9 * Math.pow(1 + tier / 3, 0.78);
   const def = 2 + tier * 2.0;
   const xp = ENEMY_XP_BASE * Math.pow(ENEMY_XP_GROWTH, tier);
   const mul =
