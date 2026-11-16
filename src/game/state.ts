@@ -1,9 +1,10 @@
+import { CAPES } from '../data/capes';
 import type { Gear } from '../data/gear';
 import { cpFromStats, SLOTS, starterGear } from '../data/gear';
 import { DEFAULT_LOADOUT } from '../data/skills';
 import { defaultTutorial, TUTORIAL_STEPS, type TutorialState } from '../data/tutorial';
 import { APP_CONTENT_VERSION } from '../data/whatsNew';
-import type { HeroClass, Item, RarityId, SkillId, SlotId, Stats } from '../data/types';
+import type { CapeId, HeroClass, Item, RarityId, SkillId, SlotId, Stats } from '../data/types';
 import { emptyStats, HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { sanitizeDomId, sanitizePlainText } from '../util/text';
 import type { ClanData, SeasonData } from './clan';
@@ -326,15 +327,28 @@ export function collapseLegsIntoBoots(
   return { gear, bag };
 }
 
+function isCapeId(v: unknown): v is CapeId {
+  return typeof v === 'string' && v in CAPES;
+}
+
 /** Harden item display strings / ids from save or import blobs. */
 export function sanitizeItem(item: Item): Item {
-  return {
+  const slot = coerceSlotId(item.slot);
+  const next: Item = {
     ...item,
     id: sanitizeDomId(typeof item.id === 'string' ? item.id : 'id', 80),
     name: sanitizePlainText(typeof item.name === 'string' ? item.name : '', 64) || 'Unknown Item',
-    slot: coerceSlotId(item.slot),
+    slot,
     rarity: isRarityId(item.rarity) ? item.rarity : 'common',
   };
+  if (slot === 'cape') {
+    if (isCapeId(item.capeId)) next.capeId = item.capeId;
+    else delete next.capeId;
+    delete next.setId;
+  } else if (item.capeId) {
+    delete next.capeId;
+  }
+  return next;
 }
 
 function sanitizeItemList(list: Item[] | undefined): Item[] {

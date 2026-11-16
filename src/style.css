@@ -668,13 +668,13 @@ button {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   grid-template-rows: repeat(4, 1fr);
-  /* Single Boots slot (DG-68 / DG-75): footwear sits in the old legs columns
-     so the Boots slot stays visible beside the cape; top row keeps jewelry. */
+  /* Single Boots slot (DG-68 / DG-75) + Cape (DG-97): footwear beside Cape;
+     top row keeps jewelry. */
   grid-template-areas:
     'weapon weapon chest chest helmet helmet shoulders shoulders amulet amulet medal ring'
     'weapon weapon chest chest helmet helmet shoulders shoulders amulet amulet medal ring'
-    'weapon weapon chest chest gloves gloves bracers bracers boots boots wing wing'
-    'weapon weapon belt belt gloves gloves bracers bracers boots boots wing wing';
+    'weapon weapon chest chest gloves gloves bracers bracers boots boots cape cape'
+    'weapon weapon belt belt gloves gloves bracers bracers boots boots cape cape';
   gap: 0.7cqw;
   flex: 1 1 auto;
   min-height: 0;
@@ -850,17 +850,6 @@ button {
   100% {
     filter: none;
   }
-}
-.wing-fill {
-  grid-area: wing;
-  display: grid;
-  place-items: center;
-  background: rgba(90, 84, 70, 0.28);
-  border: 0.3cqw solid rgba(60, 54, 44, 0.3);
-}
-.wing-fill svg {
-  width: 80%;
-  height: 80%;
 }
 .bottom-row {
   display: flex;
@@ -1501,6 +1490,13 @@ button {
 .card .setinfo .on {
   color: #2a7a35;
   font-weight: 700;
+}
+.card .setinfo.capeinfo .sn {
+  color: #6b3d8c;
+}
+.card .setinfo.capeinfo .on {
+  color: #3d3550;
+  font-weight: 600;
 }
 .card .req {
   margin-top: 1cqw;

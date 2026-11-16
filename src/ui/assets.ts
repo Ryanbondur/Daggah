@@ -4,8 +4,12 @@ const BASE = import.meta.env.BASE_URL;
 
 export const asset = (path: string): string => `${BASE}assets/${path}`;
 
-export const itemIcon = (item: Pick<Item, 'icon' | 'slot'>): string =>
-  asset(`icons/gear-${item.icon}/${item.slot}.webp`);
+export const itemIcon = (item: Pick<Item, 'icon' | 'slot' | 'capeId'>): string => {
+  if (item.slot === 'cape' && item.capeId) {
+    return asset(`icons/capes/${item.capeId}.webp`);
+  }
+  return asset(`icons/gear-${item.icon}/${item.slot}.webp`);
+};
 
 export const skillIcon = (id: SkillId): string => asset(`icons/skills/${id}.webp`);
 

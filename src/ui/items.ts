@@ -1,5 +1,6 @@
+import { CAPES } from '../data/capes';
 import type { Gear } from '../data/gear';
-import { RARITIES, SETS, formatStat, setCounts, statsOrdered } from '../data/gear';
+import { RARITIES, SETS, SLOT_LABEL, formatStat, setCounts, statsOrdered } from '../data/gear';
 import { playstyleCommitted } from '../data/skills';
 import type { Item, SkillId, StatKey } from '../data/types';
 import { STAT_LABEL } from '../data/types';
@@ -93,12 +94,23 @@ export function statRows(
     .join('');
 }
 
+export function capeInfoHtml(item: Item): string {
+  if (!item.capeId) return '';
+  const def = CAPES[item.capeId];
+  return `<div class="setinfo capeinfo">
+    <div class="sn">${escapeHtml(def.name)}</div>
+    <div class="sf on">${escapeHtml(def.heroClass)} only · not a set piece</div>
+    <div class="on">${escapeHtml(def.effectText)}</div>
+  </div>`;
+}
+
 export function setInfoHtml(
   item: Item,
   gear: Gear,
   assumeEquipped: boolean,
   loadout?: SkillId[],
 ): string {
+  if (item.capeId) return capeInfoHtml(item);
   if (!item.setId) return '';
   const def = SETS[item.setId];
   const counts = setCounts(gear);
@@ -174,7 +186,7 @@ export function cardHtml(
 }
 
 function slotName(item: Item): string {
-  return item.slot.charAt(0).toUpperCase() + item.slot.slice(1);
+  return SLOT_LABEL[item.slot] ?? item.slot.charAt(0).toUpperCase() + item.slot.slice(1);
 }
 
 export const CHECK_SVG = ICON.check;
