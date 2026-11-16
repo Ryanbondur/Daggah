@@ -7,7 +7,7 @@ import type { Game, PvpPlaybackFighter } from '../game/game';
 import type { PvpEvent } from '../game/pvp';
 import { ENEMY_SPRITES, SKILL_IDS, asset, heroSprite, skillIcon } from '../ui/assets';
 import type { HeroClass } from '../data/types';
-import { campHeroVisual, enemyFlipX } from './visual';
+import { campHeroVisual, enemyFaceTowardX, enemyFlipX } from './visual';
 
 const GROUND = 0.86;
 const BG_GROUND_LINE = 0.765;
@@ -623,6 +623,10 @@ export class StageScene extends Phaser.Scene {
   }
 
   private syncEnemies(b: NonNullable<Game['battle']>, W: number, H: number, groundY: number): void {
+    const faceX = enemyFaceTowardX({
+      heroX: HERO_X,
+      raidAllies: b.isClanRaid ? b.raidAllies : undefined,
+    });
     const seen = new Set<number>();
     for (const e of b.enemies) {
       seen.add(e.id);
@@ -630,13 +634,13 @@ export class StageScene extends Phaser.Scene {
       if (!view) {
         const sprite = this.add.image(0, 0, e.def.sprite).setOrigin(0.5, 1).setDepth(5);
         // Enemy art faces left; flip only when they need to look right (see enemyFlipX).
-        sprite.setFlipX(enemyFlipX(e.x));
+        sprite.setFlipX(enemyFlipX(e.x, faceX));
         sprite.preFX?.addGlow(0xffe0b0, 1.6, 0, false, 0.1, 6);
         const bar = this.add.graphics().setDepth(11);
         view = { sprite, bar };
         this.enemyViews.set(e.id, view);
       }
-      this.updateEnemyView(view, e, W, H, groundY);
+      this.updateEnemyView(view, e, W, H, groundY, faceX);
     }
     for (const [id, view] of this.enemyViews) {
       if (!seen.has(id)) {
@@ -647,7 +651,14 @@ export class StageScene extends Phaser.Scene {
     }
   }
 
-  private updateEnemyView(view: EnemyView, e: Enemy, W: number, H: number, groundY: number): void {
+  private updateEnemyView(
+    view: EnemyView,
+    e: Enemy,
+    W: number,
+    H: number,
+    groundY: number,
+    faceTowardX = HERO_X,
+  ): void {
     const tex = this.textures.get(e.def.sprite).getSourceImage() as HTMLImageElement;
     const h = H * e.def.size;
     const w = h * (tex.width / tex.height);
@@ -662,7 +673,7 @@ export class StageScene extends Phaser.Scene {
     const s = view.sprite;
     s.setDisplaySize(w, h);
     s.setPosition(x, y);
-    s.setFlipX(enemyFlipX(e.x));
+    s.setFlipX(enemyFlipX(e.x, faceTowardX));
     if (e.dead) {
       const p = Math.min(1, e.deathT / 0.7);
       s.setAlpha(1 - p);
