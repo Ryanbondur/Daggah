@@ -1536,13 +1536,40 @@ button {
   gap: 1.6cqw;
   align-items: stretch;
 }
+.cmp-btns > .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 11cqw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4cqw;
+  padding: 1.4cqw 0.8cqw;
+  line-height: 1.1;
+  white-space: nowrap;
+  clip-path: none;
+  border-radius: 1.2cqw;
+}
+.cmp-btns > .btn .bt {
+  font-size: 3.8cqw;
+}
+.cmp-btns > .btn .bs {
+  font-family: var(--font-body, inherit);
+  font-size: 2.7cqw;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  opacity: 0.9;
+}
 .cmp-btns.cmp-secondary {
-  margin-top: 1.2cqw;
+  margin-top: 1.6cqw;
 }
 .cmp-btns.cmp-secondary .btn {
   flex: 1;
-  font-size: 3.2cqw;
-  padding: 1.8cqw 1cqw;
+  min-height: 8cqw;
+  font-size: 3.4cqw;
+  padding: 1.4cqw 1cqw;
+  opacity: 0.92;
 }
 .bag-yield {
   margin: 0.6cqw 0 1.2cqw;
