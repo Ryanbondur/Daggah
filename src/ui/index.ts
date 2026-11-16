@@ -6,7 +6,7 @@ import { playSfx, unlockAudio } from '../game/audio';
 import type { Game, RunResult } from '../game/game';
 import { formatKeyRegenLabel } from '../game/state';
 import { asset, navIcon, skillIcon } from './assets';
-import type { CampPane, ClanPane, ModalOpts, Tab, UIContext } from './context';
+import type { AdventureDiff, CampPane, ClanPane, ModalOpts, Tab, UIContext } from './context';
 import { fmt } from './context';
 import { CLASS_PLAYSTYLES } from '../data/skills';
 import type { PlaystyleId } from '../data/types';
@@ -112,6 +112,7 @@ export function mountUI(
     tab: 'camp',
     clanPane: 'hall',
     campPane: 'gear',
+    adventureDiff: 'normal',
     skillStyle: CLASS_PLAYSTYLES[game.save.heroClass][0],
     skillBarFocus: null,
     get modalOpen() {
@@ -565,6 +566,14 @@ export function mountUI(
           if (err) game.toast(err, 'bad');
           else ctx.setTab('camp');
         });
+        break;
+      }
+      case 'adventure-diff': {
+        const diff = d.diff as AdventureDiff;
+        if (diff === 'normal' || diff === 'ascended') {
+          ctx.adventureDiff = diff;
+          ctx.render();
+        }
         break;
       }
       case 'camp-pane': {

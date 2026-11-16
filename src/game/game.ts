@@ -942,13 +942,14 @@ export class Game {
     return null;
   }
 
-  /** Ascended Nightscar: keys + seals. */
+  /** Ascended Nightscar: seals (keys only if ASCENDED_NIGHTSCAR_KEY_COST > 0). */
   canAffordAscendedEntry(): boolean {
     this.refreshKeys();
-    return (
-      this.save.keys >= ASCENDED_NIGHTSCAR_KEY_COST &&
-      this.save.ascendedSeals >= ASCENDED_NIGHTSCAR_SEAL_COST
-    );
+    if (this.save.ascendedSeals < ASCENDED_NIGHTSCAR_SEAL_COST) return false;
+    if (ASCENDED_NIGHTSCAR_KEY_COST > 0 && this.save.keys < ASCENDED_NIGHTSCAR_KEY_COST) {
+      return false;
+    }
+    return true;
   }
 
   ascendedUnlocked(): boolean {
@@ -987,16 +988,18 @@ export class Game {
   private payAscendedEntry(): boolean {
     this.refreshKeys();
     const cost = formatAscendedEntryCost();
-    if (this.save.keys < ASCENDED_NIGHTSCAR_KEY_COST) {
-      this.toast(`Need ${cost} (you have ${this.save.keys} keys)`, 'bad');
-      return false;
-    }
     if (this.save.ascendedSeals < ASCENDED_NIGHTSCAR_SEAL_COST) {
       this.toast(`Need ${cost} (you have ${this.save.ascendedSeals} seals)`, 'bad');
       return false;
     }
-    this.save.keys -= ASCENDED_NIGHTSCAR_KEY_COST;
+    if (ASCENDED_NIGHTSCAR_KEY_COST > 0 && this.save.keys < ASCENDED_NIGHTSCAR_KEY_COST) {
+      this.toast(`Need ${cost} (you have ${this.save.keys} keys)`, 'bad');
+      return false;
+    }
     this.save.ascendedSeals -= ASCENDED_NIGHTSCAR_SEAL_COST;
+    if (ASCENDED_NIGHTSCAR_KEY_COST > 0) {
+      this.save.keys -= ASCENDED_NIGHTSCAR_KEY_COST;
+    }
     return true;
   }
 
@@ -1022,7 +1025,7 @@ export class Game {
     return true;
   }
 
-  /** Ascended Nightscar Enter — 6 Keys + 1 Seal. */
+  /** Ascended Nightscar Enter — 1 Ascended Seal (no key surcharge). */
   startAscendedDungeon(): boolean {
     const d = ASCENDED_NIGHTSCAR;
     if (!this.ascendedUnlocked()) {

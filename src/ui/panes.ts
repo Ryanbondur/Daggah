@@ -32,7 +32,7 @@ import {
   formatKeyRegenLabel,
 } from '../game/state';
 import { asset, itemIcon, navIcon, skillIcon } from './assets';
-import type { CampPane, ClanPane, UIContext } from './context';
+import type { AdventureDiff, CampPane, ClanPane, UIContext } from './context';
 import { fmt } from './context';
 import { escapeHtml } from './escape';
 import { slotHtml } from './items';
@@ -273,12 +273,12 @@ function renderAscendedNightscarRow(ctx: UIContext): string {
     : '';
   const enterTitle = afford
     ? `Enter Ascended for ${costLabel}`
-    : `Need ${costLabel} (keys ${s.keys}, seals ${s.ascendedSeals})`;
+    : `Need ${costLabel} (you have ${s.ascendedSeals} seals)`;
   const sweepTitle = !sweepReady
     ? `Clear ${SWEEP_UNLOCK_CLEARS} times to unlock Sweep (${clears}/${SWEEP_UNLOCK_CLEARS})`
     : afford
       ? `Sweep Ascended for ${costLabel}`
-      : `Need ${costLabel} (keys ${s.keys}, seals ${s.ascendedSeals})`;
+      : `Need ${costLabel} (you have ${s.ascendedSeals} seals)`;
   const buttons = open
     ? `<button class="btn red ascended-btn ${afford ? '' : 'disabled'}" data-action="dungeon-enter" data-id="${d.id}" title="${escapeHtml(enterTitle)}" ${afford ? '' : 'aria-disabled="true"'}>Enter<br /><small style="font-size:2cqw">${costLabel}</small></button>
        <button class="btn gold ascended-btn ${sweepReady && afford ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}" title="${escapeHtml(sweepTitle)}" ${sweepReady && afford ? '' : 'aria-disabled="true"'}>Sweep<br /><small style="font-size:2cqw">${costLabel}</small></button>`
@@ -291,6 +291,19 @@ function renderAscendedNightscarRow(ctx: UIContext): string {
     }</span><br /><span>Costs ${costLabel}. Clearable without BiS — BiS is lucky upside.</span></div>
     ${buttons}
   </div>`;
+}
+
+function adventureDiffTabs(active: AdventureDiff): string {
+  const tabs: { id: AdventureDiff; label: string }[] = [
+    { id: 'normal', label: 'Normal' },
+    { id: 'ascended', label: 'Ascended' },
+  ];
+  return `<div class="diff-row" role="tablist" aria-label="Adventure difficulty">${tabs
+    .map(
+      (t) =>
+        `<button type="button" class="chip ${t.id === active ? 'on' : ''}" data-action="adventure-diff" data-diff="${t.id}" role="tab" aria-selected="${t.id === active}">${t.label}</button>`,
+    )
+    .join('')}</div>`;
 }
 
 function renderSealCraftPanel(ctx: UIContext): string {
@@ -309,13 +322,10 @@ function renderSealCraftPanel(ctx: UIContext): string {
   </div>`;
 }
 
-export function renderAdventure(ctx: UIContext): string {
+function renderNormalAdventureActs(ctx: UIContext): string {
   const g = ctx.game;
   const s = g.save;
-  const res = currencyStrip(ctx, { dust: true, keyTimer: true, seals: true });
-  const power = g.stagePowerReadout(s.currentStage);
-  const powerCls = power.underpowered ? 'low' : 'ok';
-  const acts = ACTS.map((act) => {
+  return ACTS.map((act) => {
     const base = (act.id - 1) * STAGES_PER_ACT;
     const chips = Array.from({ length: STAGES_PER_ACT }, (_, i) => {
       const idx = base + i;
@@ -358,7 +368,6 @@ export function renderAdventure(ctx: UIContext): string {
       ? `<button class="btn red" data-action="dungeon-enter" data-id="${d.id}" title="${escapeHtml(enterTitle)}">Enter<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>
          <button class="btn gold ${sweepReady ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}" title="${escapeHtml(sweepTitle)}" ${sweepReady ? '' : 'aria-disabled="true"'}>Sweep<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>`
       : `<div style="width:9cqw;height:9cqw">${ICON.lock}</div>`;
-    const ascendedRow = act.id === 10 ? renderAscendedNightscarRow(ctx) : '';
     return `<div class="act-card">
       <div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></div>
       <div class="stage-row">${chips}</div>
@@ -366,11 +375,27 @@ export function renderAdventure(ctx: UIContext): string {
         <div class="dn"><b>${d.name}${d.endgame ? ' · Endgame' : ''}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${sweepHint}${d.endgame ? '  -  stingy drops' : ''}${pityHint}` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
         ${buttons}
       </div>
-      ${ascendedRow}
     </div>`;
   }).join('');
+}
+
+export function renderAdventure(ctx: UIContext): string {
+  const g = ctx.game;
+  const s = g.save;
+  const diff = ctx.adventureDiff === 'ascended' ? 'ascended' : 'normal';
+  const res = currencyStrip(ctx, { dust: true, keyTimer: true, seals: true });
+  const power = g.stagePowerReadout(s.currentStage);
+  const powerCls = power.underpowered ? 'low' : 'ok';
+  const body =
+    diff === 'ascended'
+      ? `<div class="act-card ascended-only">
+          <div class="act-head"><span>Ascended</span><small>Seal-gated endgame</small></div>
+          ${renderAscendedNightscarRow(ctx)}
+        </div>`
+      : renderNormalAdventureActs(ctx);
+  const titleLabel = diff === 'ascended' ? 'Ascended' : 'Normal';
   return `<div class="pane-inner scroll">
-    <div class="tab-title">Adventure <small>[Normal]</small></div>
+    <div class="tab-title">Adventure <small>[${titleLabel}]</small></div>
     ${res}
     ${renderSealCraftPanel(ctx)}
     <div class="cp-vs-stage ${powerCls}">
@@ -378,8 +403,8 @@ export function renderAdventure(ctx: UIContext): string {
       <span>Stage rec <b>${fmt(power.recCp)}</b></span>
       <span class="delta">${power.underpowered ? 'Farm gear' : 'Ready to push'}</span>
     </div>
-    <div class="diff-row"><button class="chip" style="background:#3a3644;color:#ffe9a8">Normal</button><button class="chip" style="opacity:.5">Hard (soon)</button><button class="chip" style="opacity:.5">Torment (soon)</button></div>
-    ${acts}
+    ${adventureDiffTabs(diff)}
+    ${body}
   </div>`;
 }
 
