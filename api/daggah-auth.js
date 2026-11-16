@@ -195,6 +195,7 @@ function timingSafeEqual(a, b) {
 // api/_lib/auth.ts
 var SESSION_HEADER = "x-daggah-session";
 var SESSION_DAYS = 30;
+var MAX_SESSIONS_PER_USER = 10;
 var PBKDF2_ITERS = 21e4;
 var PBKDF2_KEYLEN = 32;
 async function hashToken(token) {
@@ -265,6 +266,19 @@ async function createSession(userId) {
      values ($1, $2, $3, now())`,
     [tokenHash, userId, expiresAt.toISOString()]
   );
+  await sql(
+    `delete from sessions
+     where user_id = $1
+       and (expires_at <= now()
+         or token_hash not in (
+           select token_hash from sessions where user_id = $1
+           order by created_at desc, token_hash limit $2
+         ))`,
+    [userId, MAX_SESSIONS_PER_USER]
+  );
+  if (Math.random() < 0.02) {
+    void sql(`delete from sessions where expires_at <= now()`).catch(() => void 0);
+  }
   return { token, expiresAt };
 }
 async function revokeSession(token) {
@@ -380,7 +394,9 @@ async function clearRateLimit(key) {
 }
 
 // api/_lib/authApi.ts
-var MAX_USERS = 5e4;
+var MAX_USERS = 2e4;
+var LOGIN_FAILS_PER_IP = 8;
+var LOGIN_FAILS_PER_USER = 100;
 var LOGIN_WINDOW_MS = 15 * 60 * 1e3;
 function limited(result) {
   return json({ error: "rate_limited", retryAfterSec: result.retryAfterSec }, 429, {
@@ -460,10 +476,6 @@ async function POST(request) {
     const action = typeof obj.action === "string" ? obj.action : "";
     const ip = clientIp(request);
     if (action === "register" || action === "login") {
-      const globalHit = action === "register" ? await hitRateLimit("auth:register:global", 100, 60 * 60 * 1e3) : await hitRateLimit("auth:login:global", 3e3, LOGIN_WINDOW_MS);
-      if (!globalHit.ok) return limited(globalHit);
-      const ipHit = action === "register" ? await hitRateLimit(`auth:register:ip:${ip}`, 5, 60 * 60 * 1e3) : await hitRateLimit(`auth:login:ip:${ip}`, 20, LOGIN_WINDOW_MS);
-      if (!ipHit.ok) return limited(ipHit);
       const username = normalizeUsername(typeof obj.username === "string" ? obj.username : "");
       if (!username) {
         return json(
@@ -477,6 +489,10 @@ async function POST(request) {
       const password = typeof obj.password === "string" ? obj.password : "";
       const pwErr = validatePassword(password);
       if (pwErr) return json({ error: "weak_password", hint: pwErr }, 400);
+      const globalHit = action === "register" ? await hitRateLimit("auth:register:global", 40, 60 * 60 * 1e3) : await hitRateLimit("auth:login:global", 1e3, LOGIN_WINDOW_MS);
+      if (!globalHit.ok) return limited(globalHit);
+      const ipHit = action === "register" ? await hitRateLimit(`auth:register:ip:${ip}`, 3, 60 * 60 * 1e3) : await hitRateLimit(`auth:login:ip:${ip}`, 15, LOGIN_WINDOW_MS);
+      if (!ipHit.ok) return limited(ipHit);
       if (action === "register") {
         const countRows = await sql(`select count(*) as n from users`);
         if (Number(countRows[0]?.n ?? 0) >= MAX_USERS) {
@@ -502,17 +518,22 @@ async function POST(request) {
           throw error;
         }
       }
-      const userKey = `auth:login:user:${username.toLowerCase()}`;
-      const userBlocked = await peekRateLimit(userKey, 10);
+      const nameKey = username.toLowerCase();
+      const pairKey = `auth:login:fail:${nameKey}:${ip}`;
+      const userKey = `auth:login:fail:${nameKey}`;
+      const pairBlocked = await peekRateLimit(pairKey, LOGIN_FAILS_PER_IP);
+      if (!pairBlocked.ok) return limited(pairBlocked);
+      const userBlocked = await peekRateLimit(userKey, LOGIN_FAILS_PER_USER);
       if (!userBlocked.ok) return limited(userBlocked);
       const user = await findUserByUsername(username);
       const ok = user ? await verifyPassword(password, user.password_hash) : false;
       if (!user) await verifyAgainstDummy(password);
       if (!user || !ok) {
-        await hitRateLimit(userKey, 10, LOGIN_WINDOW_MS);
+        await hitRateLimit(pairKey, LOGIN_FAILS_PER_IP, LOGIN_WINDOW_MS);
+        await hitRateLimit(userKey, LOGIN_FAILS_PER_USER, LOGIN_WINDOW_MS);
         return json({ error: "invalid_credentials" }, 401);
       }
-      await clearRateLimit(userKey);
+      await clearRateLimit(pairKey);
       const session = await createSession(user.id);
       return json({
         ok: true,

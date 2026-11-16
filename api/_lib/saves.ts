@@ -1,6 +1,8 @@
 import { sql } from './db';
 
-export const MAX_SAVE_BYTES = 512_000;
+export const MAX_SAVE_BYTES = 256_000;
+/** Guest (account-code) saves are unauthenticated, so they get a tighter size ceiling. */
+export const MAX_GUEST_SAVE_BYTES = 96_000;
 
 export interface SaveRow {
   owner_key: string;
@@ -41,7 +43,10 @@ export async function upsertSave(
 }
 
 /** Parse + size-limit a JSON body into a stringified save payload. */
-export function sanitizeSavePayload(raw: unknown):
+export function sanitizeSavePayload(
+  raw: unknown,
+  maxBytes: number = MAX_SAVE_BYTES,
+):
   | { ok: true; payload: string; schemaVersion: number; savedAt: number }
   | { ok: false; error: string } {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -67,8 +72,8 @@ export function sanitizeSavePayload(raw: unknown):
   } catch {
     return { ok: false, error: 'Save could not be serialized' };
   }
-  if (payload.length > MAX_SAVE_BYTES) {
-    return { ok: false, error: `Save exceeds ${MAX_SAVE_BYTES} bytes` };
+  if (payload.length > maxBytes) {
+    return { ok: false, error: `Save exceeds ${maxBytes} bytes` };
   }
 
   const savedAt =

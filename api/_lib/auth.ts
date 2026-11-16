@@ -20,6 +20,8 @@ import {
 
 export const SESSION_HEADER = 'x-daggah-session';
 export const SESSION_DAYS = 30;
+/** Newest sessions kept per account; older ones are revoked on each new login. */
+export const MAX_SESSIONS_PER_USER = 10;
 export {
   MAX_PASSWORD_LEN,
   MAX_USERNAME_LEN,
@@ -136,6 +138,19 @@ export async function createSession(userId: string): Promise<{ token: string; ex
      values ($1, $2, $3, now())`,
     [tokenHash, userId, expiresAt.toISOString()],
   );
+  await sql(
+    `delete from sessions
+     where user_id = $1
+       and (expires_at <= now()
+         or token_hash not in (
+           select token_hash from sessions where user_id = $1
+           order by created_at desc, token_hash limit $2
+         ))`,
+    [userId, MAX_SESSIONS_PER_USER],
+  );
+  if (Math.random() < 0.02) {
+    void sql(`delete from sessions where expires_at <= now()`).catch(() => undefined);
+  }
   return { token, expiresAt };
 }
 

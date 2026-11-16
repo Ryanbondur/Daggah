@@ -24,7 +24,10 @@ import {
 import { isDatabaseUnavailable, isUndefinedTable, sql } from './db';
 import { clearRateLimit, hitRateLimit, peekRateLimit } from './rateLimit';
 
-const MAX_USERS = 50_000;
+const MAX_USERS = 20_000;
+/** Failed logins tolerated per username+IP, and per username across all IPs (distributed guessing). */
+const LOGIN_FAILS_PER_IP = 8;
+const LOGIN_FAILS_PER_USER = 100;
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 
 function limited(result: { ok: false; retryAfterSec: number }): Response {
@@ -115,18 +118,6 @@ export async function POST(request: Request): Promise<Response> {
     const ip = clientIp(request);
 
     if (action === 'register' || action === 'login') {
-      // Global bucket first: bounds total work/rows regardless of spoofed IPs or usernames.
-      const globalHit =
-        action === 'register'
-          ? await hitRateLimit('auth:register:global', 100, 60 * 60 * 1000)
-          : await hitRateLimit('auth:login:global', 3000, LOGIN_WINDOW_MS);
-      if (!globalHit.ok) return limited(globalHit);
-      const ipHit =
-        action === 'register'
-          ? await hitRateLimit(`auth:register:ip:${ip}`, 5, 60 * 60 * 1000)
-          : await hitRateLimit(`auth:login:ip:${ip}`, 20, LOGIN_WINDOW_MS);
-      if (!ipHit.ok) return limited(ipHit);
-
       const username = normalizeUsername(typeof obj.username === 'string' ? obj.username : '');
       if (!username) {
         return json(
@@ -140,6 +131,19 @@ export async function POST(request: Request): Promise<Response> {
       const password = typeof obj.password === 'string' ? obj.password : '';
       const pwErr = validatePassword(password);
       if (pwErr) return json({ error: 'weak_password', hint: pwErr }, 400);
+
+      // Only well-formed requests reach the expensive paths (hashing / inserts); limit those.
+      // Global bucket first: bounds total work/rows regardless of spoofed IPs or usernames.
+      const globalHit =
+        action === 'register'
+          ? await hitRateLimit('auth:register:global', 40, 60 * 60 * 1000)
+          : await hitRateLimit('auth:login:global', 1000, LOGIN_WINDOW_MS);
+      if (!globalHit.ok) return limited(globalHit);
+      const ipHit =
+        action === 'register'
+          ? await hitRateLimit(`auth:register:ip:${ip}`, 3, 60 * 60 * 1000)
+          : await hitRateLimit(`auth:login:ip:${ip}`, 15, LOGIN_WINDOW_MS);
+      if (!ipHit.ok) return limited(ipHit);
 
       if (action === 'register') {
         const countRows = await sql<{ n: number | string }>(`select count(*) as n from users`);
@@ -167,18 +171,24 @@ export async function POST(request: Request): Promise<Response> {
         }
       }
 
-      // login — failures are also limited per username so rotating IPs cannot brute-force one account.
-      const userKey = `auth:login:user:${username.toLowerCase()}`;
-      const userBlocked = await peekRateLimit(userKey, 10);
+      // login — a victim is only locked out from the attacker's own IP (username+IP key);
+      // the much higher username-wide cap only stops distributed guessing.
+      const nameKey = username.toLowerCase();
+      const pairKey = `auth:login:fail:${nameKey}:${ip}`;
+      const userKey = `auth:login:fail:${nameKey}`;
+      const pairBlocked = await peekRateLimit(pairKey, LOGIN_FAILS_PER_IP);
+      if (!pairBlocked.ok) return limited(pairBlocked);
+      const userBlocked = await peekRateLimit(userKey, LOGIN_FAILS_PER_USER);
       if (!userBlocked.ok) return limited(userBlocked);
       const user = await findUserByUsername(username);
       const ok = user ? await verifyPassword(password, user.password_hash) : false;
       if (!user) await verifyAgainstDummy(password);
       if (!user || !ok) {
-        await hitRateLimit(userKey, 10, LOGIN_WINDOW_MS);
+        await hitRateLimit(pairKey, LOGIN_FAILS_PER_IP, LOGIN_WINDOW_MS);
+        await hitRateLimit(userKey, LOGIN_FAILS_PER_USER, LOGIN_WINDOW_MS);
         return json({ error: 'invalid_credentials' }, 401);
       }
-      await clearRateLimit(userKey);
+      await clearRateLimit(pairKey);
       const session = await createSession(user.id);
       return json({
         ok: true,

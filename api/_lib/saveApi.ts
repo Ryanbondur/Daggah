@@ -9,6 +9,7 @@ import { resolveOwner } from './owner';
 import { hitRateLimit } from './rateLimit';
 import { clientIp } from './auth';
 import {
+  MAX_GUEST_SAVE_BYTES,
   getSave,
   parseStoredPayload,
   sanitizeSavePayload,
@@ -17,7 +18,8 @@ import {
 } from './saves';
 
 /** Hard ceiling on guest (account-code) rows: codes are client-minted, so cap what they can create. */
-const MAX_ACCOUNT_CODE_SAVES = 20_000;
+const MAX_ACCOUNT_CODE_SAVES = 5_000;
+const GUEST_SAVE_TTL_DAYS = 90;
 
 function rateLimited(retryAfterSec: number): Response {
   return Response.json(
@@ -66,7 +68,7 @@ function internalError(error: unknown, where: string): Response {
 
 async function readBody(request: Request): Promise<unknown> {
   const text = await request.text();
-  if (text.length > 600_000) throw new Error('too_large');
+  if (text.length > 300_000) throw new Error('too_large');
   if (!text) return {};
   return JSON.parse(text) as unknown;
 }
@@ -111,7 +113,10 @@ export async function PUT(request: Request): Promise<Response> {
       return json({ error: 'invalid_json' }, 400);
     }
 
-    const sanitized = sanitizeSavePayload(body);
+    const sanitized = sanitizeSavePayload(
+      body,
+      owner.kind === 'account' ? MAX_GUEST_SAVE_BYTES : undefined,
+    );
     if (!sanitized.ok) return json({ error: sanitized.error }, 400);
 
     const url = new URL(request.url);
@@ -119,10 +124,15 @@ export async function PUT(request: Request): Promise<Response> {
     const existing = await getSave(owner.ownerKey);
 
     if (!existing && owner.kind === 'account') {
-      const globalNew = await hitRateLimit('save:new-account:global', 200, 60 * 60 * 1000);
+      const globalNew = await hitRateLimit('save:new-account:global', 60, 60 * 60 * 1000);
       if (!globalNew.ok) return rateLimited(globalNew.retryAfterSec);
-      const ipNew = await hitRateLimit(`save:new-account:ip:${clientIp(request)}`, 10, 60 * 60 * 1000);
+      const ipNew = await hitRateLimit(`save:new-account:ip:${clientIp(request)}`, 3, 60 * 60 * 1000);
       if (!ipNew.ok) return rateLimited(ipNew.retryAfterSec);
+      // Stale guest rows (never touched for GUEST_SAVE_TTL_DAYS) free room for new players.
+      await sql(
+        `delete from saves where owner_key like 'ac:%' and updated_at < now() - ($1::int * interval '1 day')`,
+        [GUEST_SAVE_TTL_DAYS],
+      );
       const rows = await sql<{ n: number | string }>(
         `select count(*) as n from saves where owner_key like 'ac:%'`,
       );

@@ -641,7 +641,8 @@ async function hitRateLimit(key, limit, windowMs) {
 }
 
 // api/_lib/saves.ts
-var MAX_SAVE_BYTES = 512e3;
+var MAX_SAVE_BYTES = 256e3;
+var MAX_GUEST_SAVE_BYTES = 96e3;
 async function getSave(ownerKey) {
   const rows = await sql(
     `select owner_key, payload, schema_version, updated_at
@@ -667,7 +668,7 @@ async function upsertSave(ownerKey, payload, schemaVersion) {
   if (!row) throw new Error("upsertSave returned no row");
   return row;
 }
-function sanitizeSavePayload(raw) {
+function sanitizeSavePayload(raw, maxBytes = MAX_SAVE_BYTES) {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return { ok: false, error: "Save body must be a JSON object" };
   }
@@ -685,8 +686,8 @@ function sanitizeSavePayload(raw) {
   } catch {
     return { ok: false, error: "Save could not be serialized" };
   }
-  if (payload.length > MAX_SAVE_BYTES) {
-    return { ok: false, error: `Save exceeds ${MAX_SAVE_BYTES} bytes` };
+  if (payload.length > maxBytes) {
+    return { ok: false, error: `Save exceeds ${maxBytes} bytes` };
   }
   const savedAt = typeof saveObj.savedAt === "number" && Number.isFinite(saveObj.savedAt) ? saveObj.savedAt : Date.now();
   return {
@@ -710,7 +711,8 @@ function toIso(value) {
 }
 
 // api/_lib/saveApi.ts
-var MAX_ACCOUNT_CODE_SAVES = 2e4;
+var MAX_ACCOUNT_CODE_SAVES = 5e3;
+var GUEST_SAVE_TTL_DAYS = 90;
 function rateLimited(retryAfterSec) {
   return Response.json(
     { error: "rate_limited", retryAfterSec },
@@ -754,7 +756,7 @@ function internalError(error, where) {
 }
 async function readBody(request) {
   const text = await request.text();
-  if (text.length > 6e5) throw new Error("too_large");
+  if (text.length > 3e5) throw new Error("too_large");
   if (!text) return {};
   return JSON.parse(text);
 }
@@ -791,16 +793,23 @@ async function PUT(request) {
       }
       return json({ error: "invalid_json" }, 400);
     }
-    const sanitized = sanitizeSavePayload(body);
+    const sanitized = sanitizeSavePayload(
+      body,
+      owner.kind === "account" ? MAX_GUEST_SAVE_BYTES : void 0
+    );
     if (!sanitized.ok) return json({ error: sanitized.error }, 400);
     const url = new URL(request.url);
     const force = url.searchParams.get("force") === "1";
     const existing = await getSave(owner.ownerKey);
     if (!existing && owner.kind === "account") {
-      const globalNew = await hitRateLimit("save:new-account:global", 200, 60 * 60 * 1e3);
+      const globalNew = await hitRateLimit("save:new-account:global", 60, 60 * 60 * 1e3);
       if (!globalNew.ok) return rateLimited(globalNew.retryAfterSec);
-      const ipNew = await hitRateLimit(`save:new-account:ip:${clientIp(request)}`, 10, 60 * 60 * 1e3);
+      const ipNew = await hitRateLimit(`save:new-account:ip:${clientIp(request)}`, 3, 60 * 60 * 1e3);
       if (!ipNew.ok) return rateLimited(ipNew.retryAfterSec);
+      await sql(
+        `delete from saves where owner_key like 'ac:%' and updated_at < now() - ($1::int * interval '1 day')`,
+        [GUEST_SAVE_TTL_DAYS]
+      );
       const rows = await sql(
         `select count(*) as n from saves where owner_key like 'ac:%'`
       );
