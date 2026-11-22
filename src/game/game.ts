@@ -42,6 +42,8 @@ import type { DropSource } from '../data/gear';
 import {
   DROP_SET_IDS,
   RARITIES,
+  SETS,
+  SET_SLOTS,
   capeDropChance,
   cpDelta,
   computeHero,
@@ -56,6 +58,7 @@ import {
   rollRarity,
   salvageValue,
   sellValue,
+  setAllowedForClass,
   starterGear,
   unequipWrongClassGear,
 } from '../data/gear';
@@ -78,10 +81,17 @@ import {
   type TutorialStep,
 } from '../data/tutorial';
 import { APP_CONTENT_VERSION, shouldShowWhatsNew } from '../data/whatsNew';
-import type { HeroClass, Item, PlaystyleId, RarityId, SkillId, SlotId, StatKey } from '../data/types';
+import type { HeroClass, Item, PlaystyleId, RarityId, SetId, SkillId, SlotId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
 import type { ClanData } from './clan';
+import {
+  buildCraftOffers,
+  craftDustCost,
+  craftRarityForSet,
+  craftableSetsForClass,
+  type CraftPieceOffer,
+} from './craft';
 import {
   CLAN_CREATE_COST,
   TOKEN_DAY_CAP,
@@ -1585,6 +1595,63 @@ export class Game {
     this.save.shop.purchased = [...this.save.shop.purchased, index];
     this.queueLoot([offer.item], false);
     this.toast(`Bought ${offer.item.name} (−${offer.price} gold)`, 'good');
+    this.changed();
+    return null;
+  }
+
+  /** Highest act the hero has unlocked (1–10) from stage clears. */
+  craftActUnlocked(): number {
+    return Math.max(1, Math.min(10, Math.floor(this.save.stagesCleared / STAGES_PER_ACT) + 1));
+  }
+
+  /** Class-allowed drop sets up to the current act unlock. */
+  craftableSets(): SetId[] {
+    return craftableSetsForClass(this.save.heroClass, this.craftActUnlocked());
+  }
+
+  /** Slot offers for one set (Blacksmith). Capes / Clanforged excluded. */
+  craftOffersForSet(setId: SetId, missingOnly = false): CraftPieceOffer[] | { error: string } {
+    if (SETS[setId] && SETS[setId].act > this.craftActUnlocked()) {
+      return { error: `Reach Act ${SETS[setId].act} to craft this set.` };
+    }
+    return buildCraftOffers({
+      heroClass: this.save.heroClass,
+      setId,
+      gearLevel: this.save.level,
+      dust: this.save.dust,
+      gear: this.save.gear,
+      bag: this.save.bag,
+      missingOnly,
+    });
+  }
+
+  /**
+   * Spend dust to craft a class set piece into the compare/bag queue.
+   * Blocks wrong-class sets, locked acts, capes, Clanforged, and Legendary.
+   */
+  craftSetPiece(setId: SetId, slot: SlotId): string | null {
+    if (slot === 'cape') return 'Capes cannot be crafted.';
+    if (!SET_SLOTS.includes(slot as Exclude<SlotId, 'cape'>)) return 'Unknown slot.';
+    if (!(DROP_SET_IDS as readonly SetId[]).includes(setId)) return 'That set is not craftable.';
+    if (!setAllowedForClass(setId, this.save.heroClass)) return 'Wrong class for this set.';
+    if (SETS[setId].act > this.craftActUnlocked()) {
+      return `Reach Act ${SETS[setId].act} to craft this set.`;
+    }
+    const rarity = craftRarityForSet(setId);
+    const gearLevel = Math.max(1, Math.min(20, this.save.level));
+    const cost = craftDustCost({ rarity, gearLevel, setId });
+    if (this.save.dust < cost) return `Need ${cost} dust.`;
+    this.save.dust -= cost;
+    const item = rollItem(this.rng, {
+      gearLevel,
+      rarity,
+      slot,
+      setId,
+      icon: SETS[setId].icon,
+      heroClass: this.save.heroClass,
+    });
+    this.queueLoot([item], false);
+    this.toast(`Crafted ${item.name} (−${cost} dust)`, 'good');
     this.changed();
     return null;
   }

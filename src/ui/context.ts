@@ -41,6 +41,7 @@ export interface UIContext {
   showClanHall(): void;
   showSeasonBoard(): void;
   showClanArmorer(): void;
+  showBlacksmith(): void;
   flashSlot(slot: string): void;
 }
 
