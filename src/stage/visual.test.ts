@@ -102,5 +102,12 @@ describe('campHeroVisual', () => {
   it('keeps the sprite aspect per class (no stretch)', () => {
     expect(campHeroVisual('Mage').aspect).toBeCloseTo(317 / 360, 5);
     expect(campHeroVisual('Warrior').aspect).toBeCloseTo(360 / 342, 5);
+    expect(campHeroVisual('Ranger').aspect).toBeCloseTo(350 / 360, 5);
+    expect(campHeroVisual('Rogue').aspect).toBeCloseTo(333 / 360, 5);
+  });
+
+  it('never uses the old Warrior-only combat aspect for Mage (stretch bug)', () => {
+    const warriorAspect = 360 / 343;
+    expect(campHeroVisual('Mage').aspect).toBeLessThan(warriorAspect * 0.95);
   });
 });

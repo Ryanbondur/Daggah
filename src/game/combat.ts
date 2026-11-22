@@ -645,7 +645,7 @@ export class Battle {
     }
     const b = this.buffs;
     if (b.immuneT > 0) return;
-    if (b.smokeT > 0 && this.rng.chance(0.4)) {
+    if (b.smokeT > 0 && this.rng.chance(0.45)) {
       this.events.push({ t: 'blocked', enemyId: e.id });
       return;
     }
@@ -761,7 +761,7 @@ export class Battle {
     let mult = 1;
     let forceCrit = false;
     if (load.includes('backstab') && (this.buffs.firstSwing || this.buffs.stealthT > 0 || this.buffs.ambushReady)) {
-      mult = 1.6;
+      mult = 1.9;
       forceCrit = true;
       this.buffs.ambushReady = false;
       this.buffs.stealthT = 0;
@@ -1200,9 +1200,9 @@ export class Battle {
       }
       case 'garrote': {
         if (front) {
-          this.hitEnemy(front, 0.8, { skill: id, sp: true });
+          this.hitEnemy(front, 1.0, { skill: id, sp: true });
           front.bleedT = 6;
-          front.bleedDps = this.heroInput.stats.atk * 0.4;
+          front.bleedDps = this.heroInput.stats.atk * 0.5;
         }
         break;
       }
@@ -1212,15 +1212,15 @@ export class Battle {
         b.ambushReady = true;
         b.critBonus = 0.4;
         b.critBonusT = 1.5;
-        if (front) this.hitEnemy(front, 2.2, { skill: id, sp: true, critBonus: 0.4 });
+        if (front) this.hitEnemy(front, 2.6, { skill: id, sp: true, critBonus: 0.4 });
         break;
       }
       case 'death-mark': {
         if (front) {
-          let mul = 3.0;
+          let mul = 3.4;
           if (front.hp / front.maxHp < 0.35) mul *= 1.5;
           if (front.bleedT > 0) {
-            mul += 0.8;
+            mul += 0.9;
             front.bleedT = 0;
           }
           this.hitEnemy(front, mul, { skill: id, sp: true });
@@ -1230,14 +1230,15 @@ export class Battle {
       case 'shadowstep':
         b.immuneT = Math.max(b.immuneT, 0.6);
         b.hasteT = 3;
-        b.hasteBonus = 0.3;
+        b.hasteBonus = 0.35;
+        if (front) this.hitEnemy(front, 1.3, { skill: id, sp: true });
         break;
       case 'smoke-bomb':
         b.smokeT = 4;
         break;
       case 'flurry': {
         if (front) {
-          for (let i = 0; i < 4; i++) this.hitEnemy(front, 0.7, { skill: id, sp: true });
+          for (let i = 0; i < 4; i++) this.hitEnemy(front, 0.85, { skill: id, sp: true });
         }
         break;
       }

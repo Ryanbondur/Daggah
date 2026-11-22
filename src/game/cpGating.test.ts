@@ -79,9 +79,42 @@ describe('recommended CP gates Act 10', () => {
     }
   });
 
-  it('keeps Rogue gated at 70% (Rogue needs extra CP; tracked as a class-parity gap)', () => {
+  it('keeps Rogue gated at 70% and clearing by 130% of recommended CP', () => {
     expect(winsAt(10, 4, 0.7, 'Rogue')).toBe(0);
     expect(winsAt(10, 5, 1.3, 'Rogue')).toBe(SEEDS.length);
+  });
+});
+
+describe('Rogue clear CP vs peer baseline (DG-119)', () => {
+  /** Lowest ratio where all SEEDS clear (binary search). */
+  function minClearRatio(act: number, stage: number, heroClass: 'Warrior' | 'Mage' | 'Ranger' | 'Rogue') {
+    let lo = 0.65;
+    let hi = 1.55;
+    for (let i = 0; i < 12; i++) {
+      const mid = (lo + hi) / 2;
+      if (winsAt(act, stage, mid, heroClass) === SEEDS.length) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  }
+
+  function peerBaseline(act: number, stage: number) {
+    const peers = (['Warrior', 'Mage', 'Ranger'] as const).map((c) => minClearRatio(act, stage, c));
+    return peers.reduce((a, b) => a + b, 0) / peers.length;
+  }
+
+  it('needs ~1.13–1.3× peer clear CP on mid/late bosses (not 1.4×+)', () => {
+    for (const [act, stage] of [
+      [4, 5],
+      [8, 5],
+      [10, 5],
+    ] as const) {
+      const peer = peerBaseline(act, stage);
+      const rogue = minClearRatio(act, stage, 'Rogue');
+      const rel = rogue / peer;
+      expect(rel, `${act}-${stage} Rogue/peer=${rel.toFixed(3)}`).toBeGreaterThanOrEqual(1.1);
+      expect(rel, `${act}-${stage} Rogue/peer=${rel.toFixed(3)}`).toBeLessThanOrEqual(1.32);
+    }
   });
 });
 
