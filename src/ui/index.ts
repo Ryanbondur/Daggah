@@ -4,6 +4,7 @@ import { getDungeon, type NodeType } from '../data/acts';
 import { xpToNext } from '../data/xp';
 import { playSfx, unlockAudio } from '../game/audio';
 import type { Game, RunResult } from '../game/game';
+import { dpsBoardFromPlayback } from '../game/pvp';
 import { formatKeyRegenLabel } from '../game/state';
 import { asset, navIcon, skillIcon } from './assets';
 import type { AdventureDiff, CampPane, ClanPane, ModalOpts, Tab, UIContext } from './context';
@@ -262,7 +263,7 @@ export function mountUI(
     if (key === lastTrackKey && !force) return;
     lastTrackKey = key;
     if (game.mode === 'pvp' && pb) {
-      // Count kills already applied in playback for a live score pip.
+      // Count kills already applied in playback for a live score pip + top DPS.
       let allyK = 0;
       let enemyK = 0;
       for (let i = 0; i < pb.nextIdx; i++) {
@@ -271,7 +272,12 @@ export function mountUI(
         if (ev.team === 'ally') allyK += 1;
         else enemyK += 1;
       }
-      $('#track').innerHTML = `<span class="portal">${ICON.swords}</span><span class="pvp-score">${allyK}–${enemyK}</span>`;
+      const board = dpsBoardFromPlayback(pb.result.fighters, pb.result.playback, pb.nextIdx, Math.max(0.1, pb.t));
+      const lead = board.find((e) => e.team === 'ally' && e.damage > 0);
+      const dpsPip = lead
+        ? `<span class="pvp-dps-live" title="Top ally DPS">MVP ${escapeHtml(lead.name)} · ${fmt(lead.damage)}</span>`
+        : '';
+      $('#track').innerHTML = `<span class="portal">${ICON.swords}</span><span class="pvp-score">${allyK}–${enemyK}</span>${dpsPip}`;
       return;
     }
     const portal = game.inBattle ? `<span class="portal">${ICON.portal}</span>` : '';

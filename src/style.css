@@ -232,6 +232,18 @@ button {
   padding: 0 1.2cqw;
   text-shadow: 0 0.3cqw 0.5cqw rgba(0, 0, 0, 0.75);
 }
+.track .pvp-dps-live {
+  font-family: var(--font-title);
+  font-weight: 700;
+  font-size: 2.6cqw;
+  color: #e8d4a8;
+  max-width: 42cqw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 0.8cqw;
+  text-shadow: 0 0.25cqw 0.4cqw rgba(0, 0, 0, 0.7);
+}
 .node {
   position: relative;
   width: 6.2cqw;
@@ -2949,6 +2961,10 @@ button {
   background: #1f6b2a;
   border-color: #0f3a16;
 }
+.ai-pill.real {
+  background: #2a4a6b;
+  border-color: #142838;
+}
 .vendor-list {
   display: flex;
   flex-direction: column;
@@ -3048,6 +3064,107 @@ button {
   font-style: normal;
   white-space: nowrap;
   font-size: 2.4cqw;
+}
+.pvp-mvp {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1.2cqw;
+  align-items: center;
+  margin: 1.6cqw 0 1.2cqw;
+  padding: 1.4cqw 1.6cqw;
+  background: linear-gradient(90deg, rgba(90, 58, 18, 0.35), rgba(40, 28, 12, 0.2));
+  border: 0.35cqw solid #8a6a2a;
+  border-radius: 1cqw;
+  text-align: left;
+}
+.pvp-mvp-tag {
+  font-family: var(--font-title);
+  font-weight: 800;
+  font-size: 3cqw;
+  letter-spacing: 0.06em;
+  color: #1a140c;
+  background: linear-gradient(180deg, #ffe48a, #c98b1c);
+  border: 0.25cqw solid #5a3a10;
+  border-radius: 0.6cqw;
+  padding: 0.4cqw 0.9cqw;
+}
+.pvp-mvp b {
+  display: block;
+  font-family: var(--font-title);
+  font-size: 3.4cqw;
+  color: #3a2a14;
+}
+.pvp-mvp span {
+  font-size: 2.4cqw;
+  color: #6a5230;
+}
+.pvp-mvp i {
+  font-style: normal;
+  font-size: 2.6cqw;
+  font-weight: 700;
+  color: #6a3a12;
+  white-space: nowrap;
+}
+.pvp-dps-board {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6cqw;
+  margin: 0 0 1.6cqw;
+  text-align: left;
+}
+.pvp-dps-row {
+  display: grid;
+  grid-template-columns: 4cqw minmax(0, 1.1fr) minmax(0, 1.4fr) auto;
+  gap: 0.8cqw;
+  align-items: center;
+  font-size: 2.5cqw;
+  padding: 0.35cqw 0;
+}
+.pvp-dps-row.top .pvp-dps-rank {
+  color: #a86a12;
+  font-weight: 800;
+}
+.pvp-dps-row.you .pvp-dps-name {
+  color: #1f6b2a;
+  font-weight: 700;
+}
+.pvp-dps-rank {
+  font-family: var(--font-title);
+  font-weight: 700;
+  color: #6a5230;
+}
+.pvp-dps-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pvp-dps-name small {
+  display: block;
+  font-size: 2.1cqw;
+  color: #7a6540;
+  font-weight: 500;
+}
+.pvp-dps-bar {
+  height: 1.4cqw;
+  background: rgba(40, 32, 20, 0.2);
+  border-radius: 0.4cqw;
+  overflow: hidden;
+}
+.pvp-dps-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #8a5a18, #e0b050);
+  border-radius: 0.4cqw;
+}
+.pvp-dps-row.foe .pvp-dps-bar i {
+  background: linear-gradient(90deg, #6a3030, #c07060);
+}
+.pvp-dps-val {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #4a3420;
+  white-space: nowrap;
 }
 .tiers .row {
   font-size: 3cqw;
