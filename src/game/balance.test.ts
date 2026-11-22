@@ -227,13 +227,13 @@ describe('Clan Raid clear times (party of 4)', () => {
     game.save.loadout = [...DEFAULT_LOADOUT.Warrior];
   }
 
-  function clearRaid(seed: number, rarity: RarityId, maxSec = 600) {
+  async function clearRaid(seed: number, rarity: RarityId, maxSec = 600) {
     const game = new Game(memoryStorage(), mulberry32(seed));
     game.pickClass('Warrior');
     game.devUnlockThroughAct(10);
     equipFull(game, 19, rarity, 'nightscar-regalia', seed + 99);
     game.save.crystals = 500;
-    expect(game.createClan('Raid Time')).toBeNull();
+    expect(await game.createClan('Raid Time')).toBeNull();
     expect(game.startClanRaid()).toBeNull();
     expect(game.battle?.raidAllies).toHaveLength(4);
     let t = 0;
@@ -245,8 +245,8 @@ describe('Clan Raid clear times (party of 4)', () => {
     return { success: game.mode === 'camp' && !game.battle, seconds: t, timedOut: !!game.battle };
   }
 
-  it('takes about ~3 minutes on full epic (non-BiS) with 3 AI allies', () => {
-    const runs = [11, 29, 47].map((seed) => clearRaid(seed, 'epic'));
+  it('takes about ~3 minutes on full epic (non-BiS) with 3 AI allies', async () => {
+    const runs = await Promise.all([11, 29, 47].map((seed) => clearRaid(seed, 'epic')));
     const wins = runs.filter((r) => r.success && !r.timedOut);
     expect(wins.length).toBe(runs.length);
     const avg = wins.reduce((a, r) => a + r.seconds, 0) / wins.length;
@@ -255,9 +255,9 @@ describe('Clan Raid clear times (party of 4)', () => {
     expect(avg).toBeLessThan(250);
   });
 
-  it('clears faster on Legendary BiS — about ~1:50 lucky edge', () => {
-    const epic = clearRaid(101, 'epic');
-    const legendary = clearRaid(101, 'legendary');
+  it('clears faster on Legendary BiS — about ~1:50 lucky edge', async () => {
+    const epic = await clearRaid(101, 'epic');
+    const legendary = await clearRaid(101, 'legendary');
     expect(epic.success).toBe(true);
     expect(legendary.success).toBe(true);
     expect(legendary.seconds).toBeLessThan(epic.seconds * 0.7);

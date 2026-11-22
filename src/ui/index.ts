@@ -685,22 +685,24 @@ export function mountUI(
         break;
       case 'clan-create': {
         const name = (pane.querySelector('#clan-name') as HTMLInputElement | null)?.value ?? '';
-        const err = game.createClan(name);
-        if (err) game.toast(err, 'bad');
-        else {
-          ctx.clanPane = 'hall';
-          ctx.render();
-        }
+        void game.createClan(name).then((err) => {
+          if (err) game.toast(err, 'bad');
+          else {
+            ctx.clanPane = 'hall';
+            ctx.render();
+          }
+        });
         break;
       }
       case 'clan-join': {
         const code = (pane.querySelector('#clan-code') as HTMLInputElement | null)?.value ?? '';
-        const err = game.joinClan(code);
-        if (err) game.toast(err, 'bad');
-        else {
-          ctx.clanPane = 'hall';
-          ctx.render();
-        }
+        void game.joinClan(code).then((err) => {
+          if (err) game.toast(err, 'bad');
+          else {
+            ctx.clanPane = 'hall';
+            ctx.render();
+          }
+        });
         break;
       }
       case 'clan-recruit': {
@@ -739,9 +741,10 @@ export function mountUI(
         break;
       }
       case 'clan-leave':
-        game.leaveClan();
-        ctx.clanPane = 'hall';
-        ctx.render();
+        void game.leaveClan().then(() => {
+          ctx.clanPane = 'hall';
+          ctx.render();
+        });
         break;
       case 'season-board':
         showSeasonBoard(ctx);

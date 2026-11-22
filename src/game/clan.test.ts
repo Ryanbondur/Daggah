@@ -52,11 +52,11 @@ function memoryStorage(): Storage {
 }
 
 describe('clan shell', () => {
-  it('creates a clan for crystal cost and fills AI teammates for other classes', () => {
+  it('creates a clan for crystal cost and fills AI teammates for other classes', async () => {
     const game = new Game(memoryStorage(), mulberry32(42));
     game.pickClass('Warrior');
     game.save.crystals = CLAN_CREATE_COST;
-    expect(game.createClan('Test Wolves')).toBeNull();
+    expect(await game.createClan('Test Wolves')).toBeNull();
     expect(game.save.crystals).toBe(0);
     expect(game.clan?.name).toBe('Test Wolves');
     expect(game.clanRosterReady()).toBe(false);
@@ -68,19 +68,19 @@ describe('clan shell', () => {
     expect(roster?.filter((m) => !m.isPlayer).every((m) => m.isAi)).toBe(true);
   });
 
-  it('rejects unknown join codes until a hall is published', () => {
+  it('rejects unknown join codes until a hall is published', async () => {
     const game = new Game(memoryStorage(), mulberry32(7));
     game.pickClass('Mage');
-    expect(game.joinClan('AB12CD')).toMatch(/No clan/i);
+    expect(await game.joinClan('AB12CD')).toMatch(/No clan/i);
     expect(game.clan).toBeNull();
   });
 
-  it('lets a real player join by code and replaces the weakest AI (lowest CP)', () => {
+  it('lets a real player join by code and replaces the weakest AI (lowest CP)', async () => {
     const shared = memoryStorage();
     const leader = new Game(shared, mulberry32(7));
     leader.pickClass('Warrior');
     leader.save.crystals = CLAN_CREATE_COST;
-    expect(leader.createClan('Open Hall')).toBeNull();
+    expect(await leader.createClan('Open Hall')).toBeNull();
     expect(leader.fillAiClanRoster()).toBeNull();
     const code = leader.clan!.code;
     const beforeAi = leader.clan!.members.filter((m) => m.isAi);
@@ -109,7 +109,7 @@ describe('clan shell', () => {
     const joiner = new Game(joinerStore, mulberry32(8));
     joiner.pickClass('Mage');
     joiner.save.clanHumanId = 'human_joiner_test';
-    expect(joiner.joinClan(code)).toBeNull();
+    expect(await joiner.joinClan(code)).toBeNull();
     expect(joiner.clan?.code).toBe(code);
     expect(joiner.clan?.members.some((m) => m.isPlayer && m.heroClass === 'Mage')).toBe(true);
     expect(joiner.clan?.members.some((m) => !m.isAi && !m.isPlayer)).toBe(true); // leader is real
@@ -119,7 +119,7 @@ describe('clan shell', () => {
     // Weakest AI seat gone; reals untouched.
     expect(joiner.clan!.members.filter((m) => !m.isAi).length).toBe(2);
 
-    expect(joiner.leaveClan()).toBeNull();
+    expect(await joiner.leaveClan()).toBeNull();
     expect(joiner.clan).toBeNull();
   });
 
@@ -128,11 +128,11 @@ describe('clan shell', () => {
     expect(applyTokenCap(TOKEN_DAY_CAP, TOKEN_LOSS).awarded).toBe(0);
   });
 
-  it('keeps recruitClanRoster as an alias for fill AI', () => {
+  it('keeps recruitClanRoster as an alias for fill AI', async () => {
     const game = new Game(memoryStorage(), mulberry32(19));
     game.pickClass('Rogue');
     game.save.crystals = CLAN_CREATE_COST;
-    game.createClan('Alias');
+    await game.createClan('Alias');
     expect(game.recruitClanRoster()).toBeNull();
     expect(game.clanRosterReady()).toBe(true);
   });
@@ -165,12 +165,12 @@ describe('4v4 auto-battle', () => {
     expect(result.dpsBoard[0]!.damage).toBeGreaterThanOrEqual(result.dpsBoard[1]!.damage);
   });
 
-  it('awards win/loss tokens through Game.queueClanPvp', () => {
+  it('awards win/loss tokens through Game.queueClanPvp', async () => {
     const game = new Game(memoryStorage(), mulberry32(3));
     game.pickClass('Ranger');
     game.save.crystals = CLAN_CREATE_COST;
     game.save.stagesCleared = 15;
-    game.createClan('Quills');
+    await game.createClan('Quills');
     game.recruitClanRoster();
     let saw = false;
     game.on((e) => {
@@ -314,12 +314,12 @@ describe('clan armorer + season', () => {
     expect(fx.tokenGainPct).toBe(10);
   });
 
-  it('local season reset keeps clan and reopens class pick', () => {
+  it('local season reset keeps clan and reopens class pick', async () => {
     const store = memoryStorage();
     const game = new Game(store, mulberry32(2));
     game.pickClass('Warrior');
     game.save.crystals = CLAN_CREATE_COST;
-    game.createClan('Persist');
+    await game.createClan('Persist');
     game.save.level = 10;
     game.devUnlockThroughAct(4);
     game.save.dungeons['rime-vault'] = { cleared: true, clears: 3 };

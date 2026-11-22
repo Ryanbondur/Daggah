@@ -19,14 +19,14 @@ function memoryStorage(): Storage {
 }
 
 describe('XSS sanitization', () => {
-  it('strips tags and control chars from clan name / code on create/join', () => {
+  it('strips tags and control chars from clan name / code on create/join', async () => {
     expect(sanitizeClanName('<script>xss</script>Wolves')).toBe('xssWolves');
     expect(sanitizeClanCode('ab<script>12')).toBe('ABSCRIPT');
     expect(escapeHtml(`Nightscar "Wolves" & Co`)).toContain('&quot;');
     const game = new Game(memoryStorage(), mulberry32(1));
     game.pickClass('Warrior');
     game.save.crystals = CLAN_CREATE_COST;
-    expect(game.createClan('<b>Hack</b>')).toBeNull();
+    expect(await game.createClan('<b>Hack</b>')).toBeNull();
     expect(game.clan?.name).toBe('Hack');
     expect(game.clan?.name.includes('<')).toBe(false);
   });
@@ -71,13 +71,13 @@ describe('tutorial', () => {
     expect(game.canSkipTutorial()).toBe(true);
   });
 
-  it('completes clan step when founding a clan', () => {
+  it('completes clan step when founding a clan', async () => {
     const game = new Game(memoryStorage(), mulberry32(7));
     game.pickClass('Warrior');
     game.save.tutorial.step = TUTORIAL_STEPS.findIndex((s) => s.id === 'clan');
     game.save.crystals = CLAN_CREATE_COST;
     expect(game.tutorialStep?.id).toBe('clan');
-    expect(game.createClan('Wolves')).toBeNull();
+    expect(await game.createClan('Wolves')).toBeNull();
     expect(game.tutorialIsActive).toBe(false);
     expect(game.save.tutorial.everCompleted).toBe(true);
   });

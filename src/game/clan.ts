@@ -3,20 +3,38 @@ import type { RarityId, SetId, SlotId } from '../data/types';
 import { DEFAULT_LOADOUT, defaultPrimary, skillsForPlaystyle, CLASS_PLAYSTYLES, isUnlocked } from '../data/skills';
 import type { HeroClass, SkillId } from '../data/types';
 import { HERO_CLASSES } from '../data/types';
-import { sanitizePlainText } from '../util/text';
 import type { Rng } from './rng';
+import type { ClanData as AdmitClanData, ClanMember as AdmitClanMember, ClanRole } from './clanAdmit';
+import {
+  CLAN_MAX_SIZE,
+  admitRealMember as admitRealMemberCore,
+  buildHumanMember as buildHumanMemberCore,
+  findWeakestAiMember as findWeakestAiMemberCore,
+  normalizeClanMember as normalizeClanMemberCore,
+  sanitizeClanCode,
+  sanitizeClanName,
+  sanitizeMemberName,
+  viewClanForHuman as viewClanForHumanCore,
+  type AdmitRealResult,
+  type ClanPlayerSnapshot,
+} from './clanAdmit';
 
 export const CLAN_CREATE_COST = 500;
 export const CLAN_MIN_SIZE = 4;
 /** Soft roster cap (UI + AI fill + local leaderboard rivals). */
-export const CLAN_MAX_SIZE = 25;
+export { CLAN_MAX_SIZE };
 export const TOKEN_WIN = 20;
 export const TOKEN_LOSS = 5;
 export const TOKEN_DAY_CAP = 200;
 export const SEASON_DAYS = 30;
 export const SEASON_MS = SEASON_DAYS * 86_400_000;
 
-export type ClanRole = 'leader' | 'officer' | 'member';
+export type { ClanRole, ClanPlayerSnapshot, AdmitRealResult };
+export {
+  sanitizeMemberName,
+  sanitizeClanName,
+  sanitizeClanCode,
+};
 /** AI gear quality for solo playtests until live multiplayer. */
 export type AiGearTier = 'scaled' | 'endgame';
 
@@ -42,6 +60,22 @@ export interface ClanData {
   name: string;
   code: string;
   members: ClanMember[];
+}
+
+function asAdmitClan(clan: ClanData): AdmitClanData {
+  return clan as unknown as AdmitClanData;
+}
+
+function fromAdmitClan(clan: AdmitClanData): ClanData {
+  return clan as unknown as ClanData;
+}
+
+function asAdmitMember(m: ClanMember): AdmitClanMember {
+  return m as unknown as AdmitClanMember;
+}
+
+function fromAdmitMember(m: AdmitClanMember): ClanMember {
+  return m as unknown as ClanMember;
 }
 
 export interface SeasonData {
@@ -190,47 +224,10 @@ export function buildMockMember(
   return buildAiMember(rng, heroClass, level, role, 'scaled');
 }
 
-/** Strip tags / control chars from member display names. */
-export function sanitizeMemberName(name: string): string {
-  return sanitizePlainText(name, 32) || 'Unknown';
-}
-
 /** Normalize older saves that lack `isAi`; sanitize display strings. */
 export function normalizeClanMember(m: ClanMember): ClanMember {
-  return {
-    ...m,
-    name: sanitizeMemberName(typeof m.name === 'string' ? m.name : 'Unknown'),
-    role: (['leader', 'officer', 'member'] as const).includes(m.role as ClanRole)
-      ? (m.role as ClanRole)
-      : 'member',
-    isAi: m.isPlayer ? false : m.isAi !== false,
-  };
+  return fromAdmitMember(normalizeClanMemberCore(asAdmitMember(m)));
 }
-
-/** Strip tags / control chars from clan name before storage. */
-export function sanitizeClanName(name: string): string {
-  return sanitizePlainText(name, 24) || 'Nameless Clan';
-}
-
-/** Normalize join codes to safe alphanumerics. */
-export function sanitizeClanCode(code: string): string {
-  return code
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .slice(0, 8);
-}
-
-export type ClanPlayerSnapshot = {
-  heroClass: HeroClass;
-  level: number;
-  cp: number;
-  loadout: SkillId[];
-  primary: SkillId | null;
-  /** Stable id across devices/saves for this human in shared halls. */
-  humanId: string;
-  /** Display name (auth username or "You"). */
-  name: string;
-};
 
 /** Build a real (non-AI) clan member. `isPlayer` is set by the local save view. */
 export function buildHumanMember(
@@ -238,18 +235,7 @@ export function buildHumanMember(
   role: ClanRole = 'member',
   isPlayer = false,
 ): ClanMember {
-  return {
-    id: player.humanId,
-    name: sanitizeMemberName(player.name),
-    heroClass: player.heroClass,
-    role,
-    isPlayer,
-    isAi: false,
-    level: player.level,
-    cp: player.cp,
-    loadout: [...player.loadout],
-    primary: player.primary,
-  };
+  return fromAdmitMember(buildHumanMemberCore(player, role, isPlayer));
 }
 
 /**
@@ -257,15 +243,9 @@ export function buildHumanMember(
  * Never returns a real (non-AI) member.
  */
 export function findWeakestAiMember(members: ClanMember[]): ClanMember | null {
-  const ais = members.filter((m) => m.isAi && !m.isPlayer);
-  if (!ais.length) return null;
-  ais.sort((a, b) => a.cp - b.cp || a.level - b.level || a.id.localeCompare(b.id));
-  return ais[0] ?? null;
+  const found = findWeakestAiMemberCore(members.map(asAdmitMember));
+  return found ? fromAdmitMember(found) : null;
 }
-
-export type AdmitRealResult =
-  | { ok: true; clan: ClanData; replacedAi: ClanMember | null; added: ClanMember }
-  | { ok: false; error: string };
 
 /**
  * Admit a real player into an existing clan hall.
@@ -274,58 +254,19 @@ export type AdmitRealResult =
  * - Else: clan full.
  */
 export function admitRealMember(clan: ClanData, player: ClanPlayerSnapshot): AdmitRealResult {
-  const members = clan.members.map(normalizeClanMember);
-  const existingIdx = members.findIndex((m) => m.id === player.humanId);
-  if (existingIdx >= 0) {
-    // Already in this hall (re-join / sync) — refresh snapshot, never kick anyone.
-    const existing = members[existingIdx]!;
-    const updated = buildHumanMember(
-      player,
-      existing.role === 'leader' ? 'leader' : existing.role,
-      true,
-    );
-    const next = members.map((m, i) => (i === existingIdx ? updated : { ...m, isPlayer: false }));
-    return { ok: true, clan: { ...clan, members: next }, replacedAi: null, added: updated };
-  }
-
-  const human = buildHumanMember(player, 'member', true);
-  const weakest = findWeakestAiMember(members);
-  if (weakest) {
-    const next = members.map((m) => {
-      if (m.id !== weakest.id) return { ...m, isPlayer: false };
-      return human;
-    });
-    // Ensure a leader exists after replacing an AI leader.
-    if (weakest.role === 'leader' && !next.some((m) => m.role === 'leader')) {
-      const promote = next.find((m) => !m.isAi) ?? next[0];
-      if (promote) promote.role = 'leader';
-    }
-    return { ok: true, clan: { ...clan, members: next }, replacedAi: weakest, added: human };
-  }
-  if (members.length >= CLAN_MAX_SIZE) {
-    return { ok: false, error: `Clan is full (${CLAN_MAX_SIZE}/${CLAN_MAX_SIZE}).` };
-  }
+  const result = admitRealMemberCore(asAdmitClan(clan), player);
+  if (!result.ok) return result;
   return {
     ok: true,
-    clan: { ...clan, members: [...members.map((m) => ({ ...m, isPlayer: false })), human] },
-    replacedAi: null,
-    added: human,
+    clan: fromAdmitClan(result.clan),
+    replacedAi: result.replacedAi ? fromAdmitMember(result.replacedAi) : null,
+    added: fromAdmitMember(result.added),
   };
 }
 
 /** Mark which member is the local player for this save view. */
 export function viewClanForHuman(clan: ClanData, humanId: string): ClanData {
-  return {
-    ...clan,
-    members: clan.members.map(normalizeClanMember).map((m) => {
-      const isLocal = m.id === humanId;
-      if (isLocal || m.isAi === false) {
-        return { ...m, isAi: false, isPlayer: isLocal };
-      }
-      // AI fillers / rivals on the roster.
-      return { ...m, isAi: true, isPlayer: false };
-    }),
-  };
+  return fromAdmitClan(viewClanForHumanCore(asAdmitClan(clan), humanId));
 }
 
 export function createClan(

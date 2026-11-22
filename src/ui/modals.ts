@@ -1292,22 +1292,24 @@ export function showClanHall(ctx: UIContext): void {
     }
     if (act === 'clan-create') {
       const name = (el.querySelector('#clan-name') as HTMLInputElement | null)?.value ?? '';
-      const err = g.createClan(name);
-      if (err) g.toast(err, 'bad');
-      else {
-        ctx.closeModal();
-        showClanHall(ctx);
-      }
+      void g.createClan(name).then((err) => {
+        if (err) g.toast(err, 'bad');
+        else {
+          ctx.closeModal();
+          showClanHall(ctx);
+        }
+      });
       return;
     }
     if (act === 'clan-join') {
       const code = (el.querySelector('#clan-code') as HTMLInputElement | null)?.value ?? '';
-      const err = g.joinClan(code);
-      if (err) g.toast(err, 'bad');
-      else {
-        ctx.closeModal();
-        showClanHall(ctx);
-      }
+      void g.joinClan(code).then((err) => {
+        if (err) g.toast(err, 'bad');
+        else {
+          ctx.closeModal();
+          showClanHall(ctx);
+        }
+      });
       return;
     }
     if (act === 'clan-recruit') {
@@ -1351,9 +1353,10 @@ export function showClanHall(ctx: UIContext): void {
       return;
     }
     if (act === 'clan-leave') {
-      g.leaveClan();
-      ctx.closeModal();
-      showClanHall(ctx);
+      void g.leaveClan().then(() => {
+        ctx.closeModal();
+        showClanHall(ctx);
+      });
     }
   });
 }

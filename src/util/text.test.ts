@@ -146,12 +146,12 @@ describe('save import / display XSS path', () => {
     expect(loaded?.clan?.code).toBe('BAD');
   });
 
-  it('Game import overwrites with sanitized clan name for UI chat/toast path', () => {
+  it('Game import overwrites with sanitized clan name for UI chat/toast path', async () => {
     const store = memoryStorage();
     const donor = new Game(memoryStorage(), mulberry32(11));
     donor.pickClass('Warrior');
     donor.save.crystals = CLAN_CREATE_COST;
-    expect(donor.createClan('<b>Hack</b> Clan')).toBeNull();
+    expect(await donor.createClan('<b>Hack</b> Clan')).toBeNull();
     expect(donor.clan?.name).toBe('Hack Clan');
     const code = donor.exportSaveCode();
 

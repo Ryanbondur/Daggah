@@ -16,7 +16,7 @@ GitHub Pages (optional): **https://ryanbondur.github.io/Daggah/** — workflow b
 npm install
 npm run dev        # http://localhost:5173 (open in a phone-sized window or devtools mobile view)
 npm run build      # typecheck + bundle api/*.js + production build into dist/
-npm run bundle:api # rebuild self-contained api/daggah-auth.js + daggah-save.js + daggah-clan-board.js
+npm run bundle:api # rebuild self-contained api/daggah-auth.js + daggah-save.js + daggah-clan-board.js + daggah-clan.js
 npm run preview    # serve the production build
 npm test           # unit tests + headless balance simulation
 npm run art        # re-slice generated art from art-src/ into public/assets/ (needs python3 + Pillow/numpy/scipy)
@@ -35,6 +35,7 @@ npm run art        # re-slice generated art from art-src/ into public/assets/ (n
 - **Clan leaderboard**: Clan tab → Leaderboard reads live season standings from Postgres (`GET /api/daggah-clan-board`) when the API is up; cloud save pushes publish `season_stats` / `clan_results`. Guests and offline play fall back to local stub rivals.
 - **Save**: stable `daggah.save` localStorage key (migrates legacy `daggah.save.v1`–`v3`). Autosaves on change and every 5s. **Settings → Export / Import save code** for a shareable `DAG1.…` backup (survives origin changes).
 - **Cloud sync**: Postgres-backed `GET/PUT /api/daggah-save`. Prefers **username/password** session (`/api/daggah-auth`), then Cursor identity when verified, otherwise an optional **account code** (`DGAC.…`). Debounced auto-push; pull on boot when linked. localStorage + Export/Import remain.
+- **Clan halls**: Postgres-backed `GET/POST /api/daggah-clan` for cross-device create/join/sync (auth required for membership). Invite codes + AI replace (weakest CP) + cap 25. Local/dev falls back to same-origin `daggah.clanHalls` when DB is missing.
 
 Out of scope: server matchmaking / true multiplayer shared clan halls.
 
@@ -48,8 +49,8 @@ Out of scope: server matchmaking / true multiplayer shared clan halls.
 ## Project layout
 
 ```
-api/         hosted routes: ping.ts (health) + daggah-auth.js / daggah-save.js / daggah-clan-board.js (bundled)
-api/_lib/    auth/save/clan-board/db source (edit here, then npm run bundle:api)
+api/         hosted routes: ping.ts (health) + daggah-auth.js / daggah-save.js / daggah-clan-board.js / daggah-clan.js (bundled)
+api/_lib/    auth/save/clan-board/clan-hall/db source (edit here, then npm run bundle:api)
 src/data/    types, XP, skills (all classes), gear/sets/CP, acts 1-10 + enemies, quests
 src/game/    combat engine, clan/PvP, Game controller, save, tests
 src/stage/   Phaser StageScene
