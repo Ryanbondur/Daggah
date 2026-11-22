@@ -4,6 +4,7 @@ import {
   OPTIONS as authOptions,
   POST as authPost,
 } from '../../api/_lib/authApi';
+import { GET as clanBoardGet, OPTIONS as clanBoardOptions } from '../../api/_lib/clanBoardApi';
 import { GET, OPTIONS, PUT } from '../../api/_lib/saveApi';
 import { GET as pingGet } from '../../api/ping';
 
@@ -86,6 +87,30 @@ export async function handleDaggahSaveApi(
           {
             status: 405,
             headers: { allow: 'GET, POST, OPTIONS', 'cache-control': 'private, no-store' },
+          },
+        );
+    }
+    await writeWebResponse(res, response);
+    return true;
+  }
+
+  if (path === '/api/daggah-clan-board') {
+    const request = await nodeToWebRequest(req);
+    let response: Response;
+    switch (req.method) {
+      case 'GET':
+      case 'HEAD':
+        response = await clanBoardGet(request);
+        break;
+      case 'OPTIONS':
+        response = await clanBoardOptions();
+        break;
+      default:
+        response = Response.json(
+          { error: 'method_not_allowed' },
+          {
+            status: 405,
+            headers: { allow: 'GET, OPTIONS', 'cache-control': 'private, no-store' },
           },
         );
     }

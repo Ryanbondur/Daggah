@@ -17,8 +17,9 @@ import {
   ASCENDED_SEAL_FRAGMENTS_PER_SEAL,
   formatAscendedEntryCost,
 } from '../game/ascended';
-import { CLAN_CREATE_COST, CLAN_MAX_SIZE, TOKEN_DAY_CAP, buildClanLeaderboard } from '../game/clan';
+import { CLAN_CREATE_COST, CLAN_MAX_SIZE, TOKEN_DAY_CAP } from '../game/clan';
 import type { ClanMember } from '../game/clan';
+import { localClanBoard, mergePlayerOntoBoard } from '../game/clanBoardClient';
 import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../game/clanBrackets';
 import { CLAN_RAID_WEEKLY_ATTEMPTS } from '../game/clanRaid';
 import { NIGHTSCAR_PITY_MAX } from '../game/nightscarPity';
@@ -533,18 +534,35 @@ function renderClanHallPane(ctx: UIContext): string {
 function renderClanBoardPane(ctx: UIContext): string {
   const g = ctx.game;
   const clan = g.clan;
-  const board = buildClanLeaderboard(
-    g.save.season.seasonId,
-    clan
-      ? {
-          name: clan.name,
-          wins: g.save.clanWins,
-          losses: g.save.clanLosses,
-          tokens: g.save.clanTokens,
-          members: clan.members.length,
-        }
-      : null,
-  );
+  const seasonId = g.save.season.seasonId;
+  const player = clan
+    ? {
+        name: clan.name,
+        code: clan.code,
+        wins: g.save.clanWins,
+        losses: g.save.clanLosses,
+        tokens: g.save.clanTokens,
+        members: clan.members.length,
+      }
+    : null;
+
+  // Prefer live Postgres standings when the last fetch succeeded for this season.
+  const liveReady =
+    ctx.clanBoardSource === 'live' &&
+    ctx.clanBoardLive &&
+    ctx.clanBoardSeasonId === seasonId &&
+    ctx.clanBoardLive.length > 0;
+  const board = liveReady
+    ? mergePlayerOntoBoard(ctx.clanBoardLive!, player)
+    : localClanBoard(seasonId, player);
+
+  const sourceLabel =
+    ctx.clanBoardSource === 'loading'
+      ? 'loading season standings…'
+      : liveReady
+        ? 'live season standings'
+        : 'local stub rivals';
+
   const you = board.find((e) => e.isPlayer);
   const rows = board
     .slice(0, 10)
@@ -567,7 +585,7 @@ function renderClanBoardPane(ctx: UIContext): string {
       <img src="${asset('ui/season-board.webp')}" alt="" />
       <div>
         <b>Clan Leaderboard</b>
-        <span>Season ${g.save.season.seasonId} · local stub rivals</span>
+        <span>Season ${seasonId} · ${escapeHtml(sourceLabel)}</span>
       </div>
     </div>
     ${standings}
@@ -575,7 +593,11 @@ function renderClanBoardPane(ctx: UIContext): string {
       <div class="lb-head"><span>#</span><span>Clan</span><span>Record</span><span>Score</span></div>
       ${rows}
     </div>
-    <p class="tagline">Score = wins×100 + tokens + members×8 − losses×12. Live rankings arrive with multiplayer.</p>
+    <p class="tagline">Score = wins×100 + tokens + members×8 − losses×12.${
+      liveReady
+        ? ' Cloud sync publishes your clan to this board.'
+        : ' Showing local rivals until the season API responds.'
+    }</p>
   </div>`;
 }
 

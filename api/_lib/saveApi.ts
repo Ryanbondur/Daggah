@@ -6,6 +6,7 @@
  */
 import { clientIp } from './auth';
 import { maxAccountCodeSaves, reclaimIdleGuestSaves } from './capacity';
+import { extractSeasonReport, upsertSeasonReport } from './clanBoard';
 import { isDatabaseUnavailable, isUndefinedTable, sql } from './db';
 import { resolveOwner } from './owner';
 import { hitRateLimit } from './rateLimit';
@@ -153,6 +154,21 @@ export async function PUT(request: Request): Promise<Response> {
     }
 
     await upsertSave(owner.ownerKey, sanitized.payload, sanitized.schemaVersion);
+
+    // Publish season ladder snapshot when the save carries clan W/L (best-effort).
+    try {
+      const parsed = parseStoredPayload(sanitized.payload);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const report = extractSeasonReport(parsed as Record<string, unknown>);
+        if (report) await upsertSeasonReport(owner.ownerKey, report);
+      }
+    } catch (boardError) {
+      console.error(
+        'season board upsert failed',
+        boardError instanceof Error ? boardError.message : 'unknown',
+      );
+    }
+
     return new Response(null, { status: 204, headers: NO_STORE });
   } catch (error) {
     return internalError(error, 'PUT /api/daggah-save');

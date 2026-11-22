@@ -8,7 +8,7 @@ create table if not exists saves (
 
 create index if not exists saves_updated_at_idx on saves (updated_at desc);
 
--- DG-42 placeholders (clan leaderboard / season standings). No app writes yet.
+-- DG-42 / DG-120: clan leaderboard / season standings (columns widened in 004).
 create table if not exists season_stats (
   id bigserial primary key,
   season_id integer not null,

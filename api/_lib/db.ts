@@ -108,8 +108,11 @@ const INLINE_SCHEMA_STATEMENTS = [
     season_id integer not null,
     owner_key text not null,
     clan_code text,
+    clan_name text,
     wins integer not null default 0,
     losses integer not null default 0,
+    tokens integer not null default 0,
+    members integer not null default 0,
     updated_at timestamptz not null default now()
   )`,
   `create unique index if not exists season_stats_season_owner_uidx
@@ -118,12 +121,24 @@ const INLINE_SCHEMA_STATEMENTS = [
     id bigserial primary key,
     season_id integer not null,
     clan_code text not null,
+    clan_name text,
     wins integer not null default 0,
     losses integer not null default 0,
+    tokens integer not null default 0,
+    members integer not null default 0,
     updated_at timestamptz not null default now()
   )`,
   `create unique index if not exists clan_results_season_clan_uidx
     on clan_results (season_id, clan_code)`,
+  // DG-120: widen tables created by older migrate runs / prior INLINE creates.
+  `alter table season_stats add column if not exists tokens integer not null default 0`,
+  `alter table season_stats add column if not exists members integer not null default 0`,
+  `alter table season_stats add column if not exists clan_name text`,
+  `alter table clan_results add column if not exists tokens integer not null default 0`,
+  `alter table clan_results add column if not exists members integer not null default 0`,
+  `alter table clan_results add column if not exists clan_name text`,
+  `create index if not exists clan_results_season_score_idx
+    on clan_results (season_id, wins desc, tokens desc)`,
   `create table if not exists users (
     id text primary key,
     username text not null,

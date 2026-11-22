@@ -3,6 +3,12 @@ import { defaultPrimary } from '../data/skills';
 import { getDungeon, type NodeType } from '../data/acts';
 import { xpToNext } from '../data/xp';
 import { playSfx, unlockAudio } from '../game/audio';
+import type { ClanLeaderboardEntry } from '../game/clan';
+import {
+  fetchLiveClanBoard,
+  mergePlayerOntoBoard,
+  type ClanBoardSource,
+} from '../game/clanBoardClient';
 import type { Game, RunResult } from '../game/game';
 import { dpsBoardFromPlayback } from '../game/pvp';
 import { formatKeyRegenLabel } from '../game/state';
@@ -111,6 +117,11 @@ export function mountUI(
   let renderQueued = false;
   /** Only preserve scroll when re-rendering the same tab (equip/swap), not across tab switches. */
   let scrollTab: Tab | null = null;
+  let clanBoardLive: ClanLeaderboardEntry[] | null = null;
+  let clanBoardSource: ClanBoardSource = 'local';
+  let clanBoardSeasonId: number | null = null;
+  let clanBoardLoading = false;
+  let clanBoardFetchedAt = 0;
 
   const ctx: UIContext = {
     game,
@@ -120,6 +131,58 @@ export function mountUI(
     adventureDiff: 'normal',
     skillStyle: CLASS_PLAYSTYLES[game.save.heroClass][0],
     skillBarFocus: null,
+    get clanBoardLive() {
+      return clanBoardLive;
+    },
+    get clanBoardSource() {
+      return clanBoardSource;
+    },
+    get clanBoardSeasonId() {
+      return clanBoardSeasonId;
+    },
+    refreshClanBoard(force = false) {
+      const seasonId = game.save.season.seasonId;
+      if (clanBoardSeasonId !== null && clanBoardSeasonId !== seasonId) {
+        clanBoardLive = null;
+        clanBoardSource = 'local';
+      }
+      const stale =
+        force ||
+        clanBoardSeasonId !== seasonId ||
+        Date.now() - clanBoardFetchedAt > 60_000 ||
+        clanBoardSource === 'local';
+      if (!stale || clanBoardLoading) return;
+      clanBoardLoading = true;
+      clanBoardSource = 'loading';
+      const code = game.clan?.code ?? null;
+      void fetchLiveClanBoard(seasonId, code).then((result) => {
+        clanBoardLoading = false;
+        clanBoardFetchedAt = Date.now();
+        if (result.ok && result.entries.length > 0) {
+          const player = game.clan
+            ? {
+                name: game.clan.name,
+                code: game.clan.code,
+                wins: game.save.clanWins,
+                losses: game.save.clanLosses,
+                tokens: game.save.clanTokens,
+                members: game.clan.members.length,
+              }
+            : null;
+          clanBoardLive = mergePlayerOntoBoard(result.entries, player);
+          clanBoardSeasonId = seasonId;
+          clanBoardSource = 'live';
+        } else if (clanBoardLive && clanBoardSeasonId === seasonId && clanBoardLive.length > 0) {
+          // Keep last good live snapshot for this season.
+          clanBoardSource = 'live';
+        } else {
+          clanBoardLive = null;
+          clanBoardSeasonId = seasonId;
+          clanBoardSource = 'local';
+        }
+        if (ctx.tab === 'clan' && ctx.clanPane === 'board') ctx.render();
+      });
+    },
     get modalOpen() {
       return !!modalEl;
     },
@@ -131,6 +194,7 @@ export function mountUI(
       if (tab === 'adventure') void opts.ensureStage();
       // Battle / Adventure loop lands on gear; Shop stays sticky until left intentionally.
       if (tab !== 'camp') ctx.campPane = 'gear';
+      if (tab === 'clan' && ctx.clanPane === 'board') ctx.refreshClanBoard();
       ctx.render();
     },
     ensureStage: () => opts.ensureStage(),
@@ -610,6 +674,7 @@ export function mountUI(
         const paneId = d.pane as ClanPane;
         if (paneId === 'hall' || paneId === 'board' || paneId === 'town') {
           ctx.clanPane = paneId;
+          if (paneId === 'board') ctx.refreshClanBoard();
           ctx.render();
         }
         break;
