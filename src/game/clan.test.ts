@@ -303,13 +303,13 @@ describe('4v4 auto-battle', () => {
 });
 
 describe('clan invites + roles + soft MMR', () => {
-  it('mints one-time invite tokens with expiry and consumes on join', () => {
+  it('mints one-time invite tokens with expiry and consumes on join', async () => {
     const store = memoryStorage();
     const rng = mulberry32(44);
     const leader = new Game(store, rng);
     leader.pickClass('Warrior');
     leader.save.crystals = CLAN_CREATE_COST;
-    expect(leader.createClan('Invite Hall')).toBeNull();
+    expect(await leader.createClan('Invite Hall')).toBeNull();
     expect(leader.fillAiClanRoster()).toBeNull();
     const minted = leader.createOfficerInvite(60_000);
     expect(typeof minted).not.toBe('string');
@@ -340,7 +340,7 @@ describe('clan invites + roles + soft MMR', () => {
     const joiner = new Game(joinerStore, mulberry32(45));
     joiner.pickClass('Ranger');
     joiner.save.clanHumanId = 'human_invite_joiner';
-    expect(joiner.joinClan(minted.token)).toBeNull();
+    expect(await joiner.joinClan(minted.token)).toBeNull();
     expect(joiner.clan?.code).toBe(leader.clan!.code);
     expect(lookupClanInvite(store, minted.token)).toBeNull();
 
@@ -367,7 +367,7 @@ describe('clan invites + roles + soft MMR', () => {
     if (resolved.kind === 'error') expect(resolved.error).toMatch(/expired/i);
   });
 
-  it('officers kick AI / approve pending joins; leaders promote and demote', () => {
+  it('officers kick AI / approve pending joins; leaders promote and demote', async () => {
     expect(canKickAi('officer')).toBe(true);
     expect(canApproveJoins('officer')).toBe(true);
     expect(canPromoteDemote('officer')).toBe(false);
@@ -377,7 +377,7 @@ describe('clan invites + roles + soft MMR', () => {
     const game = new Game(store, mulberry32(50));
     game.pickClass('Warrior');
     game.save.crystals = CLAN_CREATE_COST;
-    game.createClan('Roles');
+    await game.createClan('Roles');
     game.fillAiClanRoster();
     const ai = game.clan!.members.find((m) => m.isAi)!;
     expect(game.kickClanAi(ai.id)).toBeNull();
@@ -433,14 +433,14 @@ describe('clan invites + roles + soft MMR', () => {
     expect(down).toBeLessThan(mid);
   });
 
-  it('updates soft MMR after a Nightscar bracket match', () => {
+  it('updates soft MMR after a Nightscar bracket match', async () => {
     const game = new Game(memoryStorage(), mulberry32(60));
     game.pickClass('Warrior');
     game.save.crystals = CLAN_CREATE_COST;
     game.save.stagesCleared = 50;
     game.save.level = 18;
     // Force high team CP into Nightscar via inflated member CP after fill.
-    game.createClan('Scar');
+    await game.createClan('Scar');
     game.fillAiClanRoster();
     for (const m of game.clan!.members) m.cp = 1600;
     expect(game.save.clanNightscarMmr).toBe(0);

@@ -21,7 +21,6 @@ import {
   CLAN_CREATE_COST,
   CLAN_MAX_SIZE,
   TOKEN_DAY_CAP,
-  buildClanLeaderboard,
   canApproveJoins,
   canKickAi,
   canPromoteDemote,
