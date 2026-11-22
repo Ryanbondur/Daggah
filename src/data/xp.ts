@@ -39,7 +39,8 @@ const CLASS_STATS: Record<HeroClass, { base: { atk: number; def: number; hp: num
     Warrior: { base: { atk: 20, def: 15, hp: 220 }, growth: { atk: 4, def: 3, hp: 45 } },
     Mage: { base: { atk: 24, def: 8, hp: 160 }, growth: { atk: 5, def: 1, hp: 28 } },
     Ranger: { base: { atk: 22, def: 10, hp: 180 }, growth: { atk: 4.5, def: 2, hp: 32 } },
-    Rogue: { base: { atk: 23, def: 9, hp: 170 }, growth: { atk: 5, def: 1.5, hp: 30 } },
+    // Rogue: slight ATK lean vs Ranger; clear-CP parity tuned in combat skill mults (cpGating).
+    Rogue: { base: { atk: 24, def: 9, hp: 170 }, growth: { atk: 5.2, def: 1.5, hp: 30 } },
   };
 
 export function heroBaseStats(level: number, heroClass: HeroClass = 'Warrior'): Stats {
@@ -49,8 +50,8 @@ export function heroBaseStats(level: number, heroClass: HeroClass = 'Warrior'): 
   s.atk = Math.round(base.atk + growth.atk * n);
   s.def = Math.round(base.def + growth.def * n);
   s.hp = Math.round(base.hp + growth.hp * n);
-  s.critRate = heroClass === 'Rogue' ? 8 : heroClass === 'Ranger' ? 7 : 5;
-  s.critDmg = heroClass === 'Rogue' ? 10 : 0;
+  s.critRate = heroClass === 'Rogue' ? 10 : heroClass === 'Ranger' ? 7 : 5;
+  s.critDmg = heroClass === 'Rogue' ? 18 : 0;
   s.skillPower = heroClass === 'Mage' ? 5 : 0;
   s.energyRegen = 0;
   return s;

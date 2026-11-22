@@ -8,6 +8,7 @@ import type { PvpEvent } from '../game/pvp';
 import { ENEMY_SPRITES, SKILL_IDS, asset, heroSprite, skillIcon } from '../ui/assets';
 import type { HeroClass } from '../data/types';
 import { footOriginY, groundLineY, spriteTopY } from './ground';
+import { heroSpriteAspect } from '../ui/portrait';
 import { campHeroVisual, enemyFaceTowardX, enemyFlipX } from './visual';
 
 /** Where the backdrop's floor edge (BG_GROUND_LINE of the art) sits; independent of the actor ground line. */
@@ -347,7 +348,7 @@ export class StageScene extends Phaser.Scene {
     }
 
     const hH = H * 0.34;
-    const hW = hH * (360 / 343);
+    const hW = hH * heroSpriteAspect(this.game_.save.heroClass);
     this.hero.setDisplaySize(hW, hH);
     let hx = HERO_X * W;
     let hy = groundY;
@@ -453,7 +454,7 @@ export class StageScene extends Phaser.Scene {
     groundY: number,
   ): void {
     const hH = H * 0.22;
-    const hW = hH * (360 / 343);
+    const hW = hH * heroSpriteAspect(a.heroClass);
     let x = a.x * W;
     let y = groundY;
     let rot = 0;
@@ -791,7 +792,7 @@ export class StageScene extends Phaser.Scene {
     groundY: number,
   ): void {
     const hH = H * 0.22;
-    const hW = hH * (360 / 343);
+    const hW = hH * heroSpriteAspect(f.heroClass);
     let x = f.x * W;
     let y = groundY;
     let rot = 0;
