@@ -42,11 +42,23 @@ function buildHumanMember(player, role = "member", isPlayer = false) {
     primary: player.primary
   };
 }
-function findWeakestAiMember(members) {
+function sortAiWeakestFirst(ais) {
+  return [...ais].sort((a, b) => a.cp - b.cp || a.level - b.level || a.id.localeCompare(b.id));
+}
+function findAiToReplace(members, joinerClass) {
   const ais = members.filter((m) => m.isAi && !m.isPlayer);
   if (!ais.length) return null;
-  ais.sort((a, b) => a.cp - b.cp || a.level - b.level || a.id.localeCompare(b.id));
-  return ais[0] ?? null;
+  const sameClass = sortAiWeakestFirst(ais.filter((a) => a.heroClass === joinerClass));
+  if (sameClass.length) return sameClass[0];
+  const classCounts = /* @__PURE__ */ new Map();
+  for (const m of members) {
+    classCounts.set(m.heroClass, (classCounts.get(m.heroClass) ?? 0) + 1);
+  }
+  const redundant = sortAiWeakestFirst(
+    ais.filter((a) => (classCounts.get(a.heroClass) ?? 0) > 1)
+  );
+  if (redundant.length) return redundant[0];
+  return sortAiWeakestFirst(ais)[0] ?? null;
 }
 function admitRealMember(clan, player) {
   const members = clan.members.map(normalizeClanMember);
@@ -62,17 +74,17 @@ function admitRealMember(clan, player) {
     return { ok: true, clan: { ...clan, members: next }, replacedAi: null, added: updated };
   }
   const human = buildHumanMember(player, "member", true);
-  const weakest = findWeakestAiMember(members);
-  if (weakest) {
+  const victim = findAiToReplace(members, player.heroClass);
+  if (victim) {
     const next = members.map((m) => {
-      if (m.id !== weakest.id) return { ...m, isPlayer: false };
+      if (m.id !== victim.id) return { ...m, isPlayer: false };
       return human;
     });
-    if (weakest.role === "leader" && !next.some((m) => m.role === "leader")) {
+    if (victim.role === "leader" && !next.some((m) => m.role === "leader")) {
       const promote = next.find((m) => !m.isAi) ?? next[0];
       if (promote) promote.role = "leader";
     }
-    return { ok: true, clan: { ...clan, members: next }, replacedAi: weakest, added: human };
+    return { ok: true, clan: { ...clan, members: next }, replacedAi: victim, added: human };
   }
   if (members.length >= CLAN_MAX_SIZE) {
     return { ok: false, error: `Clan is full (${CLAN_MAX_SIZE}/${CLAN_MAX_SIZE}).` };
@@ -200,8 +212,11 @@ var INLINE_SCHEMA_STATEMENTS = [
     season_id integer not null,
     owner_key text not null,
     clan_code text,
+    clan_name text,
     wins integer not null default 0,
     losses integer not null default 0,
+    tokens integer not null default 0,
+    members integer not null default 0,
     updated_at timestamptz not null default now()
   )`,
   `create unique index if not exists season_stats_season_owner_uidx
@@ -210,12 +225,24 @@ var INLINE_SCHEMA_STATEMENTS = [
     id bigserial primary key,
     season_id integer not null,
     clan_code text not null,
+    clan_name text,
     wins integer not null default 0,
     losses integer not null default 0,
+    tokens integer not null default 0,
+    members integer not null default 0,
     updated_at timestamptz not null default now()
   )`,
   `create unique index if not exists clan_results_season_clan_uidx
     on clan_results (season_id, clan_code)`,
+  // DG-120: widen tables created by older migrate runs / prior INLINE creates.
+  `alter table season_stats add column if not exists tokens integer not null default 0`,
+  `alter table season_stats add column if not exists members integer not null default 0`,
+  `alter table season_stats add column if not exists clan_name text`,
+  `alter table clan_results add column if not exists tokens integer not null default 0`,
+  `alter table clan_results add column if not exists members integer not null default 0`,
+  `alter table clan_results add column if not exists clan_name text`,
+  `create index if not exists clan_results_season_score_idx
+    on clan_results (season_id, wins desc, tokens desc)`,
   `create table if not exists users (
     id text primary key,
     username text not null,

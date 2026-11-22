@@ -238,6 +238,11 @@ export function buildHumanMember(
   return fromAdmitMember(buildHumanMemberCore(player, role, isPlayer));
 }
 
+/** Sort AI candidates: lowest CP, then lowest level, then id. */
+function sortAiWeakestFirst(ais: ClanMember[]): ClanMember[] {
+  return [...ais].sort((a, b) => a.cp - b.cp || a.level - b.level || a.id.localeCompare(b.id));
+}
+
 /**
  * Weakest AI for real-player replacement: lowest CP, then lowest level, then id.
  * Never returns a real (non-AI) member.
@@ -248,8 +253,48 @@ export function findWeakestAiMember(members: ClanMember[]): ClanMember | null {
 }
 
 /**
+ * Pick an AI seat to replace on real join.
+ * Prefer redundant-class AI (joiner's class first, then any class with 2+ seats)
+ * before falling back to lowest CP — keeps 4v4 class coverage without an extra Fill.
+ * Never returns a real (non-AI) member.
+ */
+export function findAiToReplace(members: ClanMember[], joinerClass: HeroClass): ClanMember | null {
+  const ais = members.filter((m) => m.isAi && !m.isPlayer);
+  if (!ais.length) return null;
+
+  const sameClass = sortAiWeakestFirst(ais.filter((a) => a.heroClass === joinerClass));
+  if (sameClass.length) return sameClass[0]!;
+
+  const classCounts = new Map<HeroClass, number>();
+  for (const m of members) {
+    classCounts.set(m.heroClass, (classCounts.get(m.heroClass) ?? 0) + 1);
+  }
+  const redundant = sortAiWeakestFirst(
+    ais.filter((a) => (classCounts.get(a.heroClass) ?? 0) > 1),
+  );
+  if (redundant.length) return redundant[0]!;
+
+  return sortAiWeakestFirst(ais)[0] ?? null;
+}
+
+/** Officers + leaders can kick AI and approve pending joins. */
+export function canKickAi(role: ClanRole): boolean {
+  return role === 'leader' || role === 'officer';
+}
+
+/** Officers + leaders mint invite links / approve pending joins. */
+export function canApproveJoins(role: ClanRole): boolean {
+  return role === 'leader' || role === 'officer';
+}
+
+/** Leaders only: promote / demote roster roles. */
+export function canPromoteDemote(role: ClanRole): boolean {
+  return role === 'leader';
+}
+
+/**
  * Admit a real player into an existing clan hall.
- * - If any AI remain: replace the weakest AI (lowest CP → level → id). Never kicks reals.
+ * - If any AI remain: replace class-priority AI (redundant class → lowest CP). Never kicks reals.
  * - Else if under CLAN_MAX_SIZE: append.
  * - Else: clan full.
  */
@@ -262,6 +307,47 @@ export function admitRealMember(clan: ClanData, player: ClanPlayerSnapshot): Adm
     replacedAi: result.replacedAi ? fromAdmitMember(result.replacedAi) : null,
     added: fromAdmitMember(result.added),
   };
+}
+
+/** Remove an AI member by id. Never removes real humans. */
+export function kickAiMember(clan: ClanData, aiId: string): { ok: true; clan: ClanData } | { ok: false; error: string } {
+  const members = clan.members.map(normalizeClanMember);
+  const target = members.find((m) => m.id === aiId);
+  if (!target) return { ok: false, error: 'Member not found.' };
+  if (!target.isAi || target.isPlayer) return { ok: false, error: 'Can only kick AI fillers.' };
+  const next = members.filter((m) => m.id !== aiId);
+  if (!next.some((m) => m.role === 'leader')) {
+    const promote = next.find((m) => !m.isAi) ?? next[0];
+    if (promote) promote.role = 'leader';
+  }
+  return { ok: true, clan: { ...clan, members: next } };
+}
+
+/**
+ * Leader promote/demote.
+ * - promote: member → officer
+ * - demote: officer → member
+ * Cannot change the sole leader; cannot promote to leader via this path.
+ */
+export function setMemberRole(
+  clan: ClanData,
+  memberId: string,
+  role: Exclude<ClanRole, 'leader'>,
+): { ok: true; clan: ClanData } | { ok: false; error: string } {
+  const members = clan.members.map(normalizeClanMember);
+  const idx = members.findIndex((m) => m.id === memberId);
+  if (idx < 0) return { ok: false, error: 'Member not found.' };
+  const target = members[idx]!;
+  if (target.isAi) return { ok: false, error: 'AI fillers have no rank.' };
+  if (target.role === 'leader') return { ok: false, error: 'Cannot demote the clan leader here.' };
+  if (role === 'officer' && target.role === 'officer') {
+    return { ok: true, clan: { ...clan, members } };
+  }
+  if (role === 'member' && target.role === 'member') {
+    return { ok: true, clan: { ...clan, members } };
+  }
+  const next = members.map((m, i) => (i === idx ? { ...m, role } : m));
+  return { ok: true, clan: { ...clan, members: next } };
 }
 
 /** Mark which member is the local player for this save view. */

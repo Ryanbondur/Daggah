@@ -17,7 +17,15 @@ import {
   ASCENDED_SEAL_FRAGMENTS_PER_SEAL,
   formatAscendedEntryCost,
 } from '../game/ascended';
-import { CLAN_CREATE_COST, CLAN_MAX_SIZE, TOKEN_DAY_CAP } from '../game/clan';
+import {
+  CLAN_CREATE_COST,
+  CLAN_MAX_SIZE,
+  TOKEN_DAY_CAP,
+  buildClanLeaderboard,
+  canApproveJoins,
+  canKickAi,
+  canPromoteDemote,
+} from '../game/clan';
 import type { ClanMember } from '../game/clan';
 import { localClanBoard, mergePlayerOntoBoard } from '../game/clanBoardClient';
 import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../game/clanBrackets';
@@ -436,31 +444,59 @@ function renderClanHallPane(ctx: UIContext): string {
   const clan = g.clan;
   if (!clan) {
     return `<div class="clan-panel">
-      <p class="ai-banner">Create a clan and share the invite code — signed-in players join across devices and replace the weakest AI (lowest CP). Cap ${CLAN_MAX_SIZE}. Guests share halls on this device only.</p>
+      <p class="ai-banner">Create a clan and share the code or a one-time officer invite. Real joins prefer redundant-class AI across devices when signed in. Cap ${CLAN_MAX_SIZE}. Guests share halls on this device only.</p>
       <div class="clan-forms">
         <section class="clan-form">
           <h3>Create a clan</h3>
-          <p>Found your banner for <b>${CLAN_CREATE_COST}</b> crystals. You become leader. Share the invite code.</p>
+          <p>Found your banner for <b>${CLAN_CREATE_COST}</b> crystals. You become leader. Share the code or mint invite links.</p>
           <label class="field">Clan name<input id="clan-name" maxlength="24" placeholder="Nightscar Wolves" autocomplete="off" /></label>
           <button type="button" class="btn red" data-action="clan-create">Create (−${CLAN_CREATE_COST} crystals)</button>
         </section>
         <section class="clan-form">
           <h3>Join a clan</h3>
-          <p>Enter an invite code. You take the weakest AI’s seat (lowest CP) — real members stay.</p>
-          <label class="field">Invite code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" autocomplete="off" /></label>
-          <button type="button" class="btn gold" data-action="clan-join">Join with code</button>
+          <p>Permanent code joins immediately. One-time invite links expire. Or request join for officer approval.</p>
+          <label class="field">Code or invite<input id="clan-code" maxlength="12" placeholder="ABC123 or invite" style="text-transform:uppercase" autocomplete="off" /></label>
+          <button type="button" class="btn gold" data-action="clan-join">Join</button>
+          <button type="button" class="btn stone" data-action="clan-request">Request join</button>
         </section>
       </div>
       <button type="button" class="btn stone clan-practice-cta" data-action="clan-practice">Queue practice 4v4 (AI)</button>
     </div>`;
   }
 
+  const role = g.myClanRole();
+  const officer = canApproveJoins(role);
+  const kicker = canKickAi(role);
+  const leader = canPromoteDemote(role);
+  const pending = officer ? g.listPendingClanJoins() : [];
   const missing = g.clanMissingClasses();
   const rows = clan.members
     .map((m) => {
       const badge = clanMemberBadge(m);
-      return `<div class="clan-member"><span>${badge} ${escapeHtml(m.name)} <small>${escapeHtml(m.role)}</small></span><b>${m.heroClass} · ${fmt(m.cp)} CP</b></div>`;
+      const actions: string[] = [];
+      if (kicker && m.isAi) {
+        actions.push(
+          `<button type="button" class="btn tiny tan" data-action="clan-kick-ai" data-id="${escapeHtml(m.id)}">Kick</button>`,
+        );
+      }
+      if (leader && !m.isAi && !m.isPlayer && m.role === 'member') {
+        actions.push(
+          `<button type="button" class="btn tiny gold" data-action="clan-promote" data-id="${escapeHtml(m.id)}">Promote</button>`,
+        );
+      }
+      if (leader && !m.isAi && !m.isPlayer && m.role === 'officer') {
+        actions.push(
+          `<button type="button" class="btn tiny tan" data-action="clan-demote" data-id="${escapeHtml(m.id)}">Demote</button>`,
+        );
+      }
+      return `<div class="clan-member"><span>${badge} ${escapeHtml(m.name)} <small>${escapeHtml(m.role)}</small></span><b>${m.heroClass} · ${fmt(m.cp)} CP</b>${actions.length ? `<span class="clan-row-actions">${actions.join('')}</span>` : ''}</div>`;
     })
+    .join('');
+  const pendingRows = pending
+    .map(
+      (p) =>
+        `<div class="clan-member pending"><span>${escapeHtml(p.name)} <small>${escapeHtml(p.heroClass)} · pending</small></span><span class="clan-row-actions"><button type="button" class="btn tiny gold" data-action="clan-approve" data-id="${escapeHtml(p.humanId)}">Approve</button><button type="button" class="btn tiny tan" data-action="clan-deny" data-id="${escapeHtml(p.humanId)}">Deny</button></span></div>`,
+    )
     .join('');
   const classCheck = HERO_CLASSES.map((c) => {
     const ok = clan.members.some((m) => m.heroClass === c);
@@ -477,6 +513,13 @@ function renderClanHallPane(ctx: UIContext): string {
     bracket.canChallengeUp && bracket.nextLabel
       ? `<button type="button" class="btn gold ${ready ? '' : 'disabled'}" data-action="clan-queue-challenge">Challenge up → ${escapeHtml(bracket.nextLabel)}</button>`
       : '';
+  const inviteBtn = officer
+    ? `<button type="button" class="btn stone" data-action="clan-invite">Mint invite link</button>`
+    : '';
+  const mmrNote =
+    bracket.bracket === 'nightscar' && g.save.clanNightscarMmr
+      ? ` · Soft MMR ${fmt(g.save.clanNightscarMmr)}`
+      : '';
 
   const raid = g.clanRaidStatus();
   const raidReady = raid.unlocked && raid.attemptsLeft > 0;
@@ -491,7 +534,7 @@ function renderClanHallPane(ctx: UIContext): string {
       <img src="${asset('ui/clan-hall.webp')}" alt="" />
       <div>
         <b>${escapeHtml(clan.name)}</b>
-        <span>Code <em class="clan-code">${escapeHtml(clan.code)}</em> · ${clan.members.length}/${CLAN_MAX_SIZE} members</span>
+        <span>Code <em class="clan-code">${escapeHtml(clan.code)}</em> · ${clan.members.length}/${CLAN_MAX_SIZE} · you: ${escapeHtml(role)}</span>
         <div class="class-pips">${classCheck}</div>
       </div>
     </div>
@@ -499,7 +542,7 @@ function renderClanHallPane(ctx: UIContext): string {
       <span class="clan-bracket-pill ${bracket.bracket}">${escapeHtml(bracket.label)}</span>
       <div>
         <b>Team CP ${fmt(bracket.teamCp)}</b>
-        <span>${escapeHtml(bracketRangeLabel(bracket.bracket))} · Challenge-up ${bracket.challengeUpLeft}/1 today</span>
+        <span>${escapeHtml(bracketRangeLabel(bracket.bracket))} · Challenge-up ${bracket.challengeUpLeft}/1 today${mmrNote}</span>
       </div>
     </div>
     <div class="clan-raid-card">
@@ -513,8 +556,9 @@ function renderClanHallPane(ctx: UIContext): string {
       <p class="tagline">${escapeHtml(raidLockNote)}</p>
       <button type="button" class="btn red ${raidReady ? '' : 'disabled'}" data-action="clan-raid" ${raidReady ? '' : 'aria-disabled="true"'}>Start Clan Raid</button>
     </div>
-    <p class="ai-banner">Invite code shared above. Real joins replace weakest AI (lowest CP). AI fillers pad classes until then.</p>
+    <p class="ai-banner">Permanent code above, or mint a one-time officer invite. Real joins prefer redundant-class AI.</p>
     <div class="clan-roster">${rows}</div>
+    ${pending.length ? `<div class="clan-pending"><b>Pending joins</b>${pendingRows}</div>` : ''}
     ${
       missing.length
         ? `<p class="clan-warn">Missing ${missing.join(', ')}. Fill AI roster for 4v4.</p>`
@@ -523,6 +567,7 @@ function renderClanHallPane(ctx: UIContext): string {
     ${floorBlock}
     <div class="clan-actions-row">
       <button type="button" class="btn stone" data-action="clan-recruit">Fill AI roster</button>
+      ${inviteBtn}
       <button type="button" class="btn red ${ready && bracket.floorMet ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
       ${challengeBtn}
       <button type="button" class="btn tan" data-action="clan-leave">Leave clan</button>

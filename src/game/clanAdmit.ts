@@ -96,6 +96,11 @@ export function buildHumanMember(
   };
 }
 
+/** Sort AI candidates: lowest CP, then lowest level, then id. */
+function sortAiWeakestFirst(ais: ClanMember[]): ClanMember[] {
+  return [...ais].sort((a, b) => a.cp - b.cp || a.level - b.level || a.id.localeCompare(b.id));
+}
+
 /**
  * Weakest AI for real-player replacement: lowest CP, then lowest level, then id.
  * Never returns a real (non-AI) member.
@@ -103,8 +108,32 @@ export function buildHumanMember(
 export function findWeakestAiMember(members: ClanMember[]): ClanMember | null {
   const ais = members.filter((m) => m.isAi && !m.isPlayer);
   if (!ais.length) return null;
-  ais.sort((a, b) => a.cp - b.cp || a.level - b.level || a.id.localeCompare(b.id));
-  return ais[0] ?? null;
+  return sortAiWeakestFirst(ais)[0] ?? null;
+}
+
+/**
+ * Pick an AI seat to replace on real join.
+ * Prefer redundant-class AI (joiner's class first, then any class with 2+ seats)
+ * before falling back to lowest CP — keeps 4v4 class coverage without an extra Fill.
+ * Never returns a real (non-AI) member.
+ */
+export function findAiToReplace(members: ClanMember[], joinerClass: HeroClass): ClanMember | null {
+  const ais = members.filter((m) => m.isAi && !m.isPlayer);
+  if (!ais.length) return null;
+
+  const sameClass = sortAiWeakestFirst(ais.filter((a) => a.heroClass === joinerClass));
+  if (sameClass.length) return sameClass[0]!;
+
+  const classCounts = new Map<HeroClass, number>();
+  for (const m of members) {
+    classCounts.set(m.heroClass, (classCounts.get(m.heroClass) ?? 0) + 1);
+  }
+  const redundant = sortAiWeakestFirst(
+    ais.filter((a) => (classCounts.get(a.heroClass) ?? 0) > 1),
+  );
+  if (redundant.length) return redundant[0]!;
+
+  return sortAiWeakestFirst(ais)[0] ?? null;
 }
 
 export type AdmitRealResult =
@@ -113,7 +142,7 @@ export type AdmitRealResult =
 
 /**
  * Admit a real player into an existing clan hall.
- * - If any AI remain: replace the weakest AI (lowest CP → level → id). Never kicks reals.
+ * - If any AI remain: replace class-priority AI (redundant class → lowest CP). Never kicks reals.
  * - Else if under CLAN_MAX_SIZE: append.
  * - Else: clan full.
  */
@@ -132,17 +161,17 @@ export function admitRealMember(clan: ClanData, player: ClanPlayerSnapshot): Adm
   }
 
   const human = buildHumanMember(player, 'member', true);
-  const weakest = findWeakestAiMember(members);
-  if (weakest) {
+  const victim = findAiToReplace(members, player.heroClass);
+  if (victim) {
     const next = members.map((m) => {
-      if (m.id !== weakest.id) return { ...m, isPlayer: false };
+      if (m.id !== victim.id) return { ...m, isPlayer: false };
       return human;
     });
-    if (weakest.role === 'leader' && !next.some((m) => m.role === 'leader')) {
+    if (victim.role === 'leader' && !next.some((m) => m.role === 'leader')) {
       const promote = next.find((m) => !m.isAi) ?? next[0];
       if (promote) promote.role = 'leader';
     }
-    return { ok: true, clan: { ...clan, members: next }, replacedAi: weakest, added: human };
+    return { ok: true, clan: { ...clan, members: next }, replacedAi: victim, added: human };
   }
   if (members.length >= CLAN_MAX_SIZE) {
     return { ok: false, error: `Clan is full (${CLAN_MAX_SIZE}/${CLAN_MAX_SIZE}).` };

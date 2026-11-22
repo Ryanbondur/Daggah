@@ -22,6 +22,7 @@ import {
   showBlacksmith,
   showChat,
   showClanArmorer,
+  showClanQueueWait,
   showClassPick,
   showCompare,
   showDungeonKeyBuy,
@@ -36,6 +37,7 @@ import {
   maybeShowLoginGate,
   maybeShowWhatsNew,
 } from './modals';
+import { copyTextToClipboard } from './clipboard';
 import { escapeHtml } from './escape';
 import { renderAdventure, renderCamp, renderClan, renderSkill } from './panes';
 import { ICON } from './svg';
@@ -705,6 +707,52 @@ export function mountUI(
         });
         break;
       }
+      case 'clan-request': {
+        const code = (pane.querySelector('#clan-code') as HTMLInputElement | null)?.value ?? '';
+        const err = game.requestClanJoin(code);
+        if (err) game.toast(err, 'bad');
+        break;
+      }
+      case 'clan-invite': {
+        const res = game.createOfficerInvite();
+        if (typeof res === 'string') game.toast(res, 'bad');
+        else {
+          void copyTextToClipboard(res.token).then((ok) => {
+            game.toast(ok ? `Invite copied: ${res.token}` : `Invite: ${res.token}`, ok ? 'good' : 'info');
+          });
+        }
+        break;
+      }
+      case 'clan-kick-ai': {
+        const err = game.kickClanAi(String(d.id ?? ''));
+        if (err) game.toast(err, 'bad');
+        ctx.render();
+        break;
+      }
+      case 'clan-promote': {
+        const err = game.setClanMemberRole(String(d.id ?? ''), 'officer');
+        if (err) game.toast(err, 'bad');
+        ctx.render();
+        break;
+      }
+      case 'clan-demote': {
+        const err = game.setClanMemberRole(String(d.id ?? ''), 'member');
+        if (err) game.toast(err, 'bad');
+        ctx.render();
+        break;
+      }
+      case 'clan-approve': {
+        const err = game.approveClanJoin(String(d.id ?? ''));
+        if (err) game.toast(err, 'bad');
+        ctx.render();
+        break;
+      }
+      case 'clan-deny': {
+        const err = game.denyClanJoin(String(d.id ?? ''));
+        if (err) game.toast(err, 'bad');
+        ctx.render();
+        break;
+      }
       case 'clan-recruit': {
         const err = game.fillAiClanRoster();
         if (err) game.toast(err, err.includes('already') ? 'info' : 'bad');
@@ -712,10 +760,7 @@ export function mountUI(
         break;
       }
       case 'clan-practice': {
-        void withStage(() => {
-          const err = game.queuePractice4v4();
-          if (err) game.toast(err, 'bad');
-        });
+        showClanQueueWait(ctx, { practice: true });
         break;
       }
       case 'clan-queue': {
@@ -723,10 +768,7 @@ export function mountUI(
           game.toast('Need one of each class — Fill AI roster', 'bad');
           break;
         }
-        void withStage(() => {
-          const err = game.queueClanPvp();
-          if (err) game.toast(err, 'bad');
-        });
+        showClanQueueWait(ctx);
         break;
       }
       case 'clan-queue-challenge': {
@@ -734,10 +776,7 @@ export function mountUI(
           game.toast('Need one of each class — Fill AI roster', 'bad');
           break;
         }
-        void withStage(() => {
-          const err = game.queueClanPvp({ challengeUp: true });
-          if (err) game.toast(err, 'bad');
-        });
+        showClanQueueWait(ctx, { challengeUp: true });
         break;
       }
       case 'clan-leave':
