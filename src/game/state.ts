@@ -135,6 +135,11 @@ export interface SaveData {
   /** Unlocks Nightscar-exclusive Clan Armorer legendaries after a Nightscar match. */
   clanNightscarUnlocked: boolean;
   clan: ClanData | null;
+  /**
+   * Stable id for this save's human in shared clan halls.
+   * Empty until first create/join; then persisted across sessions.
+   */
+  clanHumanId: string;
   season: SeasonData;
   /** First-run tutorial coach. */
   tutorial: TutorialState;
@@ -223,6 +228,7 @@ export function defaultSave(now = Date.now()): SaveData {
     clanChallengeUpDayKey: '',
     clanNightscarUnlocked: false,
     clan: null,
+    clanHumanId: '',
     season: defaultSeason(now),
     tutorial: defaultTutorial(),
     lastSeenContentVersion: APP_CONTENT_VERSION,
@@ -440,6 +446,7 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   | 'clanChallengeUpDayKey'
   | 'clanNightscarUnlocked'
   | 'clan'
+  | 'clanHumanId'
   | 'season'
   | 'tutorial'
   | 'lastSeenContentVersion'
@@ -478,6 +485,10 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
       typeof parsed.clanChallengeUpDayKey === 'string' ? parsed.clanChallengeUpDayKey : '',
     clanNightscarUnlocked: !!parsed.clanNightscarUnlocked,
     clan: parsed.clan ? sanitizeClan(parsed.clan) : null,
+    clanHumanId:
+      typeof parsed.clanHumanId === 'string' && parsed.clanHumanId.trim()
+        ? sanitizeDomId(parsed.clanHumanId, 48)
+        : '',
     season: parsed.season?.startedAt ? parsed.season : defaultSeason(parsed.createdAt ?? now),
     tutorial,
     lastSeenContentVersion,

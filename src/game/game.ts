@@ -84,7 +84,7 @@ import { APP_CONTENT_VERSION, shouldShowWhatsNew } from '../data/whatsNew';
 import type { HeroClass, Item, PlaystyleId, RarityId, SetId, SkillId, SlotId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
-import type { ClanData } from './clan';
+import type { ClanData, ClanPlayerSnapshot } from './clan';
 import {
   buildCraftOffers,
   craftDustCost,
@@ -94,37 +94,44 @@ import {
 } from './craft';
 import {
   CLAN_CREATE_COST,
+  CLAN_MAX_SIZE,
   TOKEN_DAY_CAP,
+  admitRealMember,
   applyTokenCap,
   createClan,
   dayKey,
   fillAiRoster,
-  joinClanByCode,
   missingClasses,
   normalizeClanMember,
   pickQueueRoster,
   rosterReady,
   sanitizeClanCode,
   sanitizeClanName,
+  sanitizeMemberName,
   seasonDay,
   seasonRemainingMs,
+  viewClanForHuman,
 } from './clan';
 import type { ClanBracketId } from './clanBrackets';
 import {
   BRACKET_TARGET_AVG_CP,
   CLAN_BRACKET_LABEL,
+  PRACTICE_MATCH_WAIT_S,
   assignBracket,
   bracketTokenReward,
   challengeUpAvailable,
   clanQueueFloorMessage,
+  matchCpBandForQueue,
   meetsClanQueueFloor,
   nextBracket,
   teamCpSum,
 } from './clanBrackets';
+import { lookupClanHall, publishClanHall, removeMemberFromHall } from './clanHall';
 import type { BattleEvent, HeroInput, RunDef } from './combat';
 import { Battle, STEP } from './combat';
 import type { PvpEvent, PvpFighterSnap, PvpResult } from './pvp';
 import { buildOpponentRoster, simulatePvp } from './pvp';
+import { readAuthSession } from './authSession';
 import { nextNightscarPity } from './nightscarPity';
 import type { Rng } from './rng';
 import { defaultRng } from './rng';
@@ -1808,16 +1815,78 @@ export class Game {
     return seasonRemainingMs(this.save.season);
   }
 
+  /** Stable human id for shared clan halls (auth userId when signed in). */
+  ensureClanHumanId(): string {
+    if (this.save.clanHumanId) return this.save.clanHumanId;
+    const session = readAuthSession(this.storage);
+    const id = session?.userId
+      ? `human_${session.userId}`
+      : `human_${Math.floor(this.rng.next() * 1e9).toString(36)}`;
+    this.save.clanHumanId = id;
+    return id;
+  }
+
+  clanDisplayName(): string {
+    const session = readAuthSession(this.storage);
+    if (session?.username) return sanitizeMemberName(session.username);
+    return 'You';
+  }
+
+  private playerClanSnapshot(): ClanPlayerSnapshot {
+    return {
+      heroClass: this.save.heroClass,
+      level: this.save.level,
+      cp: this.cp,
+      loadout: this.save.loadout,
+      primary: this.save.primary,
+      humanId: this.ensureClanHumanId(),
+      name: this.clanDisplayName(),
+    };
+  }
+
+  /** Pull latest shared hall into this save (other reals may have joined). */
+  syncClanFromHall(): void {
+    const clan = this.save.clan;
+    if (!clan) return;
+    const hall = lookupClanHall(this.storage, clan.code);
+    if (!hall) {
+      publishClanHall(this.storage, clan);
+      return;
+    }
+    const humanId = this.ensureClanHumanId();
+    // Keep our seat if hall somehow dropped us (offline race) — re-admit without kicking reals.
+    if (!hall.members.some((m) => m.id === humanId)) {
+      const admitted = admitRealMember(hall, this.playerClanSnapshot());
+      if (admitted.ok) {
+        this.save.clan = viewClanForHuman(admitted.clan, humanId);
+        publishClanHall(this.storage, admitted.clan);
+        return;
+      }
+    }
+    this.save.clan = viewClanForHuman(hall, humanId);
+  }
+
+  private publishHall(): void {
+    if (!this.save.clan) return;
+    publishClanHall(this.storage, this.save.clan);
+  }
+
   syncPlayerClanMember(): void {
     const clan = this.save.clan;
     if (!clan) return;
-    const me = clan.members.find((m) => m.isPlayer);
+    const humanId = this.ensureClanHumanId();
+    let me = clan.members.find((m) => m.id === humanId) ?? clan.members.find((m) => m.isPlayer);
     if (!me) return;
+    me.id = humanId;
+    me.name = this.clanDisplayName();
     me.heroClass = this.save.heroClass;
     me.level = this.save.level;
     me.cp = this.cp;
     me.loadout = [...this.save.loadout];
     me.primary = this.save.primary;
+    me.isPlayer = true;
+    me.isAi = false;
+    this.publishHall();
   }
 
   createClan(name: string): string | null {
@@ -1825,32 +1894,34 @@ export class Game {
     if (!this.save.classPicked) return 'Pick a class first.';
     if (this.save.crystals < CLAN_CREATE_COST) return `Need ${CLAN_CREATE_COST} crystals to found a clan.`;
     this.save.crystals -= CLAN_CREATE_COST;
-    this.save.clan = createClan(this.rng, sanitizeClanName(name), {
-      heroClass: this.save.heroClass,
-      level: this.save.level,
-      cp: this.cp,
-      loadout: this.save.loadout,
-      primary: this.save.primary,
-    });
-    this.say(`Clan ${this.save.clan.name} founded. Code ${this.save.clan.code}.`);
+    this.save.clan = createClan(this.rng, sanitizeClanName(name), this.playerClanSnapshot());
+    this.publishHall();
+    this.say(`Clan ${this.save.clan.name} founded. Code ${this.save.clan.code}. Share the code so real players can join.`);
     this.toast(`Clan founded (−${CLAN_CREATE_COST} crystals)`, 'good');
     this.advanceTutorial('clan');
     this.changed();
     return null;
   }
 
+  /**
+   * Join an existing published clan by code.
+   * Replaces the weakest AI (lowest CP → level → id) when AI remain; never kicks real players.
+   */
   joinClan(code: string): string | null {
     if (this.save.clan) return 'Already in a clan.';
     if (!this.save.classPicked) return 'Pick a class first.';
     if (!code.trim()) return 'Enter a clan code.';
-    this.save.clan = joinClanByCode(this.rng, sanitizeClanCode(code), {
-      heroClass: this.save.heroClass,
-      level: this.save.level,
-      cp: this.cp,
-      loadout: this.save.loadout,
-      primary: this.save.primary,
-    });
-    this.say(`Joined ${this.save.clan.name} (${this.save.clan.code}).`);
+    const clean = sanitizeClanCode(code);
+    const hall = lookupClanHall(this.storage, clean);
+    if (!hall) return 'No clan with that code. Ask the leader for an invite code.';
+    const result = admitRealMember(hall, this.playerClanSnapshot());
+    if (!result.ok) return result.error;
+    this.save.clan = viewClanForHuman(result.clan, this.ensureClanHumanId());
+    this.publishHall();
+    const swap = result.replacedAi
+      ? ` Replaced AI ${result.replacedAi.name} (${result.replacedAi.cp} CP).`
+      : '';
+    this.say(`Joined ${this.save.clan.name} (${this.save.clan.code}).${swap}`);
     this.toast(`Joined ${this.save.clan.name}`, 'good');
     this.advanceTutorial('clan');
     this.changed();
@@ -1860,6 +1931,9 @@ export class Game {
   leaveClan(): string | null {
     if (!this.save.clan) return 'Not in a clan.';
     const name = this.save.clan.name;
+    const code = this.save.clan.code;
+    const humanId = this.ensureClanHumanId();
+    removeMemberFromHall(this.storage, code, humanId);
     this.save.clan = null;
     this.say(`Left ${name}.`);
     this.changed();
@@ -1869,15 +1943,20 @@ export class Game {
   /** Fill missing class slots with AI teammates (keeps the human on their class). */
   fillAiClanRoster(): string | null {
     if (!this.save.clan) return 'Join or create a clan first.';
+    this.syncClanFromHall();
     this.save.clan.members = this.save.clan.members.map(normalizeClanMember);
+    if (this.save.clan.members.length >= CLAN_MAX_SIZE && missingClasses(this.save.clan.members).length) {
+      return `Clan is full (${CLAN_MAX_SIZE}).`;
+    }
     const added = fillAiRoster(this.save.clan, this.rng, this.save.level, 'scaled');
     if (!added.length) {
       if (rosterReady(this.save.clan.members)) return 'Roster already has one of each class.';
-      return 'Clan is full.';
+      return `Clan is full (${CLAN_MAX_SIZE}).`;
     }
     this.save.clan.members.push(...added);
+    this.publishHall();
     this.toast(`AI fillers: ${added.map((m) => m.heroClass).join(', ')}`, 'good');
-    this.say(`AI roster filled (+${added.length}). Solo playtest until live multiplayer.`);
+    this.say(`AI roster filled (+${added.length}). Real joins replace the weakest AI (lowest CP).`);
     this.changed();
     return null;
   }
@@ -1932,13 +2011,8 @@ export class Game {
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
     if (!this.save.classPicked) return 'Pick a class first.';
     if (!this.save.clan) {
-      this.save.clan = createClan(this.rng, 'Practice Hall', {
-        heroClass: this.save.heroClass,
-        level: this.save.level,
-        cp: this.cp,
-        loadout: this.save.loadout,
-        primary: this.save.primary,
-      });
+      this.save.clan = createClan(this.rng, 'Practice Hall', this.playerClanSnapshot());
+      this.publishHall();
       this.say(`Practice Hall opened (AI playtest clan). Code ${this.save.clan.code}.`);
     }
     const fillErr = this.fillAiClanRoster();
@@ -2073,6 +2147,7 @@ export class Game {
     if (!meetsClanQueueFloor(this.save.stagesCleared, this.cp)) {
       return clanQueueFloorMessage();
     }
+    this.syncClanFromHall();
     this.save.clan.members = this.save.clan.members.map(normalizeClanMember);
     this.syncPlayerClanMember();
     const roster = pickQueueRoster(this.save.clan.members, this.save.heroClass);
@@ -2093,11 +2168,14 @@ export class Game {
     }
     const avgCp = teamCp / roster.length;
     const matchAvg = usedChallenge ? BRACKET_TARGET_AVG_CP[matchBracket] : avgCp;
-    const enemies = buildOpponentRoster(this.rng, roster, matchAvg);
+    const atTop = natural === 'nightscar';
+    const band = matchCpBandForQueue(PRACTICE_MATCH_WAIT_S, { atTopOfLadder: atTop });
+    const enemies = buildOpponentRoster(this.rng, roster, matchAvg, { bandPct: band.pct });
     const result = simulatePvp(roster, enemies, this.save.gear, this.save.level, this.rng, {
       bracket: matchBracket,
       challengeUp: usedChallenge,
       teamCp,
+      matchBandLabel: band.label,
     });
     this.refreshClanTokenDay();
     if (usedChallenge) this.save.clanChallengeUpDayKey = dayKey();
@@ -2147,8 +2225,8 @@ export class Game {
   }
 
   private beginPvpPlayback(result: PvpResult, tokens: number): void {
-    // Keep short wipeouts readable; stretch long matches into ~8–12s of stage time.
-    const targetWall = Math.max(4, Math.min(12, Math.max(0.5, result.duration) / 5));
+    // Keep short wipeouts readable; stretch long matches into ~8–16s of stage time.
+    const targetWall = Math.max(4, Math.min(16, Math.max(0.5, result.duration) / 6));
     const rate = Math.max(0.15, result.duration / targetWall);
     this.pvpPlayback = {
       result,

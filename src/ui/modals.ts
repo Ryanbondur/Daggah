@@ -15,7 +15,8 @@ import type { HeroClass, Item, RarityId, SetId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_LABEL } from '../data/types';
 import { missingSlotsForSet } from '../game/craft';
 import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
-import { CLAN_CREATE_COST, TOKEN_DAY_CAP } from '../game/clan';
+import { CLAN_CREATE_COST, CLAN_MAX_SIZE, TOKEN_DAY_CAP } from '../game/clan';
+import type { ClanMember } from '../game/clan';
 import {
   changePassword,
   loginAccount,
@@ -1208,19 +1209,26 @@ export function showDungeonKeyBuy(
   paint(room0 === 0 ? 0 : Math.max(1, Math.min(Math.max(shortfall0, 1), room0)));
 }
 
+function clanMemberBadgeHtml(m: ClanMember): string {
+  if (m.isPlayer) return '<span class="ai-pill you">YOU</span>';
+  if (m.isAi) return '<span class="ai-pill">AI</span>';
+  return '<span class="ai-pill real">REAL</span>';
+}
+
 export function showClanHall(ctx: UIContext): void {
   const g = ctx.game;
   g.refreshClanTokenDay();
+  g.syncClanFromHall();
   const clan = g.clan;
   let body = '';
   if (!clan) {
-    body = `<p class="ai-banner">Solo playtest: create or join, then fill AI teammates for the other three classes. Live multiplayer is not online yet.</p>
-      <p>Found a clan for ${CLAN_CREATE_COST} crystals, or join with a code (local mock).</p>
+    body = `<p class="ai-banner">Create a clan and share the invite code. Real joins replace the weakest AI (lowest CP). Cap ${CLAN_MAX_SIZE}.</p>
+      <p>Found a clan for ${CLAN_CREATE_COST} crystals, or join with a published invite code.</p>
       <label class="field">Clan name<input id="clan-name" maxlength="24" placeholder="Nightscar Wolves" /></label>
       <div class="clan-actions">
         <button class="btn red" data-action="clan-create">Create Clan (−${CLAN_CREATE_COST})</button>
       </div>
-      <label class="field">Join code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" /></label>
+      <label class="field">Invite code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" /></label>
       <div class="clan-actions">
         <button class="btn gold" data-action="clan-join">Join Clan</button>
         <button class="btn stone" data-action="clan-practice">Queue practice 4v4 (AI)</button>
@@ -1229,7 +1237,7 @@ export function showClanHall(ctx: UIContext): void {
     const missing = g.clanMissingClasses();
     const rows = clan.members
       .map((m) => {
-        const badge = m.isPlayer ? '<span class="ai-pill you">YOU</span>' : '<span class="ai-pill">AI</span>';
+        const badge = clanMemberBadgeHtml(m);
         return `<div class="row"><span>${badge} ${escapeHtml(m.name)} <small>${escapeHtml(m.role)}</small></span><b>${m.heroClass} · CP ${fmt(m.cp)}</b></div>`;
       })
       .join('');
@@ -1247,11 +1255,11 @@ export function showClanHall(ctx: UIContext): void {
       bracket.canChallengeUp && bracket.nextLabel
         ? `<button class="btn gold ${g.clanRosterReady() ? '' : 'disabled'}" data-action="clan-queue-challenge">Challenge up → ${escapeHtml(bracket.nextLabel)}</button>`
         : '';
-    body = `<div class="clan-banner"><img src="${asset('ui/clan-hall.webp')}" alt="" /><div><b>${escapeHtml(clan.name)}</b><span>Code ${escapeHtml(clan.code)}</span><div class="class-pips">${classCheck}</div></div></div>
+    body = `<div class="clan-banner"><img src="${asset('ui/clan-hall.webp')}" alt="" /><div><b>${escapeHtml(clan.name)}</b><span>Code ${escapeHtml(clan.code)} · ${clan.members.length}/${CLAN_MAX_SIZE}</span><div class="class-pips">${classCheck}</div></div></div>
       <div class="clan-bracket-card"><span class="clan-bracket-pill ${bracket.bracket}">${escapeHtml(bracket.label)}</span><div><b>Team CP ${fmt(bracket.teamCp)}</b><span>${escapeHtml(bracketRangeLabel(bracket.bracket))} · Challenge-up ${bracket.challengeUpLeft}/1 today</span></div></div>
-      <p class="ai-banner">AI teammates &amp; rivals until full live multiplayer. Your class stays human.</p>
+      <p class="ai-banner">Share code ${escapeHtml(clan.code)}. Real joins replace weakest AI (lowest CP).</p>
       <div class="body-scroll">${rows}</div>
-      ${missing.length ? `<p class="warn">Missing: ${missing.join(', ')}. Fill AI roster for 4v4.</p>` : '<p>Roster has one of each class — ready to queue (AI practice).</p>'}
+      ${missing.length ? `<p class="warn">Missing: ${missing.join(', ')}. Fill AI roster for 4v4.</p>` : '<p>Roster has one of each class — ready to queue.</p>'}
       ${floorBlock}
       <div class="btns" style="flex-wrap:wrap">
         <button class="btn stone" data-action="clan-recruit">Fill AI roster</button>
@@ -1600,17 +1608,45 @@ export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number)
     .map((e) => `<div class="row"><span>${escapeHtml(e.text)}</span></div>`)
     .join('');
   const tier = CLAN_BRACKET_LABEL[result.bracket] ?? result.bracket;
+  const maxDmg = Math.max(1, ...result.dpsBoard.map((e) => e.damage));
+  const mvp = result.mvp;
+  const mvpBlock = mvp
+    ? `<div class="pvp-mvp" role="status">
+        <span class="pvp-mvp-tag">MVP</span>
+        <div>
+          <b>${escapeHtml(mvp.name)}</b>
+          <span>${escapeHtml(mvp.heroClass)}${mvp.isPlayer ? ' · you' : mvp.isAi ? ' · AI' : ''}</span>
+        </div>
+        <i>${fmt(mvp.damage)} dmg · ${mvp.dps}/s</i>
+      </div>`
+    : '';
+  const dpsRows = result.dpsBoard
+    .map((e) => {
+      const pct = Math.round((e.damage / maxDmg) * 100);
+      const side = e.team === 'ally' ? 'ally' : 'foe';
+      const tag = e.rank === 1 ? ' #1' : e.isPlayer ? ' you' : '';
+      return `<div class="pvp-dps-row ${side}${e.rank === 1 ? ' top' : ''}${e.isPlayer ? ' you' : ''}">
+        <span class="pvp-dps-rank">${e.rank}</span>
+        <span class="pvp-dps-name">${escapeHtml(e.name)}<small>${escapeHtml(e.heroClass)}${tag}</small></span>
+        <span class="pvp-dps-bar"><i style="width:${pct}%"></i></span>
+        <span class="pvp-dps-val">${fmt(e.damage)}</span>
+      </div>`;
+    })
+    .join('');
   const el = ctx.openModal(
     `<div class="sheet pvp-sheet">
       <h2>${result.won ? 'Clan Victory' : 'Clan Defeat'}</h2>
       <div class="body">
         <div class="pvp-arena" style="background-image:url('${asset('bg/bg-clan-arena.jpg')}')"></div>
-        ${result.practiceAi ? '<p class="ai-banner">AI practice match — live multiplayer not online yet.</p>' : ''}
-        <div class="clan-bracket-card"><span class="clan-bracket-pill ${result.bracket}">${escapeHtml(tier)}</span><div><b>Team CP ${fmt(result.teamCp)}</b><span>${result.challengeUp ? 'Challenge-up match' : 'Bracket match'}</span></div></div>
+        ${result.practiceAi ? `<p class="ai-banner">AI practice match — rivals seeded at ${escapeHtml(result.matchBandLabel)}.</p>` : ''}
+        <div class="clan-bracket-card"><span class="clan-bracket-pill ${result.bracket}">${escapeHtml(tier)}</span><div><b>Team CP ${fmt(result.teamCp)}</b><span>${result.challengeUp ? 'Challenge-up match' : 'Bracket match'} · ${escapeHtml(result.matchBandLabel)}</span></div></div>
         <div class="row"><span>Score</span><b>${result.allyKills} – ${result.enemyKills}${result.timedOut ? ' (timeout)' : ''}</b></div>
         <div class="row"><span>Duration</span><b>${result.duration}s</b></div>
         <div class="row"><span>Clan Tokens</span><b>+${tokens}</b></div>
-        <div class="pvp-teams"><div><h3>Your clan</h3>${ally}</div><div><h3>AI rivals</h3>${enemy}</div></div>
+        ${mvpBlock}
+        <h3>Damage dealt</h3>
+        <div class="pvp-dps-board">${dpsRows}</div>
+        <div class="pvp-teams"><div><h3>Your clan</h3>${ally}</div><div><h3>Rivals</h3>${enemy}</div></div>
         <h3>Replay strip</h3>
         <div class="replay-strip">${strip || '<span class="tagline">No casts recorded.</span>'}</div>
         <div class="body-scroll">${log}</div>

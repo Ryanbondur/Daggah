@@ -6,10 +6,20 @@ import { maxEnergy } from '../data/xp';
 import type { ClanMember } from './clan';
 import { buildAiMember } from './clan';
 import type { ClanBracketId } from './clanBrackets';
+import { MATCH_CP_BANDS, matchCpBandForQueue, PRACTICE_MATCH_WAIT_S } from './clanBrackets';
 import type { Rng } from './rng';
 
-export const PVP_TIMEOUT_S = 90;
+/** Sim clock timeout (seconds). Tuned for longer, readable 4v4s. */
+export const PVP_TIMEOUT_S = 150;
 export const PVP_KILL_TARGET = 4;
+/** Extra HP on all fighters so trades last longer without feeling spongy. */
+export const PVP_HP_MUL = 1.85;
+/** Global outgoing damage scale (skills + autos). */
+export const PVP_DMG_MUL = 0.68;
+/** Basic swing cadence (seconds between autos). */
+export const PVP_SWING_S = 1.55;
+/** Ultimate skill multiplier (was 2.4). */
+export const PVP_ULT_MUL = 2.0;
 
 export interface PvpFighter {
   id: string;
@@ -31,6 +41,8 @@ export interface PvpFighter {
   swingT: number;
   dead: boolean;
   x: number;
+  /** Cumulative damage dealt this match (for DPS board / MVP). */
+  damageDealt: number;
 }
 
 export interface PvpEvent {
@@ -61,6 +73,21 @@ export interface PvpFighterSnap {
   isPlayer: boolean;
 }
 
+/** Ranked damage entry for mid-fight HUD + post-match MVP board. */
+export interface PvpDpsEntry {
+  id: string;
+  name: string;
+  heroClass: HeroClass;
+  team: 'ally' | 'enemy';
+  isPlayer: boolean;
+  isAi: boolean;
+  damage: number;
+  /** Damage / duration (0 if fight just started). */
+  dps: number;
+  /** 1-based rank among all eight fighters by damage. */
+  rank: number;
+}
+
 export interface PvpResult {
   won: boolean;
   allyKills: number;
@@ -85,6 +112,12 @@ export interface PvpResult {
   challengeUp: boolean;
   /** Ally team CP sum used for bracket assignment. */
   teamCp: number;
+  /** Ranked DPS board (all fighters, damage desc). */
+  dpsBoard: PvpDpsEntry[];
+  /** Highest-damage ally (MVP). Null only if ally team dealt 0. */
+  mvp: PvpDpsEntry | null;
+  /** Matchmaking band label used to seed rivals (e.g. ±8% CP). */
+  matchBandLabel: string;
 }
 
 function scaleStats(stats: Stats, pct: number): Stats {
@@ -123,6 +156,7 @@ function fighterFromMember(
   const lane = HERO_CLASSES.indexOf(m.heroClass);
   const x = team === 'ally' ? 0.1 + lane * 0.1 : 0.6 + lane * 0.1;
   const isAi = m.isPlayer ? false : m.isAi !== false;
+  const maxHp = Math.round(stats.hp * PVP_HP_MUL);
   return {
     id: `${team}_${m.id}`,
     name: m.name,
@@ -135,22 +169,36 @@ function fighterFromMember(
     effects: totals.effects,
     loadout,
     primary,
-    hp: stats.hp,
-    maxHp: stats.hp,
+    hp: maxHp,
+    maxHp,
     energy: maxEn * 0.6,
     maxEnergy: maxEn,
     cd: {},
     swingT: 0.3 + rng.next() * 0.5,
     dead: false,
     x,
+    damageDealt: 0,
   };
+}
+
+export interface BuildOpponentOpts {
+  /** Half-width band as fraction of avgCp (e.g. 0.08 → ±8%). Default: practice tight band. */
+  bandPct?: number;
 }
 
 /**
  * Enemy clan for 4v4 practice: one of each class with endgame/testing gear,
- * CP nudged toward the ally average (±15%).
+ * CP nudged toward the ally average within the matchmaking band.
  */
-export function buildOpponentRoster(rng: Rng, ally: ClanMember[], avgCp: number): ClanMember[] {
+export function buildOpponentRoster(
+  rng: Rng,
+  ally: ClanMember[],
+  avgCp: number,
+  opts?: BuildOpponentOpts,
+): ClanMember[] {
+  const bandPct = opts?.bandPct ?? MATCH_CP_BANDS[0]!.pct;
+  const lo = 1 - bandPct;
+  const span = bandPct * 2;
   const team: ClanMember[] = [];
   for (const cls of HERO_CLASSES) {
     const mirror = ally.find((m) => m.heroClass === cls);
@@ -161,7 +209,7 @@ export function buildOpponentRoster(rng: Rng, ally: ClanMember[], avgCp: number)
     // Prefer endgame kit when allies are mid/high CP or high level; else scale down.
     const useEndgame = avgCp >= 600 || baseLevel >= 12;
     let m = buildAiMember(rng, cls, useEndgame ? Math.max(baseLevel, 16) : baseLevel, 'member', useEndgame ? 'endgame' : 'scaled');
-    const target = avgCp * (0.85 + rng.next() * 0.3);
+    const target = avgCp * (lo + rng.next() * span);
     if (m.cp > 0 && target > 0) {
       const ratio = target / m.cp;
       const gl = Math.max(1, Math.min(20, Math.round(m.level * Math.sqrt(Math.max(0.5, ratio)))));
@@ -177,8 +225,8 @@ export function buildOpponentRoster(rng: Rng, ally: ClanMember[], avgCp: number)
 function skillMul(id: SkillId): number {
   const def = SKILL_BY_ID[id];
   if (def.passive) return 1;
-  if (def.ultimate) return 2.4;
-  return 1.35 + Math.min(1.2, def.energy / 400);
+  if (def.ultimate) return PVP_ULT_MUL;
+  return 1.28 + Math.min(1.05, def.energy / 420);
 }
 
 function skillCost(f: PvpFighter, id: SkillId): number {
@@ -202,16 +250,67 @@ function dealDamage(attacker: PvpFighter, target: PvpFighter, mul: number, rng: 
   const critChance = Math.min(0.75, attacker.stats.critRate / 100);
   const crit = rng.next() < critChance;
   if (crit) dmg *= Math.max(1.2, attacker.stats.critDmg / 100);
-  const mitigated = Math.max(1, dmg * (100 / (100 + target.stats.def * 0.85)));
+  const mitigated = Math.max(1, dmg * (100 / (100 + target.stats.def * 0.95)));
   const ultBonus = mul >= 2 ? 1 + attacker.effects.ultimateDmgPct / 100 : 1;
-  const final = Math.round(mitigated * ultBonus * (1 + attacker.effects.aoePct / 200));
+  const final = Math.round(mitigated * ultBonus * (1 + attacker.effects.aoePct / 200) * PVP_DMG_MUL);
   target.hp = Math.max(0, target.hp - final);
+  attacker.damageDealt += final;
   return { dmg: final, crit };
+}
+
+/** Build ranked DPS board from fighter damage totals. */
+export function buildDpsBoard(
+  fighters: { id: string; name: string; heroClass: HeroClass; team: 'ally' | 'enemy'; isPlayer: boolean; isAi: boolean; damageDealt: number }[],
+  duration: number,
+): PvpDpsEntry[] {
+  const dur = Math.max(0.1, duration);
+  const sorted = [...fighters].sort((a, b) => b.damageDealt - a.damageDealt || a.name.localeCompare(b.name));
+  return sorted.map((f, i) => ({
+    id: f.id,
+    name: f.name,
+    heroClass: f.heroClass,
+    team: f.team,
+    isPlayer: f.isPlayer,
+    isAi: f.isAi,
+    damage: f.damageDealt,
+    dps: Math.round((f.damageDealt / dur) * 10) / 10,
+    rank: i + 1,
+  }));
+}
+
+/** Live DPS totals from playback events already applied (HUD). */
+export function dpsBoardFromPlayback(
+  fighters: PvpFighterSnap[],
+  playback: PvpEvent[],
+  throughIdx: number,
+  elapsed: number,
+): PvpDpsEntry[] {
+  const dmg = new Map<string, number>();
+  for (const f of fighters) dmg.set(`${f.team}|${f.name}`, 0);
+  const end = Math.min(throughIdx, playback.length);
+  for (let i = 0; i < end; i++) {
+    const ev = playback[i]!;
+    if ((ev.t !== 'hit' && ev.t !== 'skill') || ev.dmg == null || !ev.actor || !ev.team) continue;
+    const key = `${ev.team}|${ev.actor}`;
+    dmg.set(key, (dmg.get(key) ?? 0) + ev.dmg);
+  }
+  return buildDpsBoard(
+    fighters.map((f) => ({
+      id: f.id,
+      name: f.name,
+      heroClass: f.heroClass,
+      team: f.team,
+      isPlayer: f.isPlayer,
+      isAi: f.isAi,
+      damageDealt: dmg.get(`${f.team}|${f.name}`) ?? 0,
+    })),
+    elapsed,
+  );
 }
 
 /**
  * Client-local 4v4 auto-battle (GDD §10).
- * Fight until 4 kills or 90s; timeout → higher remaining HP wins.
+ * Fight until 4 kills or timeout; timeout → higher remaining HP wins.
  */
 export function simulatePvp(
   allyRoster: ClanMember[],
@@ -219,7 +318,12 @@ export function simulatePvp(
   playerGear: Gear,
   playerLevel: number,
   rng: Rng,
-  meta: { bracket: ClanBracketId; challengeUp: boolean; teamCp: number } = {
+  meta: {
+    bracket: ClanBracketId;
+    challengeUp: boolean;
+    teamCp: number;
+    matchBandLabel?: string;
+  } = {
     bracket: 'veteran',
     challengeUp: false,
     teamCp: 0,
@@ -311,7 +415,7 @@ export function simulatePvp(
       }
 
       if (f.swingT <= 0) {
-        f.swingT = 1.2;
+        f.swingT = PVP_SWING_S;
         const { dmg, crit } = dealDamage(f, target, 1, rng);
         log.push({
           t: 'hit',
@@ -389,11 +493,17 @@ export function simulatePvp(
     isPlayer: f.isPlayer,
   }));
 
+  const duration = Math.round(time * 10) / 10;
+  const dpsBoard = buildDpsBoard(fighters, duration);
+  const mvp = dpsBoard.find((e) => e.team === 'ally' && e.damage > 0) ?? null;
+  const matchBandLabel =
+    meta.matchBandLabel ?? matchCpBandForQueue(PRACTICE_MATCH_WAIT_S).label;
+
   return {
     won,
     allyKills,
     enemyKills,
-    duration: Math.round(time * 10) / 10,
+    duration,
     timedOut,
     log: log.filter((e) => e.t !== 'hit').slice(-48),
     playback: log,
@@ -406,6 +516,11 @@ export function simulatePvp(
     bracket: meta.bracket,
     challengeUp: meta.challengeUp,
     teamCp: meta.teamCp,
+    dpsBoard,
+    mvp,
+    matchBandLabel,
   };
 }
 
+// Re-export band helper for callers that import matchmaking from pvp.
+export { matchCpBandForQueue, PRACTICE_MATCH_WAIT_S };

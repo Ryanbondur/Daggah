@@ -17,7 +17,8 @@ import {
   ASCENDED_SEAL_FRAGMENTS_PER_SEAL,
   formatAscendedEntryCost,
 } from '../game/ascended';
-import { CLAN_CREATE_COST, TOKEN_DAY_CAP, buildClanLeaderboard } from '../game/clan';
+import { CLAN_CREATE_COST, CLAN_MAX_SIZE, TOKEN_DAY_CAP, buildClanLeaderboard } from '../game/clan';
+import type { ClanMember } from '../game/clan';
 import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../game/clanBrackets';
 import { CLAN_RAID_WEEKLY_ATTEMPTS } from '../game/clanRaid';
 import { NIGHTSCAR_PITY_MAX } from '../game/nightscarPity';
@@ -422,23 +423,30 @@ function clanSubTabs(active: ClanPane): string {
     .join('')}</div>`;
 }
 
+function clanMemberBadge(m: ClanMember): string {
+  if (m.isPlayer) return '<span class="ai-pill you">YOU</span>';
+  if (m.isAi) return '<span class="ai-pill">AI</span>';
+  return '<span class="ai-pill real">REAL</span>';
+}
+
 function renderClanHallPane(ctx: UIContext): string {
   const g = ctx.game;
+  g.syncClanFromHall();
   const clan = g.clan;
   if (!clan) {
     return `<div class="clan-panel">
-      <p class="ai-banner">Solo playtest: create or join a clan, fill AI teammates, then queue 4v4. Live multiplayer is not online yet.</p>
+      <p class="ai-banner">Create a clan and share the code — real players join and replace the weakest AI (lowest CP). Cap ${CLAN_MAX_SIZE}.</p>
       <div class="clan-forms">
         <section class="clan-form">
           <h3>Create a clan</h3>
-          <p>Found your banner for <b>${CLAN_CREATE_COST}</b> crystals. You become leader.</p>
+          <p>Found your banner for <b>${CLAN_CREATE_COST}</b> crystals. You become leader. Share the invite code.</p>
           <label class="field">Clan name<input id="clan-name" maxlength="24" placeholder="Nightscar Wolves" autocomplete="off" /></label>
           <button type="button" class="btn red" data-action="clan-create">Create (−${CLAN_CREATE_COST} crystals)</button>
         </section>
         <section class="clan-form">
           <h3>Join a clan</h3>
-          <p>Enter a code to join a local mock hall.</p>
-          <label class="field">Join code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" autocomplete="off" /></label>
+          <p>Enter an invite code. You take the weakest AI’s seat (lowest CP) — real members stay.</p>
+          <label class="field">Invite code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" autocomplete="off" /></label>
           <button type="button" class="btn gold" data-action="clan-join">Join with code</button>
         </section>
       </div>
@@ -449,7 +457,7 @@ function renderClanHallPane(ctx: UIContext): string {
   const missing = g.clanMissingClasses();
   const rows = clan.members
     .map((m) => {
-      const badge = m.isPlayer ? '<span class="ai-pill you">YOU</span>' : '<span class="ai-pill">AI</span>';
+      const badge = clanMemberBadge(m);
       return `<div class="clan-member"><span>${badge} ${escapeHtml(m.name)} <small>${escapeHtml(m.role)}</small></span><b>${m.heroClass} · ${fmt(m.cp)} CP</b></div>`;
     })
     .join('');
@@ -482,7 +490,7 @@ function renderClanHallPane(ctx: UIContext): string {
       <img src="${asset('ui/clan-hall.webp')}" alt="" />
       <div>
         <b>${escapeHtml(clan.name)}</b>
-        <span>Code <em class="clan-code">${escapeHtml(clan.code)}</em> · ${clan.members.length} members</span>
+        <span>Code <em class="clan-code">${escapeHtml(clan.code)}</em> · ${clan.members.length}/${CLAN_MAX_SIZE} members</span>
         <div class="class-pips">${classCheck}</div>
       </div>
     </div>
@@ -504,7 +512,7 @@ function renderClanHallPane(ctx: UIContext): string {
       <p class="tagline">${escapeHtml(raidLockNote)}</p>
       <button type="button" class="btn red ${raidReady ? '' : 'disabled'}" data-action="clan-raid" ${raidReady ? '' : 'aria-disabled="true"'}>Start Clan Raid</button>
     </div>
-    <p class="ai-banner">AI teammates &amp; rivals until live multiplayer. Your class stays human.</p>
+    <p class="ai-banner">Invite code shared above. Real joins replace weakest AI (lowest CP). AI fillers pad classes until then.</p>
     <div class="clan-roster">${rows}</div>
     ${
       missing.length

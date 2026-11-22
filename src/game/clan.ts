@@ -8,7 +8,8 @@ import type { Rng } from './rng';
 
 export const CLAN_CREATE_COST = 500;
 export const CLAN_MIN_SIZE = 4;
-export const CLAN_MAX_SIZE = 20;
+/** Soft roster cap (UI + AI fill + local leaderboard rivals). */
+export const CLAN_MAX_SIZE = 25;
 export const TOKEN_WIN = 20;
 export const TOKEN_LOSS = 5;
 export const TOKEN_DAY_CAP = 200;
@@ -219,24 +220,121 @@ export function sanitizeClanCode(code: string): string {
     .slice(0, 8);
 }
 
-export function createClan(
-  rng: Rng,
-  name: string,
-  player: { heroClass: HeroClass; level: number; cp: number; loadout: SkillId[]; primary: SkillId | null },
-): ClanData {
-  const trimmed = sanitizeClanName(name);
-  const playerMember: ClanMember = {
-    id: 'player',
-    name: 'You',
+export type ClanPlayerSnapshot = {
+  heroClass: HeroClass;
+  level: number;
+  cp: number;
+  loadout: SkillId[];
+  primary: SkillId | null;
+  /** Stable id across devices/saves for this human in shared halls. */
+  humanId: string;
+  /** Display name (auth username or "You"). */
+  name: string;
+};
+
+/** Build a real (non-AI) clan member. `isPlayer` is set by the local save view. */
+export function buildHumanMember(
+  player: ClanPlayerSnapshot,
+  role: ClanRole = 'member',
+  isPlayer = false,
+): ClanMember {
+  return {
+    id: player.humanId,
+    name: sanitizeMemberName(player.name),
     heroClass: player.heroClass,
-    role: 'leader',
-    isPlayer: true,
+    role,
+    isPlayer,
     isAi: false,
     level: player.level,
     cp: player.cp,
     loadout: [...player.loadout],
     primary: player.primary,
   };
+}
+
+/**
+ * Weakest AI for real-player replacement: lowest CP, then lowest level, then id.
+ * Never returns a real (non-AI) member.
+ */
+export function findWeakestAiMember(members: ClanMember[]): ClanMember | null {
+  const ais = members.filter((m) => m.isAi && !m.isPlayer);
+  if (!ais.length) return null;
+  ais.sort((a, b) => a.cp - b.cp || a.level - b.level || a.id.localeCompare(b.id));
+  return ais[0] ?? null;
+}
+
+export type AdmitRealResult =
+  | { ok: true; clan: ClanData; replacedAi: ClanMember | null; added: ClanMember }
+  | { ok: false; error: string };
+
+/**
+ * Admit a real player into an existing clan hall.
+ * - If any AI remain: replace the weakest AI (lowest CP → level → id). Never kicks reals.
+ * - Else if under CLAN_MAX_SIZE: append.
+ * - Else: clan full.
+ */
+export function admitRealMember(clan: ClanData, player: ClanPlayerSnapshot): AdmitRealResult {
+  const members = clan.members.map(normalizeClanMember);
+  const existingIdx = members.findIndex((m) => m.id === player.humanId);
+  if (existingIdx >= 0) {
+    // Already in this hall (re-join / sync) — refresh snapshot, never kick anyone.
+    const existing = members[existingIdx]!;
+    const updated = buildHumanMember(
+      player,
+      existing.role === 'leader' ? 'leader' : existing.role,
+      true,
+    );
+    const next = members.map((m, i) => (i === existingIdx ? updated : { ...m, isPlayer: false }));
+    return { ok: true, clan: { ...clan, members: next }, replacedAi: null, added: updated };
+  }
+
+  const human = buildHumanMember(player, 'member', true);
+  const weakest = findWeakestAiMember(members);
+  if (weakest) {
+    const next = members.map((m) => {
+      if (m.id !== weakest.id) return { ...m, isPlayer: false };
+      return human;
+    });
+    // Ensure a leader exists after replacing an AI leader.
+    if (weakest.role === 'leader' && !next.some((m) => m.role === 'leader')) {
+      const promote = next.find((m) => !m.isAi) ?? next[0];
+      if (promote) promote.role = 'leader';
+    }
+    return { ok: true, clan: { ...clan, members: next }, replacedAi: weakest, added: human };
+  }
+  if (members.length >= CLAN_MAX_SIZE) {
+    return { ok: false, error: `Clan is full (${CLAN_MAX_SIZE}/${CLAN_MAX_SIZE}).` };
+  }
+  return {
+    ok: true,
+    clan: { ...clan, members: [...members.map((m) => ({ ...m, isPlayer: false })), human] },
+    replacedAi: null,
+    added: human,
+  };
+}
+
+/** Mark which member is the local player for this save view. */
+export function viewClanForHuman(clan: ClanData, humanId: string): ClanData {
+  return {
+    ...clan,
+    members: clan.members.map(normalizeClanMember).map((m) => {
+      const isLocal = m.id === humanId;
+      if (isLocal || m.isAi === false) {
+        return { ...m, isAi: false, isPlayer: isLocal };
+      }
+      // AI fillers / rivals on the roster.
+      return { ...m, isAi: true, isPlayer: false };
+    }),
+  };
+}
+
+export function createClan(
+  rng: Rng,
+  name: string,
+  player: ClanPlayerSnapshot,
+): ClanData {
+  const trimmed = sanitizeClanName(name);
+  const playerMember = buildHumanMember(player, 'leader', true);
   return {
     id: `clan_${Math.floor(rng.next() * 1e9).toString(36)}`,
     name: trimmed,
@@ -245,17 +343,19 @@ export function createClan(
   };
 }
 
-/** Join by code — local mock: any code opens/creates a hall with that banner. */
+/**
+ * @deprecated Prefer joining a published hall via admitRealMember.
+ * Kept for tests that invent a solo mock hall with an AI leader.
+ */
 export function joinClanByCode(
   rng: Rng,
   code: string,
-  player: { heroClass: HeroClass; level: number; cp: number; loadout: SkillId[]; primary: SkillId | null },
+  player: ClanPlayerSnapshot,
 ): ClanData {
   const clean = sanitizeClanCode(code) || makeCode(rng);
   const clan = createClan(rng, `Clan ${clean.slice(0, 4)}`, player);
   clan.code = clean;
-  clan.members[0].role = 'member';
-  // Prefill AI leader of a different class when possible.
+  clan.members[0]!.role = 'member';
   const other = HERO_CLASSES.find((c) => c !== player.heroClass) ?? 'Warrior';
   const leader = buildAiMember(rng, other, Math.max(1, player.level - 1), 'leader', 'scaled');
   leader.name = 'Hall Warden';
@@ -303,7 +403,7 @@ export function recruitForRoster(clan: ClanData, rng: Rng, playerLevel: number):
   return fillAiRoster(clan, rng, playerLevel, 'scaled');
 }
 
-/** Pick one of each class for the 4v4 queue (player always included). */
+/** Pick one of each class for the 4v4 queue (player always included; prefer real humans over AI). */
 export function pickQueueRoster(members: ClanMember[], playerClass: HeroClass): ClanMember[] | null {
   if (!rosterReady(members)) return null;
   const player = members.find((m) => m.isPlayer);
@@ -311,7 +411,8 @@ export function pickQueueRoster(members: ClanMember[], playerClass: HeroClass): 
   const team: ClanMember[] = [player];
   for (const cls of HERO_CLASSES) {
     if (cls === playerClass) continue;
-    const pick = members.find((m) => !m.isPlayer && m.heroClass === cls);
+    const real = members.find((m) => !m.isPlayer && !m.isAi && m.heroClass === cls);
+    const pick = real ?? members.find((m) => !m.isPlayer && m.heroClass === cls);
     if (!pick) return null;
     team.push(pick);
   }
