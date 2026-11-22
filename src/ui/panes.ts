@@ -435,7 +435,7 @@ function renderClanHallPane(ctx: UIContext): string {
   const clan = g.clan;
   if (!clan) {
     return `<div class="clan-panel">
-      <p class="ai-banner">Create a clan and share the code — real players join and replace the weakest AI (lowest CP). Cap ${CLAN_MAX_SIZE}.</p>
+      <p class="ai-banner">Create a clan and share the invite code — signed-in players join across devices and replace the weakest AI (lowest CP). Cap ${CLAN_MAX_SIZE}. Guests share halls on this device only.</p>
       <div class="clan-forms">
         <section class="clan-form">
           <h3>Create a clan</h3>

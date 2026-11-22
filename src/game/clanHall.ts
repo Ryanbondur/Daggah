@@ -1,10 +1,15 @@
 /**
- * Local shared clan-hall registry (same-origin storage).
- * Lets real players join by code across saves that share this key.
+ * Clan-hall registry: same-origin localStorage fallback + helpers.
+ * Cross-device sync uses /api/daggah-clan when auth + DB are available.
  * Does not touch DG-42 season_stats / clan_results stubs.
  */
 import type { ClanData } from './clan';
-import { normalizeClanMember, sanitizeClanCode, sanitizeClanName } from './clan';
+import { sanitizeClanCode } from './clan';
+import {
+  hallSnapshot,
+  removeHumanFromClan,
+  type ClanData as AdmitClanData,
+} from './clanAdmit';
 import type { Storage } from './state';
 
 export const CLAN_HALLS_KEY = 'daggah.clanHalls';
@@ -15,6 +20,14 @@ export type ClanHallRecord = {
 };
 
 type HallMap = Record<string, ClanHallRecord>;
+
+function asAdmit(clan: ClanData): AdmitClanData {
+  return clan as unknown as AdmitClanData;
+}
+
+function fromAdmit(clan: AdmitClanData): ClanData {
+  return clan as unknown as ClanData;
+}
 
 function readMap(storage: Storage | undefined): HallMap {
   if (!storage) return {};
@@ -38,27 +51,9 @@ function writeMap(storage: Storage | undefined, map: HallMap): void {
   }
 }
 
-/** Snapshot for the shared hall: strip local isPlayer; keep isAi false for humans. */
-function hallSnapshot(clan: ClanData): ClanData {
-  const code = sanitizeClanCode(clan.code);
-  return {
-    id: clan.id,
-    name: sanitizeClanName(clan.name),
-    code,
-    members: (clan.members ?? []).map((m) => {
-      const n = normalizeClanMember(m);
-      return {
-        ...n,
-        isPlayer: false,
-        isAi: n.isAi === false ? false : true,
-      };
-    }),
-  };
-}
-
-/** Publish / overwrite a hall snapshot for join-by-code. */
+/** Publish / overwrite a hall snapshot for join-by-code (local fallback). */
 export function publishClanHall(storage: Storage | undefined, clan: ClanData, now = Date.now()): void {
-  const snap = hallSnapshot(clan);
+  const snap = fromAdmit(hallSnapshot(asAdmit(clan)));
   if (!snap.code) return;
   const map = readMap(storage);
   map[snap.code] = { clan: snap, updatedAt: now };
@@ -70,7 +65,7 @@ export function lookupClanHall(storage: Storage | undefined, code: string): Clan
   if (!clean) return null;
   const rec = readMap(storage)[clean];
   if (!rec?.clan) return null;
-  return hallSnapshot(rec.clan);
+  return fromAdmit(hallSnapshot(asAdmit(rec.clan)));
 }
 
 export function removeMemberFromHall(
@@ -84,16 +79,12 @@ export function removeMemberFromHall(
   const map = readMap(storage);
   const rec = map[clean];
   if (!rec) return;
-  const members = rec.clan.members.filter((m) => m.id !== humanId).map((m) => ({ ...m }));
-  if (!members.length) {
+  const next = removeHumanFromClan(asAdmit(rec.clan), humanId);
+  if (!next) {
     delete map[clean];
   } else {
-    if (!members.some((m) => m.role === 'leader')) {
-      const promote = members.find((m) => m.isAi === false) ?? members[0];
-      if (promote) promote.role = 'leader';
-    }
     map[clean] = {
-      clan: { ...rec.clan, code: clean, members },
+      clan: fromAdmit(next),
       updatedAt: now,
     };
   }

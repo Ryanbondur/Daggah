@@ -17,6 +17,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const routes = [
   { entry: 'api/_entries/daggah-auth.ts', outfile: 'api/daggah-auth.js' },
   { entry: 'api/_entries/daggah-save.ts', outfile: 'api/daggah-save.js' },
+  { entry: 'api/_entries/daggah-clan.ts', outfile: 'api/daggah-clan.js' },
 ];
 
 async function bundleOne({ entry, outfile }) {
@@ -46,7 +47,7 @@ for (const route of routes) {
   await bundleOne(route);
 }
 
-for (const stale of ['api/daggah-auth.ts', 'api/daggah-save.ts']) {
+for (const stale of ['api/daggah-auth.ts', 'api/daggah-save.ts', 'api/daggah-clan.ts']) {
   try {
     await unlink(join(root, stale));
     console.log(`removed stale ${stale}`);

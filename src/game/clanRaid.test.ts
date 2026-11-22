@@ -16,13 +16,13 @@ import {
 import { Game } from './game';
 import { mulberry32 } from './rng';
 
-function raidReadyGame(): Game {
+async function raidReadyGame(): Promise<Game> {
   const game = new Game(undefined, mulberry32(7));
   game.save.classPicked = true;
   game.save.level = 20;
   game.save.stagesCleared = 50;
   game.save.crystals = 500;
-  expect(game.createClan('Raid Test')).toBeNull();
+  expect(await game.createClan('Raid Test')).toBeNull();
   return game;
 }
 
@@ -77,18 +77,18 @@ describe('clanRaid helpers', () => {
 });
 
 describe('Clan Raid flow', () => {
-  it('requires clan + Act 10 clear', () => {
+  it('requires clan + Act 10 clear', async () => {
     const game = new Game(undefined, mulberry32(3));
     game.save.classPicked = true;
     game.save.crystals = 500;
     expect(game.startClanRaid()).toMatch(/clan/i);
-    expect(game.createClan('Early')).toBeNull();
+    expect(await game.createClan('Early')).toBeNull();
     game.save.stagesCleared = 20;
     expect(game.startClanRaid()).toMatch(/Nightscar|Act 10/i);
   });
 
-  it('starts a single-boss run with a party of 4 and spends a weekly attempt', () => {
-    const game = raidReadyGame();
+  it('starts a single-boss run with a party of 4 and spends a weekly attempt', async () => {
+    const game = await raidReadyGame();
     expect(game.clanRaidAttemptsLeft()).toBe(CLAN_RAID_WEEKLY_ATTEMPTS);
     expect(game.startClanRaid()).toBeNull();
     expect(game.mode).toBe('dungeon');
@@ -101,8 +101,8 @@ describe('Clan Raid flow', () => {
     expect(game.clanRaidAttemptsLeft()).toBe(CLAN_RAID_WEEKLY_ATTEMPTS - 1);
   });
 
-  it('caps weekly attempts', () => {
-    const game = raidReadyGame();
+  it('caps weekly attempts', async () => {
+    const game = await raidReadyGame();
     for (let i = 0; i < CLAN_RAID_WEEKLY_ATTEMPTS; i++) {
       expect(game.startClanRaid()).toBeNull();
       game.retreat();
@@ -110,8 +110,8 @@ describe('Clan Raid flow', () => {
     expect(game.startClanRaid()).toMatch(/attempts/i);
   });
 
-  it('awards seals or fragments on clear — never gear loot', () => {
-    const game = raidReadyGame();
+  it('awards seals or fragments on clear — never gear loot', async () => {
+    const game = await raidReadyGame();
     const beforeSeals = game.save.ascendedSeals;
     const beforeFrags = game.save.ascendedSealFragments;
     expect(game.startClanRaid()).toBeNull();

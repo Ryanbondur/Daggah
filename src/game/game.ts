@@ -127,6 +127,15 @@ import {
   teamCpSum,
 } from './clanBrackets';
 import { lookupClanHall, publishClanHall, removeMemberFromHall } from './clanHall';
+import {
+  canUseClanHallCloud,
+  cloudCreateHall,
+  cloudJoinHall,
+  cloudLeaveHall,
+  cloudLookupHall,
+  cloudPublishHall,
+  cloudSyncHall,
+} from './clanHallCloud';
 import type { BattleEvent, HeroInput, RunDef } from './combat';
 import { Battle, STEP } from './combat';
 import type { PvpEvent, PvpFighterSnap, PvpResult } from './pvp';
@@ -1848,13 +1857,21 @@ export class Game {
   syncClanFromHall(): void {
     const clan = this.save.clan;
     if (!clan) return;
+    this.syncClanFromLocalHall();
+    if (canUseClanHallCloud(this.storage)) {
+      void this.syncClanFromCloudHall();
+    }
+  }
+
+  private syncClanFromLocalHall(): void {
+    const clan = this.save.clan;
+    if (!clan) return;
     const hall = lookupClanHall(this.storage, clan.code);
     if (!hall) {
       publishClanHall(this.storage, clan);
       return;
     }
     const humanId = this.ensureClanHumanId();
-    // Keep our seat if hall somehow dropped us (offline race) — re-admit without kicking reals.
     if (!hall.members.some((m) => m.id === humanId)) {
       const admitted = admitRealMember(hall, this.playerClanSnapshot());
       if (admitted.ok) {
@@ -1866,9 +1883,26 @@ export class Game {
     this.save.clan = viewClanForHuman(hall, humanId);
   }
 
+  private async syncClanFromCloudHall(): Promise<void> {
+    const clan = this.save.clan;
+    if (!clan || !canUseClanHallCloud(this.storage)) return;
+    const result = await cloudSyncHall(this.storage, clan.code, this.playerClanSnapshot());
+    if (!result.ok) {
+      if (result.fallback) this.syncClanFromLocalHall();
+      return;
+    }
+    const humanId = this.ensureClanHumanId();
+    this.save.clan = viewClanForHuman(result.clan, humanId);
+    publishClanHall(this.storage, result.clan);
+    this.changed();
+  }
+
   private publishHall(): void {
     if (!this.save.clan) return;
     publishClanHall(this.storage, this.save.clan);
+    if (canUseClanHallCloud(this.storage)) {
+      void cloudPublishHall(this.storage, this.save.clan);
+    }
   }
 
   syncPlayerClanMember(): void {
@@ -1889,14 +1923,37 @@ export class Game {
     this.publishHall();
   }
 
-  createClan(name: string): string | null {
+  async createClan(name: string): Promise<string | null> {
     if (this.save.clan) return 'Already in a clan.';
     if (!this.save.classPicked) return 'Pick a class first.';
     if (this.save.crystals < CLAN_CREATE_COST) return `Need ${CLAN_CREATE_COST} crystals to found a clan.`;
     this.save.crystals -= CLAN_CREATE_COST;
-    this.save.clan = createClan(this.rng, sanitizeClanName(name), this.playerClanSnapshot());
-    this.publishHall();
-    this.say(`Clan ${this.save.clan.name} founded. Code ${this.save.clan.code}. Share the code so real players can join.`);
+    const local = createClan(this.rng, sanitizeClanName(name), this.playerClanSnapshot());
+    this.save.clan = local;
+
+    if (canUseClanHallCloud(this.storage)) {
+      const cloud = await cloudCreateHall(this.storage, local.name, this.playerClanSnapshot(), {
+        clanId: local.id,
+        code: local.code,
+      });
+      if (cloud.ok) {
+        this.save.clan = viewClanForHuman(cloud.clan, this.ensureClanHumanId());
+        publishClanHall(this.storage, cloud.clan);
+      } else if (cloud.fallback) {
+        publishClanHall(this.storage, local);
+        this.toast('Clan cloud offline — hall saved on this device', 'info');
+      } else {
+        this.save.clan = null;
+        this.save.crystals += CLAN_CREATE_COST;
+        return cloud.error;
+      }
+    } else {
+      publishClanHall(this.storage, local);
+    }
+
+    this.say(
+      `Clan ${this.save.clan.name} founded. Code ${this.save.clan.code}. Share the code so real players can join.`,
+    );
     this.toast(`Clan founded (−${CLAN_CREATE_COST} crystals)`, 'good');
     this.advanceTutorial('clan');
     this.changed();
@@ -1906,34 +1963,88 @@ export class Game {
   /**
    * Join an existing published clan by code.
    * Replaces the weakest AI (lowest CP → level → id) when AI remain; never kicks real players.
+   * Signed-in players use the cross-device API; guests/local-dev fall back to same-origin storage.
    */
-  joinClan(code: string): string | null {
+  async joinClan(code: string): Promise<string | null> {
     if (this.save.clan) return 'Already in a clan.';
     if (!this.save.classPicked) return 'Pick a class first.';
     if (!code.trim()) return 'Enter a clan code.';
     const clean = sanitizeClanCode(code);
-    const hall = lookupClanHall(this.storage, clean);
-    if (!hall) return 'No clan with that code. Ask the leader for an invite code.';
-    const result = admitRealMember(hall, this.playerClanSnapshot());
-    if (!result.ok) return result.error;
-    this.save.clan = viewClanForHuman(result.clan, this.ensureClanHumanId());
-    this.publishHall();
-    const swap = result.replacedAi
-      ? ` Replaced AI ${result.replacedAi.name} (${result.replacedAi.cp} CP).`
-      : '';
-    this.say(`Joined ${this.save.clan.name} (${this.save.clan.code}).${swap}`);
-    this.toast(`Joined ${this.save.clan.name}`, 'good');
+    const humanId = this.ensureClanHumanId();
+    let swap = '';
+
+    if (canUseClanHallCloud(this.storage)) {
+      const cloud = await cloudJoinHall(this.storage, clean, this.playerClanSnapshot());
+      if (cloud.ok) {
+        this.save.clan = viewClanForHuman(cloud.clan, humanId);
+        publishClanHall(this.storage, cloud.clan);
+        const replaced = cloud.meta?.replacedAi as { name?: string; cp?: number } | null | undefined;
+        if (replaced?.name) {
+          swap = ` Replaced AI ${replaced.name}${typeof replaced.cp === 'number' ? ` (${replaced.cp} CP)` : ''}.`;
+        }
+      } else if (cloud.fallback) {
+        const hall = lookupClanHall(this.storage, clean);
+        if (!hall) {
+          // Last chance: public GET (may still 503).
+          const lookup = await cloudLookupHall(clean);
+          if (!lookup.ok) {
+            return lookup.fallback
+              ? 'No clan with that code on this device. Sign-in halls need the cloud API.'
+              : lookup.error;
+          }
+          const result = admitRealMember(lookup.clan, this.playerClanSnapshot());
+          if (!result.ok) return result.error;
+          this.save.clan = viewClanForHuman(result.clan, humanId);
+          publishClanHall(this.storage, result.clan);
+          swap = result.replacedAi
+            ? ` Replaced AI ${result.replacedAi.name} (${result.replacedAi.cp} CP).`
+            : '';
+        } else {
+          const result = admitRealMember(hall, this.playerClanSnapshot());
+          if (!result.ok) return result.error;
+          this.save.clan = viewClanForHuman(result.clan, humanId);
+          this.publishHall();
+          swap = result.replacedAi
+            ? ` Replaced AI ${result.replacedAi.name} (${result.replacedAi.cp} CP).`
+            : '';
+        }
+      } else {
+        return cloud.error === 'not_found'
+          ? 'No clan with that code. Ask the leader for an invite code.'
+          : cloud.error;
+      }
+    } else {
+      const hall = lookupClanHall(this.storage, clean);
+      if (!hall) return 'No clan with that code. Ask the leader for an invite code.';
+      const result = admitRealMember(hall, this.playerClanSnapshot());
+      if (!result.ok) return result.error;
+      this.save.clan = viewClanForHuman(result.clan, humanId);
+      this.publishHall();
+      swap = result.replacedAi
+        ? ` Replaced AI ${result.replacedAi.name} (${result.replacedAi.cp} CP).`
+        : '';
+    }
+
+    this.say(`Joined ${this.save.clan!.name} (${this.save.clan!.code}).${swap}`);
+    this.toast(`Joined ${this.save.clan!.name}`, 'good');
     this.advanceTutorial('clan');
     this.changed();
     return null;
   }
 
-  leaveClan(): string | null {
+  async leaveClan(): Promise<string | null> {
     if (!this.save.clan) return 'Not in a clan.';
     const name = this.save.clan.name;
     const code = this.save.clan.code;
     const humanId = this.ensureClanHumanId();
     removeMemberFromHall(this.storage, code, humanId);
+    if (canUseClanHallCloud(this.storage)) {
+      const cloud = await cloudLeaveHall(this.storage);
+      if (!cloud.ok && !cloud.fallback && cloud.status !== 404) {
+        // Re-publish local seat so leave can retry; keep save cleared only after soft fail.
+        this.toast(cloud.error, 'bad');
+      }
+    }
     this.save.clan = null;
     this.say(`Left ${name}.`);
     this.changed();

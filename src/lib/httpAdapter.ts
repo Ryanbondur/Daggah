@@ -4,6 +4,11 @@ import {
   OPTIONS as authOptions,
   POST as authPost,
 } from '../../api/_lib/authApi';
+import {
+  GET as clanGet,
+  OPTIONS as clanOptions,
+  POST as clanPost,
+} from '../../api/_lib/clanApi';
 import { GET, OPTIONS, PUT } from '../../api/_lib/saveApi';
 import { GET as pingGet } from '../../api/ping';
 
@@ -41,7 +46,7 @@ export async function writeWebResponse(res: ServerResponse, response: Response):
   res.end(buf);
 }
 
-/** Route /api/daggah-save and /api/daggah-auth through web handlers. Returns false if not these paths. */
+/** Route /api/daggah-save, /api/daggah-auth, /api/daggah-clan through web handlers. */
 export async function handleDaggahSaveApi(
   req: IncomingMessage,
   res: ServerResponse,
@@ -79,6 +84,32 @@ export async function handleDaggahSaveApi(
         break;
       case 'OPTIONS':
         response = await authOptions();
+        break;
+      default:
+        response = Response.json(
+          { error: 'method_not_allowed' },
+          {
+            status: 405,
+            headers: { allow: 'GET, POST, OPTIONS', 'cache-control': 'private, no-store' },
+          },
+        );
+    }
+    await writeWebResponse(res, response);
+    return true;
+  }
+
+  if (path === '/api/daggah-clan') {
+    const request = await nodeToWebRequest(req);
+    let response: Response;
+    switch (req.method) {
+      case 'GET':
+        response = await clanGet(request);
+        break;
+      case 'POST':
+        response = await clanPost(request);
+        break;
+      case 'OPTIONS':
+        response = await clanOptions();
         break;
       default:
         response = Response.json(

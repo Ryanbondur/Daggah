@@ -27,13 +27,13 @@ function memoryStorage(): Storage {
   };
 }
 
-function readyClanGame(seed = 11): Game {
+async function readyClanGame(seed = 11): Promise<Game> {
   const game = new Game(memoryStorage(), mulberry32(seed));
   game.pickClass('Warrior');
   game.save.crystals = CLAN_CREATE_COST;
   game.save.stagesCleared = CLAN_QUEUE_FLOOR_STAGES;
   game.save.level = 8;
-  game.createClan('Bracket Wolves');
+  await game.createClan('Bracket Wolves');
   game.fillAiClanRoster();
   return game;
 }
@@ -60,7 +60,7 @@ describe('clan CP brackets', () => {
     expect(BRACKET_TOKEN_WIN.veteran).toBeLessThan(BRACKET_TOKEN_WIN.nightscar);
   });
 
-  it('soft-floors 4v4 until Act 3 clear or mid CP', () => {
+  it('soft-floors 4v4 until Act 3 clear or mid CP', async () => {
     expect(meetsClanQueueFloor(0, 100)).toBe(false);
     expect(meetsClanQueueFloor(CLAN_QUEUE_FLOOR_STAGES, 100)).toBe(true);
     expect(meetsClanQueueFloor(0, CLAN_QUEUE_FLOOR_CP)).toBe(true);
@@ -69,7 +69,7 @@ describe('clan CP brackets', () => {
     game.pickClass('Ranger');
     game.save.crystals = CLAN_CREATE_COST;
     game.save.stagesCleared = 0;
-    game.createClan('Too Early');
+    await game.createClan('Too Early');
     game.fillAiClanRoster();
     const err = game.queueClanPvp();
     expect(err).toMatch(/Act 3|550 CP/i);
@@ -80,8 +80,8 @@ describe('clan CP brackets', () => {
     expect(game.save.clanWins + game.save.clanLosses).toBe(1);
   });
 
-  it('allows one challenge-up per calendar day and scales rewards to match tier', () => {
-    const game = readyClanGame(42);
+  it('allows one challenge-up per calendar day and scales rewards to match tier', async () => {
+    const game = await readyClanGame(42);
     // Keep natural bracket below Nightscar so challenge-up is available.
     for (const m of game.save.clan!.members) {
       if (!m.isPlayer) m.cp = 400;
@@ -113,8 +113,8 @@ describe('clan CP brackets', () => {
     expect(challengeUpAvailable(game.save.clanChallengeUpDayKey, '2099-01-01')).toBe(true);
   });
 
-  it('gates Nightscar-exclusive armorer legendaries until a Nightscar match', () => {
-    const game = readyClanGame(7);
+  it('gates Nightscar-exclusive armorer legendaries until a Nightscar match', async () => {
+    const game = await readyClanGame(7);
     game.save.clanTokens = 80;
     game.save.level = 18;
     expect(game.buyClanVendor(4)).toMatch(/Nightscar/i);
@@ -130,8 +130,8 @@ describe('clan CP brackets', () => {
     expect(game.save.clanTokens).toBeLessThan(80);
   });
 
-  it('keeps day cap while awarding bracket-scaled tokens', () => {
-    const game = readyClanGame(9);
+  it('keeps day cap while awarding bracket-scaled tokens', async () => {
+    const game = await readyClanGame(9);
     game.save.clanTokensEarnedToday = TOKEN_DAY_CAP - 3;
     for (const m of game.save.clan!.members) m.cp = 500;
     expect(game.queueClanPvp()).toBeNull();
