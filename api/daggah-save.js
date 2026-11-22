@@ -80,8 +80,11 @@ var INLINE_SCHEMA_STATEMENTS = [
     season_id integer not null,
     owner_key text not null,
     clan_code text,
+    clan_name text,
     wins integer not null default 0,
     losses integer not null default 0,
+    tokens integer not null default 0,
+    members integer not null default 0,
     updated_at timestamptz not null default now()
   )`,
   `create unique index if not exists season_stats_season_owner_uidx
@@ -90,12 +93,24 @@ var INLINE_SCHEMA_STATEMENTS = [
     id bigserial primary key,
     season_id integer not null,
     clan_code text not null,
+    clan_name text,
     wins integer not null default 0,
     losses integer not null default 0,
+    tokens integer not null default 0,
+    members integer not null default 0,
     updated_at timestamptz not null default now()
   )`,
   `create unique index if not exists clan_results_season_clan_uidx
     on clan_results (season_id, clan_code)`,
+  // DG-120: widen tables created by older migrate runs / prior INLINE creates.
+  `alter table season_stats add column if not exists tokens integer not null default 0`,
+  `alter table season_stats add column if not exists members integer not null default 0`,
+  `alter table season_stats add column if not exists clan_name text`,
+  `alter table clan_results add column if not exists tokens integer not null default 0`,
+  `alter table clan_results add column if not exists members integer not null default 0`,
+  `alter table clan_results add column if not exists clan_name text`,
+  `create index if not exists clan_results_season_score_idx
+    on clan_results (season_id, wins desc, tokens desc)`,
   `create table if not exists users (
     id text primary key,
     username text not null,
@@ -196,6 +211,102 @@ async function reclaimIdleGuestSaves() {
   await sql(
     `delete from saves where owner_key like 'ac:%' and updated_at < now() - ($1::int * interval '1 day')`,
     [days]
+  );
+}
+
+// api/_lib/clanBoard.ts
+function asInt(n, fallback = 0) {
+  const v = typeof n === "number" ? n : Number(n);
+  return Number.isFinite(v) ? Math.max(0, Math.floor(v)) : fallback;
+}
+function cleanCode(raw) {
+  if (typeof raw !== "string") return null;
+  const code = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+  return code.length >= 4 ? code : null;
+}
+function cleanName(raw) {
+  if (typeof raw !== "string") return null;
+  const name = raw.trim().slice(0, 32);
+  return name.length >= 2 ? name : null;
+}
+function extractSeasonReport(save) {
+  const season = save.season;
+  let seasonId = 1;
+  if (season && typeof season === "object" && !Array.isArray(season)) {
+    const sid = season.seasonId;
+    if (typeof sid === "number" && Number.isFinite(sid) && sid >= 1) {
+      seasonId = Math.floor(sid);
+    }
+  }
+  const clan = save.clan;
+  if (!clan || typeof clan !== "object" || Array.isArray(clan)) {
+    return {
+      seasonId,
+      clanCode: null,
+      clanName: null,
+      wins: asInt(save.clanWins),
+      losses: asInt(save.clanLosses),
+      tokens: asInt(save.clanTokens),
+      members: 0
+    };
+  }
+  const c = clan;
+  const members = Array.isArray(c.members) ? c.members.length : 0;
+  return {
+    seasonId,
+    clanCode: cleanCode(c.code),
+    clanName: cleanName(c.name),
+    wins: asInt(save.clanWins),
+    losses: asInt(save.clanLosses),
+    tokens: asInt(save.clanTokens),
+    members: Math.min(64, Math.max(0, members))
+  };
+}
+async function upsertSeasonReport(ownerKey, report) {
+  await sql(
+    `insert into season_stats
+       (season_id, owner_key, clan_code, clan_name, wins, losses, tokens, members, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, now())
+     on conflict (season_id, owner_key) do update set
+       clan_code = excluded.clan_code,
+       clan_name = excluded.clan_name,
+       wins = excluded.wins,
+       losses = excluded.losses,
+       tokens = excluded.tokens,
+       members = excluded.members,
+       updated_at = now()`,
+    [
+      report.seasonId,
+      ownerKey,
+      report.clanCode,
+      report.clanName,
+      report.wins,
+      report.losses,
+      report.tokens,
+      report.members
+    ]
+  );
+  if (!report.clanCode) return;
+  await sql(
+    `insert into clan_results
+       (season_id, clan_code, clan_name, wins, losses, tokens, members, updated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, now())
+     on conflict (season_id, clan_code) do update set
+       clan_name = coalesce(nullif(excluded.clan_name, ''), clan_results.clan_name),
+       wins = greatest(clan_results.wins, excluded.wins),
+       losses = greatest(clan_results.losses, excluded.losses),
+       tokens = greatest(clan_results.tokens, excluded.tokens),
+       members = greatest(clan_results.members, excluded.members),
+       updated_at = now()`,
+    [
+      report.seasonId,
+      report.clanCode,
+      report.clanName,
+      report.wins,
+      report.losses,
+      report.tokens,
+      report.members
+    ]
   );
 }
 
@@ -902,6 +1013,18 @@ async function PUT(request) {
       }
     }
     await upsertSave(owner.ownerKey, sanitized.payload, sanitized.schemaVersion);
+    try {
+      const parsed = parseStoredPayload(sanitized.payload);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const report = extractSeasonReport(parsed);
+        if (report) await upsertSeasonReport(owner.ownerKey, report);
+      }
+    } catch (boardError) {
+      console.error(
+        "season board upsert failed",
+        boardError instanceof Error ? boardError.message : "unknown"
+      );
+    }
     return new Response(null, { status: 204, headers: NO_STORE });
   } catch (error) {
     return internalError(error, "PUT /api/daggah-save");

@@ -1,4 +1,6 @@
 import type { PlaystyleId } from '../data/types';
+import type { ClanLeaderboardEntry } from '../game/clan';
+import type { ClanBoardSource } from '../game/clanBoardClient';
 import type { Game } from '../game/game';
 
 export type Tab = 'camp' | 'skill' | 'adventure' | 'clan';
@@ -21,6 +23,12 @@ export interface UIContext {
   skillStyle: PlaystyleId;
   /** Skill bar slot index selected for swap (Skill tab). */
   skillBarFocus: number | null;
+  /** Cached live clan season board (null until first fetch). */
+  clanBoardLive: ClanLeaderboardEntry[] | null;
+  clanBoardSource: ClanBoardSource;
+  clanBoardSeasonId: number | null;
+  /** Kick a background refresh of the season board (no-op if already loading). */
+  refreshClanBoard(force?: boolean): void;
   setTab(tab: Tab): void;
   /** Ensure Phaser + stage canvas are loaded (lazy; no-op once ready). */
   ensureStage(): Promise<void>;

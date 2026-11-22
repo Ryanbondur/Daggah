@@ -438,6 +438,10 @@ export interface ClanLeaderboardEntry {
   wins: number;
   members: number;
   isPlayer: boolean;
+  /** Present on live board rows (clan invite code). */
+  code?: string;
+  losses?: number;
+  tokens?: number;
 }
 
 const RIVAL_CLANS = [
