@@ -12,6 +12,7 @@ import { CLASS_PLAYSTYLES } from '../data/skills';
 import type { PlaystyleId } from '../data/types';
 import {
   showBag,
+  showBlacksmith,
   showChat,
   showClanArmorer,
   showClassPick,
@@ -179,6 +180,7 @@ export function mountUI(
     },
     showSeasonBoard: () => showSeasonBoard(ctx),
     showClanArmorer: () => showClanArmorer(ctx),
+    showBlacksmith: () => showBlacksmith(ctx),
     flashSlot(slot) {
       flash = slot;
     },
@@ -675,6 +677,9 @@ export function mountUI(
         break;
       case 'clan-armorer':
         showClanArmorer(ctx);
+        break;
+      case 'blacksmith':
+        showBlacksmith(ctx);
         break;
       default:
         break;

@@ -594,7 +594,12 @@ function renderClanTownPane(ctx: UIContext): string {
         <span>Rotating gear &amp; set pieces for Gold. Fresh each day.</span>
         <span class="live">${shopLeft} left · ${fmt(g.save.gold)} gold</span>
       </button>
-      <div class="town-card"><img src="${asset('icons/gear-a/weapon.webp')}" alt="" /><b>Blacksmith</b><span>Dust to Gear Level upgrades.</span><span class="soon">Coming soon</span></div>
+      <button type="button" class="town-card clickable" data-action="blacksmith">
+        <img src="${asset('icons/gear-a/weapon.webp')}" alt="" />
+        <b>Blacksmith</b>
+        <span>Spend dust to craft missing or chosen class set pieces.</span>
+        <span class="live"><i class="dust"></i>${fmt(g.save.dust)} dust</span>
+      </button>
       <div class="town-card"><img src="${navIcon('crystal')}" alt="" /><b>Quartermaster</b><span>Spend crystals on keys and bag space.</span><span class="soon">Coming soon</span></div>
       <button type="button" class="town-card clickable" data-action="season-board">
         <img src="${asset('ui/season-board.webp')}" alt="" />
