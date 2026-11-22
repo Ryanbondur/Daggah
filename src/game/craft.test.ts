@@ -14,10 +14,17 @@ import { mulberry32 } from './rng';
 import { Game } from './game';
 import {
   CRAFTABLE_RARITIES,
+  DUST_PER_CRYSTAL_REFINE,
+  DUST_SOFT_CAP,
   craftDustCost,
+  craftRarityForCape,
   craftRarityForSet,
   craftableSetsForClass,
+  legendaryCraftUnlocked,
   ownsSetPiece,
+  planCraftMissing,
+  refineDustAmount,
+  refinePreview,
 } from './craft';
 import { SAVE_KEY, type Storage } from './state';
 
@@ -48,22 +55,31 @@ describe('craftDustCost', () => {
     }
   });
 
-  it('scales Common < Rare < Epic and with gear level', () => {
+  it('scales Common < Rare < Epic < Legendary and with gear level', () => {
     const gl = 10;
     const c = craftDustCost({ rarity: 'common', gearLevel: gl, setId: 'ember-raider' });
     const r = craftDustCost({ rarity: 'rare', gearLevel: gl, setId: 'ember-raider' });
     const e = craftDustCost({ rarity: 'epic', gearLevel: gl, setId: 'ember-raider' });
+    const l = craftDustCost({ rarity: 'legendary', gearLevel: gl, setId: 'ember-raider' });
     expect(c).toBeLessThan(r);
     expect(r).toBeLessThan(e);
+    expect(e).toBeLessThan(l);
     expect(craftDustCost({ rarity: 'rare', gearLevel: 20, setId: 'ember-raider' })).toBeGreaterThan(
       craftDustCost({ rarity: 'rare', gearLevel: 1, setId: 'ember-raider' }),
     );
   });
 
-  it('rejects legendary crafting in the cost helper', () => {
-    expect(() => craftDustCost({ rarity: 'legendary', gearLevel: 20, setId: 'nightscar-regalia' })).toThrow(
-      /not craftable/,
+  it('prices Legendary set crafts as a steep late-game sink', () => {
+    // salvage 100 × 10 × 1.5 × 2.9 × 2.5 = 10875
+    expect(craftDustCost({ rarity: 'legendary', gearLevel: 20, setId: 'nightscar-regalia' })).toBe(
+      10875,
     );
+  });
+
+  it('prices capes above epic set pieces of the same gear level', () => {
+    const epicSet = craftDustCost({ rarity: 'epic', gearLevel: 14, setId: 'ember-raider' });
+    const cape = craftDustCost({ rarity: 'epic', gearLevel: 14, cape: true });
+    expect(cape).toBeGreaterThan(epicSet);
   });
 
   it('anchors early rare and late epic set costs', () => {
@@ -90,13 +106,23 @@ describe('craft catalog', () => {
     expect(mage.every((id) => SETS[id].act <= 4)).toBe(true);
   });
 
-  it('picks rare then epic by act, never legendary', () => {
+  it('picks rare then epic by act, never legendary by default', () => {
     expect(craftRarityForSet('ember-raider')).toBe('rare');
     expect(craftRarityForSet('cinderstride')).toBe('epic');
     expect(craftRarityForSet('nightscar-regalia')).toBe('epic');
     for (const id of DROP_SET_IDS) {
       expect(CRAFTABLE_RARITIES).toContain(craftRarityForSet(id));
     }
+  });
+
+  it('unlocks Legendary crafts at Act 8', () => {
+    expect(legendaryCraftUnlocked(7)).toBe(false);
+    expect(legendaryCraftUnlocked(8)).toBe(true);
+  });
+
+  it('assigns cape craft rarity by minAct', () => {
+    expect(craftRarityForCape('bulwark-mantle')).toBe('epic');
+    expect(craftRarityForCape('warlords-drape')).toBe('legendary');
   });
 
   it('tracks owned equipped vs bag', () => {
@@ -111,6 +137,42 @@ describe('craft catalog', () => {
     expect(ownsSetPiece('ember-raider', 'helmet', { helmet: piece }, [])).toBe('equipped');
     expect(ownsSetPiece('ember-raider', 'helmet', {}, [piece])).toBe('bag');
     expect(ownsSetPiece('ember-raider', 'helmet', {}, [])).toBe('none');
+  });
+
+  it('plans craft-missing within dust budget', () => {
+    const plan = planCraftMissing({
+      heroClass: 'Warrior',
+      setId: 'ember-raider',
+      gearLevel: 4,
+      dust: 300,
+      gear: {},
+      bag: [],
+    });
+    expect('error' in plan).toBe(false);
+    if ('error' in plan) return;
+    expect(plan.slots).toHaveLength(SET_SLOTS.length);
+    expect(plan.affordableSlots.length).toBeGreaterThan(0);
+    expect(plan.affordableSlots.length).toBeLessThan(plan.slots.length);
+    expect(plan.affordableDust).toBeLessThanOrEqual(300);
+  });
+});
+
+describe('dust soft-cap refine', () => {
+  it('reports no excess under the soft cap', () => {
+    const p = refinePreview(DUST_SOFT_CAP);
+    expect(p.excess).toBe(0);
+    expect(p.maxCrystals).toBe(0);
+  });
+
+  it('converts excess dust to crystals at the sink rate', () => {
+    const excess = DUST_PER_CRYSTAL_REFINE * 3 + 10;
+    const dust = DUST_SOFT_CAP + excess;
+    const p = refinePreview(dust);
+    expect(p.excess).toBe(excess);
+    expect(p.maxCrystals).toBe(3);
+    const ok = refineDustAmount(dust, 2);
+    expect(ok).toEqual({ dustSpent: DUST_PER_CRYSTAL_REFINE * 2, crystals: 2 });
+    expect(refineDustAmount(DUST_SOFT_CAP, 1)).toMatchObject({ error: expect.any(String) });
   });
 });
 
@@ -152,13 +214,71 @@ describe('Game.craftSetPiece', () => {
     expect(need).toMatch(/Need \d+ dust/);
   });
 
-  it('blocks capes and Clanforged', () => {
+  it('routes capes to cape craft and blocks Clanforged', () => {
     const game = new Game(memStore(), mulberry32(6));
     game.pickClass('Warrior');
     game.save.dust = 99999;
     game.save.stagesCleared = 50;
-    expect(game.craftSetPiece('ember-raider', 'cape')).toMatch(/Capes/);
+    expect(game.craftSetPiece('ember-raider', 'cape')).toMatch(/cape craft/i);
     expect(game.craftSetPiece('clanforged', 'weapon')).toMatch(/not craftable/);
+  });
+
+  it('crafts Legendary set pieces after Act 8', () => {
+    const game = new Game(memStore(), mulberry32(11));
+    game.pickClass('Warrior');
+    game.save.level = 18;
+    game.save.stagesCleared = 20; // Act 5 — too early
+    game.save.dust = 999999;
+    expect(game.craftSetPiece('ember-raider', 'weapon', true)).toMatch(/Act 8/);
+    game.save.stagesCleared = 40; // Act 9
+    expect(game.legendaryCraftAvailable()).toBe(true);
+    expect(game.craftSetPiece('ember-raider', 'weapon', true)).toBeNull();
+    expect(game.save.pending[0]?.rarity).toBe('legendary');
+  });
+
+  it('one-tap crafts missing pieces within dust', () => {
+    const game = new Game(memStore(), mulberry32(21));
+    game.pickClass('Warrior');
+    game.save.level = 5;
+    game.save.stagesCleared = 5;
+    const unit = craftDustCost({ rarity: 'rare', gearLevel: 5, setId: 'ember-raider' });
+    game.save.dust = unit * 3 + 10;
+    const result = game.craftMissingForSet('ember-raider');
+    expect(typeof result).not.toBe('string');
+    if (typeof result === 'string') return;
+    expect(result.crafted).toBe(3);
+    expect(game.save.pending).toHaveLength(3);
+    expect(game.save.dust).toBe(10);
+  });
+
+  it('crafts class capes with real capeIds', () => {
+    const game = new Game(memStore(), mulberry32(33));
+    game.pickClass('Mage');
+    game.save.level = 16;
+    game.save.stagesCleared = 40; // Act 9
+    game.save.dust = 50000;
+    const offers = game.craftCapeOffers();
+    expect(offers).toHaveLength(3);
+    expect(offers.every((o) => o.unlocked)).toBe(true);
+    expect(game.craftCape('ashveil-cloak')).toBeNull();
+    const item = game.save.pending[0];
+    expect(item.capeId).toBe('ashveil-cloak');
+    expect(item.slot).toBe('cape');
+    expect(game.craftCape('bulwark-mantle')).toMatch(/Wrong class/);
+  });
+
+  it('refines excess dust into crystals', () => {
+    const game = new Game(memStore(), mulberry32(44));
+    game.pickClass('Ranger');
+    game.save.dust = DUST_SOFT_CAP + DUST_PER_CRYSTAL_REFINE * 4;
+    game.save.crystals = 1;
+    const result = game.refineExcessDust();
+    expect(typeof result).not.toBe('string');
+    if (typeof result === 'string') return;
+    expect(result.crystals).toBe(4);
+    expect(game.save.crystals).toBe(5);
+    expect(game.save.dust).toBe(DUST_SOFT_CAP);
+    expect(game.refineExcessDust()).toMatch(/soft cap/i);
   });
 
   it('persists crafted armor types for the hero class', () => {
