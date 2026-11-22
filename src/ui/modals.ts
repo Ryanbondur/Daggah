@@ -38,8 +38,14 @@ import {
   BRACKET_TOKEN_LOSS,
   BRACKET_TOKEN_WIN,
   CLAN_BRACKET_LABEL,
+  MATCH_CP_BANDS,
+  QUEUE_BAND_METER_S,
   bracketRangeLabel,
+  matchBandTitle,
+  matchCpBandForQueue,
+  queueBandMeterProgress,
 } from '../game/clanBrackets';
+import { canApproveJoins, canKickAi, canPromoteDemote } from '../game/clan';
 import { CLAN_VENDOR, type RunResult } from '../game/game';
 import type { PvpResult } from '../game/pvp';
 import {
@@ -970,10 +976,7 @@ export function showSettings(ctx: UIContext): void {
       }
       case 'dev-practice-4v4': {
         ctx.closeModal();
-        void ctx.ensureStage().then(() => {
-          const err = g.queuePractice4v4();
-          if (err) g.toast(err, 'bad');
-        });
+        showClanQueueWait(ctx, { practice: true });
         break;
       }
       case 'season-reset':
@@ -1213,31 +1216,141 @@ function clanMemberBadgeHtml(m: ClanMember): string {
   return '<span class="ai-pill real">REAL</span>';
 }
 
+/**
+ * Live queue wait UI: ~30s meter, CP band expands tight → open, then starts the match.
+ * Local AI finds a peer after a short delay so the meter is visible without a full 30s wait.
+ */
+export function showClanQueueWait(
+  ctx: UIContext,
+  opts: { challengeUp?: boolean; practice?: boolean } = {},
+): void {
+  const g = ctx.game;
+  const atTop = g.clanBracketStatus().bracket === 'nightscar';
+  // Local peers always exist — match once the meter has shown at least one band step.
+  const findAtS = 4 + Math.floor(Math.random() * 5); // 4–8s
+  let closed = false;
+  let started = performance.now();
+  let raf = 0;
+
+  const paint = (waitS: number) => {
+    const band = matchCpBandForQueue(waitS, { atTopOfLadder: atTop });
+    const prog = queueBandMeterProgress(waitS);
+    const marks = MATCH_CP_BANDS.map((b) => {
+      const on = band.id === b.id ? 'on' : waitS >= b.waitS ? 'passed' : '';
+      return `<span class="queue-band-mark ${on}" style="left:${(b.waitS / QUEUE_BAND_METER_S) * 100}%">${escapeHtml(matchBandTitle(b))}</span>`;
+    }).join('');
+    return `<div class="sheet clan-sheet queue-wait-sheet">
+      <h2>Finding match</h2>
+      <div class="body">
+        <p class="ai-banner">CP band expands over ~${QUEUE_BAND_METER_S}s — tighter peers first.</p>
+        <div class="queue-band-card">
+          <div class="queue-band-head">
+            <span class="clan-bracket-pill ${band.id}">${escapeHtml(matchBandTitle(band))}</span>
+            <div><b>${escapeHtml(band.label)}</b><span>${waitS.toFixed(0)}s / ${QUEUE_BAND_METER_S}s${atTop ? ' · Nightscar starts wider' : ''}</span></div>
+          </div>
+          <div class="queue-band-meter" role="progressbar" aria-valuemin="0" aria-valuemax="${QUEUE_BAND_METER_S}" aria-valuenow="${Math.min(QUEUE_BAND_METER_S, Math.floor(waitS))}">
+            <div class="queue-band-fill" style="width:${(prog * 100).toFixed(1)}%"></div>
+            <div class="queue-band-marks">${marks}</div>
+          </div>
+        </div>
+        <p class="tagline">Searching${opts.practice ? ' (AI practice)' : ''}${opts.challengeUp ? ' · Challenge-up' : ''}…</p>
+      </div>
+      <div class="btns"><button class="btn tan" data-action="queue-cancel">Cancel</button></div>
+    </div>`;
+  };
+
+  const el = ctx.openModal(paint(0), {
+    onDismiss: () => {
+      closed = true;
+      cancelAnimationFrame(raf);
+      ctx.closeModal();
+    },
+  });
+
+  const tick = () => {
+    if (closed) return;
+    const waitS = (performance.now() - started) / 1000;
+    el.innerHTML = paint(waitS);
+    if (waitS >= findAtS || waitS >= QUEUE_BAND_METER_S) {
+      closed = true;
+      cancelAnimationFrame(raf);
+      ctx.closeModal();
+      void ctx.ensureStage().then(() => {
+        const err = opts.practice
+          ? g.queuePractice4v4({ challengeUp: opts.challengeUp, waitS })
+          : g.queueClanPvp({ challengeUp: opts.challengeUp, waitS });
+        if (err) g.toast(err, 'bad');
+      });
+      return;
+    }
+    raf = requestAnimationFrame(tick);
+  };
+  raf = requestAnimationFrame(tick);
+
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    if (t.dataset.action === 'queue-cancel') {
+      closed = true;
+      cancelAnimationFrame(raf);
+      ctx.closeModal();
+    }
+  });
+}
+
 export function showClanHall(ctx: UIContext): void {
   const g = ctx.game;
   g.refreshClanTokenDay();
   g.syncClanFromHall();
   const clan = g.clan;
+  const role = g.myClanRole();
   let body = '';
   if (!clan) {
-    body = `<p class="ai-banner">Create a clan and share the invite code. Real joins replace the weakest AI (lowest CP). Cap ${CLAN_MAX_SIZE}.</p>
-      <p>Found a clan for ${CLAN_CREATE_COST} crystals, or join with a published invite code.</p>
+    body = `<p class="ai-banner">Create a clan and share the code or a one-time officer invite. Real joins prefer redundant-class AI. Cap ${CLAN_MAX_SIZE}.</p>
+      <p>Found a clan for ${CLAN_CREATE_COST} crystals, or join with a published code / invite link.</p>
       <label class="field">Clan name<input id="clan-name" maxlength="24" placeholder="Nightscar Wolves" /></label>
       <div class="clan-actions">
         <button class="btn red" data-action="clan-create">Create Clan (−${CLAN_CREATE_COST})</button>
       </div>
-      <label class="field">Invite code<input id="clan-code" maxlength="8" placeholder="ABC123" style="text-transform:uppercase" /></label>
+      <label class="field">Code or invite<input id="clan-code" maxlength="12" placeholder="ABC123 or invite" style="text-transform:uppercase" /></label>
       <div class="clan-actions">
-        <button class="btn gold" data-action="clan-join">Join Clan</button>
+        <button class="btn gold" data-action="clan-join">Join</button>
+        <button class="btn stone" data-action="clan-request">Request join</button>
         <button class="btn stone" data-action="clan-practice">Queue practice 4v4 (AI)</button>
       </div>`;
   } else {
     const missing = g.clanMissingClasses();
+    const officer = canApproveJoins(role);
+    const kicker = canKickAi(role);
+    const leader = canPromoteDemote(role);
+    const pending = officer ? g.listPendingClanJoins() : [];
     const rows = clan.members
       .map((m) => {
         const badge = clanMemberBadgeHtml(m);
-        return `<div class="row"><span>${badge} ${escapeHtml(m.name)} <small>${escapeHtml(m.role)}</small></span><b>${m.heroClass} · CP ${fmt(m.cp)}</b></div>`;
+        const actions: string[] = [];
+        if (kicker && m.isAi) {
+          actions.push(
+            `<button type="button" class="btn tiny tan" data-action="clan-kick-ai" data-id="${escapeHtml(m.id)}">Kick AI</button>`,
+          );
+        }
+        if (leader && !m.isAi && !m.isPlayer && m.role === 'member') {
+          actions.push(
+            `<button type="button" class="btn tiny gold" data-action="clan-promote" data-id="${escapeHtml(m.id)}">Promote</button>`,
+          );
+        }
+        if (leader && !m.isAi && !m.isPlayer && m.role === 'officer') {
+          actions.push(
+            `<button type="button" class="btn tiny tan" data-action="clan-demote" data-id="${escapeHtml(m.id)}">Demote</button>`,
+          );
+        }
+        return `<div class="row clan-member-row"><span>${badge} ${escapeHtml(m.name)} <small>${escapeHtml(m.role)}</small></span><b>${m.heroClass} · CP ${fmt(m.cp)}</b>${actions.length ? `<span class="clan-row-actions">${actions.join('')}</span>` : ''}</div>`;
       })
+      .join('');
+    const pendingRows = pending
+      .map(
+        (p) =>
+          `<div class="row"><span>${escapeHtml(p.name)} <small>${escapeHtml(p.heroClass)}</small></span><span class="clan-row-actions"><button type="button" class="btn tiny gold" data-action="clan-approve" data-id="${escapeHtml(p.humanId)}">Approve</button><button type="button" class="btn tiny tan" data-action="clan-deny" data-id="${escapeHtml(p.humanId)}">Deny</button></span></div>`,
+      )
       .join('');
     const classCheck = HERO_CLASSES.map((c) => {
       const ok = clan.members.some((m) => m.heroClass === c);
@@ -1253,14 +1366,29 @@ export function showClanHall(ctx: UIContext): void {
       bracket.canChallengeUp && bracket.nextLabel
         ? `<button class="btn gold ${g.clanRosterReady() ? '' : 'disabled'}" data-action="clan-queue-challenge">Challenge up → ${escapeHtml(bracket.nextLabel)}</button>`
         : '';
-    body = `<div class="clan-banner"><img src="${asset('ui/clan-hall.webp')}" alt="" /><div><b>${escapeHtml(clan.name)}</b><span>Code ${escapeHtml(clan.code)} · ${clan.members.length}/${CLAN_MAX_SIZE}</span><div class="class-pips">${classCheck}</div></div></div>
-      <div class="clan-bracket-card"><span class="clan-bracket-pill ${bracket.bracket}">${escapeHtml(bracket.label)}</span><div><b>Team CP ${fmt(bracket.teamCp)}</b><span>${escapeHtml(bracketRangeLabel(bracket.bracket))} · Challenge-up ${bracket.challengeUpLeft}/1 today</span></div></div>
-      <p class="ai-banner">Share code ${escapeHtml(clan.code)}. Real joins replace weakest AI (lowest CP).</p>
+    const inviteBtn = officer
+      ? `<button class="btn stone" data-action="clan-invite">Mint invite link</button>`
+      : '';
+    const pendingBlock =
+      officer && pending.length
+        ? `<div class="clan-pending"><b>Pending joins</b>${pendingRows}</div>`
+        : officer
+          ? `<p class="tagline">No pending join requests.</p>`
+          : '';
+    const mmrNote =
+      bracket.bracket === 'nightscar' && g.save.clanNightscarMmr
+        ? ` · Soft MMR ${fmt(g.save.clanNightscarMmr)}`
+        : '';
+    body = `<div class="clan-banner"><img src="${asset('ui/clan-hall.webp')}" alt="" /><div><b>${escapeHtml(clan.name)}</b><span>Code ${escapeHtml(clan.code)} · ${clan.members.length}/${CLAN_MAX_SIZE} · you: ${escapeHtml(role)}</span><div class="class-pips">${classCheck}</div></div></div>
+      <div class="clan-bracket-card"><span class="clan-bracket-pill ${bracket.bracket}">${escapeHtml(bracket.label)}</span><div><b>Team CP ${fmt(bracket.teamCp)}</b><span>${escapeHtml(bracketRangeLabel(bracket.bracket))} · Challenge-up ${bracket.challengeUpLeft}/1 today${mmrNote}</span></div></div>
+      <p class="ai-banner">Permanent code ${escapeHtml(clan.code)} or one-time officer invites. Real joins prefer redundant-class AI.</p>
       <div class="body-scroll">${rows}</div>
+      ${pendingBlock}
       ${missing.length ? `<p class="warn">Missing: ${missing.join(', ')}. Fill AI roster for 4v4.</p>` : '<p>Roster has one of each class — ready to queue.</p>'}
       ${floorBlock}
       <div class="btns" style="flex-wrap:wrap">
         <button class="btn stone" data-action="clan-recruit">Fill AI roster</button>
+        ${inviteBtn}
         <button class="btn red ${g.clanRosterReady() && bracket.floorMet ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
         ${challengeBtn}
         <button class="btn tan" data-action="clan-leave">Leave</button>
@@ -1279,6 +1407,7 @@ export function showClanHall(ctx: UIContext): void {
     const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
     if (!t) return;
     const act = t.dataset.action!;
+    const id = t.dataset.id ?? '';
     if (act === 'close') {
       ctx.closeModal();
       return;
@@ -1303,6 +1432,12 @@ export function showClanHall(ctx: UIContext): void {
       }
       return;
     }
+    if (act === 'clan-request') {
+      const code = (el.querySelector('#clan-code') as HTMLInputElement | null)?.value ?? '';
+      const err = g.requestClanJoin(code);
+      if (err) g.toast(err, 'bad');
+      return;
+    }
     if (act === 'clan-recruit') {
       const err = g.fillAiClanRoster();
       if (err) g.toast(err, err.includes('already') ? 'info' : 'bad');
@@ -1310,13 +1445,55 @@ export function showClanHall(ctx: UIContext): void {
       showClanHall(ctx);
       return;
     }
+    if (act === 'clan-invite') {
+      const res = g.createOfficerInvite();
+      if (typeof res === 'string') {
+        g.toast(res, 'bad');
+        return;
+      }
+      void copyTextToClipboard(res.token).then((ok) => {
+        g.toast(ok ? `Invite copied: ${res.token}` : `Invite: ${res.token}`, ok ? 'good' : 'info');
+      });
+      return;
+    }
+    if (act === 'clan-kick-ai') {
+      const err = g.kickClanAi(id);
+      if (err) g.toast(err, 'bad');
+      ctx.closeModal();
+      showClanHall(ctx);
+      return;
+    }
+    if (act === 'clan-promote') {
+      const err = g.setClanMemberRole(id, 'officer');
+      if (err) g.toast(err, 'bad');
+      ctx.closeModal();
+      showClanHall(ctx);
+      return;
+    }
+    if (act === 'clan-demote') {
+      const err = g.setClanMemberRole(id, 'member');
+      if (err) g.toast(err, 'bad');
+      ctx.closeModal();
+      showClanHall(ctx);
+      return;
+    }
+    if (act === 'clan-approve') {
+      const err = g.approveClanJoin(id);
+      if (err) g.toast(err, 'bad');
+      ctx.closeModal();
+      showClanHall(ctx);
+      return;
+    }
+    if (act === 'clan-deny') {
+      const err = g.denyClanJoin(id);
+      if (err) g.toast(err, 'bad');
+      ctx.closeModal();
+      showClanHall(ctx);
+      return;
+    }
     if (act === 'clan-practice') {
       ctx.closeModal();
-      void ctx.ensureStage().then(() => {
-        const err = g.queuePractice4v4();
-        if (err) g.toast(err, 'bad');
-        // Stage fight plays, then existing pvp breakdown modal via game event
-      });
+      showClanQueueWait(ctx, { practice: true });
       return;
     }
     if (act === 'clan-queue') {
@@ -1325,10 +1502,7 @@ export function showClanHall(ctx: UIContext): void {
         return;
       }
       ctx.closeModal();
-      void ctx.ensureStage().then(() => {
-        const err = g.queueClanPvp();
-        if (err) g.toast(err, 'bad');
-      });
+      showClanQueueWait(ctx);
       return;
     }
     if (act === 'clan-queue-challenge') {
@@ -1337,10 +1511,7 @@ export function showClanHall(ctx: UIContext): void {
         return;
       }
       ctx.closeModal();
-      void ctx.ensureStage().then(() => {
-        const err = g.queueClanPvp({ challengeUp: true });
-        if (err) g.toast(err, 'bad');
-      });
+      showClanQueueWait(ctx, { challengeUp: true });
       return;
     }
     if (act === 'clan-leave') {

@@ -10,17 +10,42 @@ import {
   TOKEN_WIN,
   admitRealMember,
   applyTokenCap,
+  buildAiMember,
   buildClanLeaderboard,
+  canApproveJoins,
+  canKickAi,
+  canPromoteDemote,
   clanSeasonScore,
   createClan,
   fillAiRoster,
+  findAiToReplace,
   findWeakestAiMember,
+  kickAiMember,
   pickQueueRoster,
   recruitForRoster,
   rosterReady,
+  setMemberRole,
 } from './clan';
+import {
+  CLAN_INVITE_TTL_MS,
+  createClanInvite,
+  lookupClanInvite,
+  publishClanHall,
+  requestClanJoin,
+  resolveJoinTarget,
+} from './clanHall';
 import { PVP_TIMEOUT_S, simulatePvp, buildOpponentRoster } from './pvp';
-import { matchCpBandForQueue, MATCH_CP_BANDS, PRACTICE_MATCH_WAIT_S } from './clanBrackets';
+import {
+  matchCpBandForQueue,
+  MATCH_CP_BANDS,
+  PRACTICE_MATCH_WAIT_S,
+  QUEUE_BAND_METER_S,
+  queueBandMeterProgress,
+  softNightscarMatchAvg,
+  seedNightscarSoftMmr,
+  updateNightscarSoftMmr,
+  TEAM_CP_VETERAN_MAX,
+} from './clanBrackets';
 import { mulberry32 } from './rng';
 import type { Storage } from './state';
 import { SAVE_KEY, defaultSave, loadSave, writeSave } from './state';
@@ -75,7 +100,7 @@ describe('clan shell', () => {
     expect(game.clan).toBeNull();
   });
 
-  it('lets a real player join by code and replaces the weakest AI (lowest CP)', () => {
+  it('lets a real player join by code and replaces redundant-class AI first', () => {
     const shared = memoryStorage();
     const leader = new Game(shared, mulberry32(7));
     leader.pickClass('Warrior');
@@ -85,7 +110,8 @@ describe('clan shell', () => {
     const code = leader.clan!.code;
     const beforeAi = leader.clan!.members.filter((m) => m.isAi);
     expect(beforeAi.length).toBeGreaterThan(0);
-    const weakestCp = Math.min(...beforeAi.map((m) => m.cp));
+    const mageAi = beforeAi.find((m) => m.heroClass === 'Mage');
+    expect(mageAi).toBeTruthy();
 
     // Second save shares hall registry storage but keeps its own progress key —
     // use a shim that namespaces the save blob while sharing clan halls.
@@ -115,8 +141,8 @@ describe('clan shell', () => {
     expect(joiner.clan?.members.some((m) => !m.isAi && !m.isPlayer)).toBe(true); // leader is real
     const aisAfter = joiner.clan!.members.filter((m) => m.isAi);
     expect(aisAfter.length).toBe(beforeAi.length - 1);
-    expect(aisAfter.every((m) => m.cp >= weakestCp)).toBe(true);
-    // Weakest AI seat gone; reals untouched.
+    // Mage AI seat gone (class-priority); reals untouched.
+    expect(aisAfter.some((m) => m.id === mageAi!.id)).toBe(false);
     expect(joiner.clan!.members.filter((m) => !m.isAi).length).toBe(2);
 
     expect(joiner.leaveClan()).toBeNull();
@@ -245,21 +271,182 @@ describe('4v4 auto-battle', () => {
     expect(CLAN_MAX_SIZE).toBe(25);
   });
 
-  it('findWeakestAiMember picks lowest CP and admitRealMember never kicks reals', () => {
+  it('findAiToReplace prefers joiner class over lowest CP; never kicks reals', () => {
     const rng = mulberry32(3);
     const clan = createClan(rng, 'Cap', snap('Warrior', 10, 900, 'human_leader'));
     clan.members.push(...fillAiRoster(clan, rng, 10));
     const weak = findWeakestAiMember(clan.members)!;
     expect(weak.isAi).toBe(true);
+    const classPick = findAiToReplace(clan.members, 'Rogue')!;
+    expect(classPick.heroClass).toBe('Rogue');
     const beforeReals = clan.members.filter((m) => !m.isAi).length;
     const admitted = admitRealMember(clan, snap('Rogue', 11, 950, 'human_joiner'));
     expect(admitted.ok).toBe(true);
     if (!admitted.ok) return;
-    expect(admitted.replacedAi?.id).toBe(weak.id);
+    expect(admitted.replacedAi?.heroClass).toBe('Rogue');
+    // Class priority may differ from raw weakest CP.
+    if (weak.heroClass !== 'Rogue') expect(admitted.replacedAi?.id).not.toBe(weak.id);
     expect(admitted.clan.members.filter((m) => !m.isAi).length).toBe(beforeReals + 1);
     expect(admitted.clan.members.every((m) => m.isAi || m.id === 'human_leader' || m.id === 'human_joiner')).toBe(
       true,
     );
+  });
+
+  it('documents the 30s queue band meter', () => {
+    expect(QUEUE_BAND_METER_S).toBe(30);
+    expect(queueBandMeterProgress(0)).toBe(0);
+    expect(queueBandMeterProgress(15)).toBe(0.5);
+    expect(queueBandMeterProgress(30)).toBe(1);
+    expect(queueBandMeterProgress(99)).toBe(1);
+    expect(matchCpBandForQueue(25).id).toBe('wide');
+  });
+});
+
+describe('clan invites + roles + soft MMR', () => {
+  it('mints one-time invite tokens with expiry and consumes on join', () => {
+    const store = memoryStorage();
+    const rng = mulberry32(44);
+    const leader = new Game(store, rng);
+    leader.pickClass('Warrior');
+    leader.save.crystals = CLAN_CREATE_COST;
+    expect(leader.createClan('Invite Hall')).toBeNull();
+    expect(leader.fillAiClanRoster()).toBeNull();
+    const minted = leader.createOfficerInvite(60_000);
+    expect(typeof minted).not.toBe('string');
+    if (typeof minted === 'string') return;
+    expect(minted.token.startsWith('I')).toBe(true);
+    expect(minted.expiresAt).toBeGreaterThan(Date.now());
+    const inv = lookupClanInvite(store, minted.token);
+    expect(inv?.usesLeft).toBe(1);
+    expect(inv?.clanCode).toBe(leader.clan!.code);
+
+    const joinerStore: Storage = {
+      getItem: (k) => (k === 'daggah.save' || k === 'daggah.save.bak' ? null : store.getItem(k)),
+      setItem: (k, v) => {
+        if (k === 'daggah.save' || k === 'daggah.save.bak') {
+          store.setItem(`j2.${k}`, v);
+          return;
+        }
+        store.setItem(k, v);
+      },
+      removeItem: (k) => {
+        if (k === 'daggah.save' || k === 'daggah.save.bak') {
+          store.removeItem(`j2.${k}`);
+          return;
+        }
+        store.removeItem(k);
+      },
+    };
+    const joiner = new Game(joinerStore, mulberry32(45));
+    joiner.pickClass('Ranger');
+    joiner.save.clanHumanId = 'human_invite_joiner';
+    expect(joiner.joinClan(minted.token)).toBeNull();
+    expect(joiner.clan?.code).toBe(leader.clan!.code);
+    expect(lookupClanInvite(store, minted.token)).toBeNull();
+
+    const spent = resolveJoinTarget(store, minted.token);
+    expect(spent.kind).toBe('error');
+  });
+
+  it('rejects expired invite tokens', () => {
+    const store = memoryStorage();
+    const rng = mulberry32(46);
+    const clan = createClan(rng, 'Expire', snap('Warrior', 8, 400, 'leader_a'));
+    publishClanHall(store, clan);
+    const now = 1_700_000_000_000;
+    const created = createClanInvite(store, clan.code, 'leader_a', rng, {
+      ttlMs: 1000,
+      now,
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(lookupClanInvite(store, created.invite.token, now + 500)).toBeTruthy();
+    expect(lookupClanInvite(store, created.invite.token, now + CLAN_INVITE_TTL_MS)).toBeNull();
+    const resolved = resolveJoinTarget(store, created.invite.token, now + 2000);
+    expect(resolved.kind).toBe('error');
+    if (resolved.kind === 'error') expect(resolved.error).toMatch(/expired/i);
+  });
+
+  it('officers kick AI / approve pending joins; leaders promote and demote', () => {
+    expect(canKickAi('officer')).toBe(true);
+    expect(canApproveJoins('officer')).toBe(true);
+    expect(canPromoteDemote('officer')).toBe(false);
+    expect(canPromoteDemote('leader')).toBe(true);
+
+    const store = memoryStorage();
+    const game = new Game(store, mulberry32(50));
+    game.pickClass('Warrior');
+    game.save.crystals = CLAN_CREATE_COST;
+    game.createClan('Roles');
+    game.fillAiClanRoster();
+    const ai = game.clan!.members.find((m) => m.isAi)!;
+    expect(game.kickClanAi(ai.id)).toBeNull();
+    expect(game.clan!.members.some((m) => m.id === ai.id)).toBe(false);
+
+    // Add a second real (publish so hall sync keeps them) then promote.
+    const human = buildAiMember(mulberry32(51), 'Mage', 10, 'member', 'scaled');
+    human.isAi = false;
+    human.isPlayer = false;
+    human.id = 'human_officer_cand';
+    human.name = 'Cand';
+    game.clan!.members.push(human);
+    publishClanHall(store, game.clan!);
+    expect(game.setClanMemberRole(human.id, 'officer')).toBeNull();
+    expect(game.clan!.members.find((m) => m.id === human.id)?.role).toBe('officer');
+    expect(game.setClanMemberRole(human.id, 'member')).toBeNull();
+    expect(game.clan!.members.find((m) => m.id === human.id)?.role).toBe('member');
+
+    // Pending join + approve.
+    const pendingSnap = snap('Rogue', 9, 500, 'pending_human');
+    expect(requestClanJoin(store, game.clan!.code, pendingSnap).ok).toBe(true);
+    expect(game.listPendingClanJoins().some((p) => p.humanId === 'pending_human')).toBe(true);
+    expect(game.approveClanJoin('pending_human')).toBeNull();
+    expect(game.clan!.members.some((m) => m.id === 'pending_human')).toBe(true);
+    expect(game.listPendingClanJoins().length).toBe(0);
+
+    // Pure helpers: cannot demote the leader via setMemberRole.
+    const demoteLeader = setMemberRole(
+      game.clan!,
+      game.clan!.members.find((m) => m.role === 'leader')!.id,
+      'member',
+    );
+    expect(demoteLeader.ok).toBe(false);
+    // Re-fill AI then kick via pure helper.
+    game.fillAiClanRoster();
+    const ai2 = game.clan!.members.find((m) => m.isAi);
+    expect(ai2).toBeTruthy();
+    expect(kickAiMember(game.clan!, ai2!.id).ok).toBe(true);
+  });
+
+  it('softens Nightscar match avg so BiS stacks do not mirror raw CP', () => {
+    const mid = seedNightscarSoftMmr(TEAM_CP_VETERAN_MAX);
+    const bisAvg = 2200;
+    const freshAvg = 1450;
+    const softBis = softNightscarMatchAvg(bisAvg, mid + 800);
+    const softFresh = softNightscarMatchAvg(freshAvg, mid - 400);
+    // BiS rivals pull down toward soft peer; gap vs fresh shrinks vs raw CP.
+    expect(softBis).toBeLessThan(bisAvg);
+    expect(softBis - softFresh).toBeLessThan(bisAvg - freshAvg);
+    const up = updateNightscarSoftMmr(mid, true, TEAM_CP_VETERAN_MAX + 400);
+    const down = updateNightscarSoftMmr(mid, false, TEAM_CP_VETERAN_MAX + 400);
+    expect(up).toBeGreaterThan(mid);
+    expect(down).toBeLessThan(mid);
+  });
+
+  it('updates soft MMR after a Nightscar bracket match', () => {
+    const game = new Game(memoryStorage(), mulberry32(60));
+    game.pickClass('Warrior');
+    game.save.crystals = CLAN_CREATE_COST;
+    game.save.stagesCleared = 50;
+    game.save.level = 18;
+    // Force high team CP into Nightscar via inflated member CP after fill.
+    game.createClan('Scar');
+    game.fillAiClanRoster();
+    for (const m of game.clan!.members) m.cp = 1600;
+    expect(game.save.clanNightscarMmr).toBe(0);
+    expect(game.queueClanPvp({ waitS: 0 })).toBeNull();
+    expect(game.save.clanNightscarUnlocked).toBe(true);
+    expect(game.save.clanNightscarMmr).toBeGreaterThan(0);
   });
 });
 

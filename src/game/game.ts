@@ -81,16 +81,20 @@ import { APP_CONTENT_VERSION, shouldShowWhatsNew } from '../data/whatsNew';
 import type { HeroClass, Item, PlaystyleId, RarityId, SkillId, SlotId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
-import type { ClanData, ClanPlayerSnapshot } from './clan';
+import type { ClanData, ClanPlayerSnapshot, ClanRole } from './clan';
 import {
   CLAN_CREATE_COST,
   CLAN_MAX_SIZE,
   TOKEN_DAY_CAP,
   admitRealMember,
   applyTokenCap,
+  canApproveJoins,
+  canKickAi,
+  canPromoteDemote,
   createClan,
   dayKey,
   fillAiRoster,
+  kickAiMember,
   missingClasses,
   normalizeClanMember,
   pickQueueRoster,
@@ -100,6 +104,7 @@ import {
   sanitizeMemberName,
   seasonDay,
   seasonRemainingMs,
+  setMemberRole,
   viewClanForHuman,
 } from './clan';
 import type { ClanBracketId } from './clanBrackets';
@@ -114,9 +119,24 @@ import {
   matchCpBandForQueue,
   meetsClanQueueFloor,
   nextBracket,
+  seedNightscarSoftMmr,
+  softNightscarMatchAvg,
   teamCpSum,
+  updateNightscarSoftMmr,
 } from './clanBrackets';
-import { lookupClanHall, publishClanHall, removeMemberFromHall } from './clanHall';
+import type { ClanPendingJoin } from './clanHall';
+import {
+  approvePendingJoin,
+  createClanInvite,
+  consumeClanInvite,
+  denyPendingJoin,
+  listPendingJoins,
+  lookupClanHall,
+  publishClanHall,
+  removeMemberFromHall,
+  requestClanJoin,
+  resolveJoinTarget,
+} from './clanHall';
 import type { BattleEvent, HeroInput, RunDef } from './combat';
 import { Battle, STEP } from './combat';
 import type { PvpEvent, PvpFighterSnap, PvpResult } from './pvp';
@@ -1836,27 +1856,134 @@ export class Game {
     return null;
   }
 
+  /** Local player's clan role (member if missing). */
+  myClanRole(): ClanRole {
+    const clan = this.save.clan;
+    if (!clan) return 'member';
+    const humanId = this.ensureClanHumanId();
+    const me = clan.members.find((m) => m.id === humanId) ?? clan.members.find((m) => m.isPlayer);
+    return me?.role ?? 'member';
+  }
+
   /**
-   * Join an existing published clan by code.
-   * Replaces the weakest AI (lowest CP → level → id) when AI remain; never kicks real players.
+   * Join an existing published clan by permanent code OR one-time officer invite token.
+   * Replaces class-priority AI when AI remain; never kicks real players.
    */
   joinClan(code: string): string | null {
     if (this.save.clan) return 'Already in a clan.';
     if (!this.save.classPicked) return 'Pick a class first.';
-    if (!code.trim()) return 'Enter a clan code.';
-    const clean = sanitizeClanCode(code);
-    const hall = lookupClanHall(this.storage, clean);
-    if (!hall) return 'No clan with that code. Ask the leader for an invite code.';
+    if (!code.trim()) return 'Enter a clan code or invite link.';
+    const target = resolveJoinTarget(this.storage, code);
+    if (target.kind === 'error') return target.error;
+    const hall = lookupClanHall(this.storage, target.code);
+    if (!hall) {
+      return target.kind === 'invite'
+        ? 'Invite points to a missing hall.'
+        : 'No clan with that code. Ask an officer for an invite.';
+    }
     const result = admitRealMember(hall, this.playerClanSnapshot());
     if (!result.ok) return result.error;
+    if (target.kind === 'invite') consumeClanInvite(this.storage, target.invite.token);
     this.save.clan = viewClanForHuman(result.clan, this.ensureClanHumanId());
     this.publishHall();
     const swap = result.replacedAi
-      ? ` Replaced AI ${result.replacedAi.name} (${result.replacedAi.cp} CP).`
+      ? ` Replaced AI ${result.replacedAi.name} (${result.replacedAi.heroClass}, ${result.replacedAi.cp} CP).`
       : '';
-    this.say(`Joined ${this.save.clan.name} (${this.save.clan.code}).${swap}`);
+    const via = target.kind === 'invite' ? ' via invite link' : '';
+    this.say(`Joined ${this.save.clan.name} (${this.save.clan.code})${via}.${swap}`);
     this.toast(`Joined ${this.save.clan.name}`, 'good');
     this.advanceTutorial('clan');
+    this.changed();
+    return null;
+  }
+
+  /** Request join (pending officer/leader approval). Does not admit yet. */
+  requestClanJoin(code: string): string | null {
+    if (this.save.clan) return 'Already in a clan.';
+    if (!this.save.classPicked) return 'Pick a class first.';
+    const clean = sanitizeClanCode(code);
+    if (!clean) return 'Enter a clan code.';
+    const res = requestClanJoin(this.storage, clean, this.playerClanSnapshot());
+    if (!res.ok) return res.error;
+    this.toast('Join request sent — waiting for officer approval', 'info');
+    this.say(`Requested to join clan ${clean}.`);
+    this.changed();
+    return null;
+  }
+
+  /** Officer/leader: mint a one-time invite link (expires in 24h). */
+  createOfficerInvite(ttlMs?: number): { token: string; expiresAt: number } | string {
+    if (!this.save.clan) return 'Join or create a clan first.';
+    if (!canApproveJoins(this.myClanRole())) return 'Officers and leaders can mint invite links.';
+    this.syncClanFromHall();
+    this.publishHall();
+    const res = createClanInvite(
+      this.storage,
+      this.save.clan.code,
+      this.ensureClanHumanId(),
+      this.rng,
+      ttlMs != null ? { ttlMs } : undefined,
+    );
+    if (!res.ok) return res.error;
+    this.toast('One-time invite link created', 'good');
+    this.changed();
+    return { token: res.invite.token, expiresAt: res.invite.expiresAt };
+  }
+
+  listPendingClanJoins(): ClanPendingJoin[] {
+    if (!this.save.clan) return [];
+    return listPendingJoins(this.storage, this.save.clan.code);
+  }
+
+  /** Officer/leader: approve a pending join request. */
+  approveClanJoin(humanId: string): string | null {
+    if (!this.save.clan) return 'Not in a clan.';
+    if (!canApproveJoins(this.myClanRole())) return 'Officers and leaders can approve joins.';
+    const res = approvePendingJoin(this.storage, this.save.clan.code, humanId);
+    if (!res.ok) return res.error;
+    this.save.clan = viewClanForHuman(res.clan, this.ensureClanHumanId());
+    this.publishHall();
+    const note = res.replacedAiName ? ` (replaced AI ${res.replacedAiName})` : '';
+    this.toast(`Approved join${note}`, 'good');
+    this.say(`Approved a pending join${note}.`);
+    this.changed();
+    return null;
+  }
+
+  denyClanJoin(humanId: string): string | null {
+    if (!this.save.clan) return 'Not in a clan.';
+    if (!canApproveJoins(this.myClanRole())) return 'Officers and leaders can deny joins.';
+    const res = denyPendingJoin(this.storage, this.save.clan.code, humanId);
+    if (!res.ok) return res.error;
+    this.toast('Denied join request', 'info');
+    this.changed();
+    return null;
+  }
+
+  /** Officer/leader: kick an AI filler from the roster. */
+  kickClanAi(memberId: string): string | null {
+    if (!this.save.clan) return 'Not in a clan.';
+    if (!canKickAi(this.myClanRole())) return 'Officers and leaders can kick AI fillers.';
+    this.syncClanFromHall();
+    const res = kickAiMember(this.save.clan, memberId);
+    if (!res.ok) return res.error;
+    this.save.clan = viewClanForHuman(res.clan, this.ensureClanHumanId());
+    this.publishHall();
+    this.toast('AI filler removed', 'good');
+    this.changed();
+    return null;
+  }
+
+  /** Leader only: promote member → officer or demote officer → member. */
+  setClanMemberRole(memberId: string, role: 'officer' | 'member'): string | null {
+    if (!this.save.clan) return 'Not in a clan.';
+    if (!canPromoteDemote(this.myClanRole())) return 'Only the leader can promote or demote.';
+    this.syncClanFromHall();
+    const res = setMemberRole(this.save.clan, memberId, role);
+    if (!res.ok) return res.error;
+    this.save.clan = viewClanForHuman(res.clan, this.ensureClanHumanId());
+    this.publishHall();
+    this.toast(role === 'officer' ? 'Promoted to officer' : 'Demoted to member', 'good');
     this.changed();
     return null;
   }
@@ -1889,7 +2016,9 @@ export class Game {
     this.save.clan.members.push(...added);
     this.publishHall();
     this.toast(`AI fillers: ${added.map((m) => m.heroClass).join(', ')}`, 'good');
-    this.say(`AI roster filled (+${added.length}). Real joins replace the weakest AI (lowest CP).`);
+    this.say(
+      `AI roster filled (+${added.length}). Real joins prefer redundant-class AI, then lowest CP.`,
+    );
     this.changed();
     return null;
   }
@@ -1939,7 +2068,7 @@ export class Game {
    * Creates a free "Practice Hall" clan when the player is not in one.
    * Soft floor still applies (same as ranked queue) so solo test mirrors live rules.
    */
-  queuePractice4v4(opts?: { challengeUp?: boolean }): string | null {
+  queuePractice4v4(opts?: { challengeUp?: boolean; waitS?: number }): string | null {
     if (this.mode === 'pvp') return 'Clan fight in progress.';
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
     if (!this.save.classPicked) return 'Pick a class first.';
@@ -2072,8 +2201,9 @@ export class Game {
   /**
    * Queue local 4v4 auto-battle.
    * Sim + rewards resolve immediately; Phaser stage plays the log, then emits `pvp` for the breakdown modal.
+   * Pass `waitS` from the live queue meter (defaults to practice tight band).
    */
-  queueClanPvp(opts?: { challengeUp?: boolean }): string | null {
+  queueClanPvp(opts?: { challengeUp?: boolean; waitS?: number }): string | null {
     if (this.mode === 'pvp') return 'Clan fight in progress.';
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
     if (!this.save.clan) return 'Join a clan first.';
@@ -2100,9 +2230,17 @@ export class Game {
       usedChallenge = true;
     }
     const avgCp = teamCp / roster.length;
-    const matchAvg = usedChallenge ? BRACKET_TARGET_AVG_CP[matchBracket] : avgCp;
+    let matchAvg = usedChallenge ? BRACKET_TARGET_AVG_CP[matchBracket] : avgCp;
+    // Soft MMR within Nightscar: pull rival target so BiS stacks don't always stomp fresh peers.
+    if (natural === 'nightscar' && !usedChallenge) {
+      if (!this.save.clanNightscarMmr) {
+        this.save.clanNightscarMmr = seedNightscarSoftMmr(teamCp);
+      }
+      matchAvg = softNightscarMatchAvg(avgCp, this.save.clanNightscarMmr);
+    }
     const atTop = natural === 'nightscar';
-    const band = matchCpBandForQueue(PRACTICE_MATCH_WAIT_S, { atTopOfLadder: atTop });
+    const waitS = opts?.waitS ?? PRACTICE_MATCH_WAIT_S;
+    const band = matchCpBandForQueue(waitS, { atTopOfLadder: atTop });
     const enemies = buildOpponentRoster(this.rng, roster, matchAvg, { bandPct: band.pct });
     const result = simulatePvp(roster, enemies, this.save.gear, this.save.level, this.rng, {
       bracket: matchBracket,
@@ -2112,7 +2250,14 @@ export class Game {
     });
     this.refreshClanTokenDay();
     if (usedChallenge) this.save.clanChallengeUpDayKey = dayKey();
-    if (matchBracket === 'nightscar') this.save.clanNightscarUnlocked = true;
+    if (matchBracket === 'nightscar') {
+      this.save.clanNightscarUnlocked = true;
+      this.save.clanNightscarMmr = updateNightscarSoftMmr(
+        this.save.clanNightscarMmr || seedNightscarSoftMmr(teamCp),
+        result.won,
+        teamCp,
+      );
+    }
     const base = bracketTokenReward(matchBracket, result.won);
     const tokenPct = this.totals.effects.tokenGainPct;
     const gain = Math.round(base * (1 + tokenPct / 100));
@@ -2313,6 +2458,7 @@ export class Game {
     this.save.clanTokens = keepTokens;
     this.save.clanChallengeUpDayKey = '';
     this.save.clanNightscarUnlocked = false;
+    this.save.clanNightscarMmr = 0;
     this.save.classPicked = false;
     this.battle = null;
     this.pvpPlayback = null;

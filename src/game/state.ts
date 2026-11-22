@@ -134,6 +134,11 @@ export interface SaveData {
   clanChallengeUpDayKey: string;
   /** Unlocks Nightscar-exclusive Clan Armorer legendaries after a Nightscar match. */
   clanNightscarUnlocked: boolean;
+  /**
+   * Soft MMR within Nightscar bracket (team-scale). 0 = uninitialized → seed from team CP.
+   * Compresses BiS vs fresh Nightscar matchups; Scout/Veteran ignore it.
+   */
+  clanNightscarMmr: number;
   clan: ClanData | null;
   /**
    * Stable id for this save's human in shared clan halls.
@@ -227,6 +232,7 @@ export function defaultSave(now = Date.now()): SaveData {
     clanLosses: 0,
     clanChallengeUpDayKey: '',
     clanNightscarUnlocked: false,
+    clanNightscarMmr: 0,
     clan: null,
     clanHumanId: '',
     season: defaultSeason(now),
@@ -445,6 +451,7 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   | 'clanLosses'
   | 'clanChallengeUpDayKey'
   | 'clanNightscarUnlocked'
+  | 'clanNightscarMmr'
   | 'clan'
   | 'clanHumanId'
   | 'season'
@@ -484,6 +491,10 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
     clanChallengeUpDayKey:
       typeof parsed.clanChallengeUpDayKey === 'string' ? parsed.clanChallengeUpDayKey : '',
     clanNightscarUnlocked: !!parsed.clanNightscarUnlocked,
+    clanNightscarMmr:
+      typeof parsed.clanNightscarMmr === 'number' && Number.isFinite(parsed.clanNightscarMmr)
+        ? Math.max(0, Math.round(parsed.clanNightscarMmr))
+        : 0,
     clan: parsed.clan ? sanitizeClan(parsed.clan) : null,
     clanHumanId:
       typeof parsed.clanHumanId === 'string' && parsed.clanHumanId.trim()

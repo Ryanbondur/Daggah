@@ -80,6 +80,14 @@ export const MATCH_CP_BANDS: readonly MatchCpBand[] = [
 /** Local AI practice fills immediately at the tight band (similar CP). */
 export const PRACTICE_MATCH_WAIT_S = 0;
 
+/** Live queue meter spans 0→30s across tight→open. */
+export const QUEUE_BAND_METER_S = 30;
+
+/** Soft MMR seed for fresh Nightscar teams (≈ target avg × 4 seats). */
+export const NIGHTSCAR_SOFT_MMR_BASE = BRACKET_TARGET_AVG_CP.nightscar * 4;
+export const NIGHTSCAR_SOFT_MMR_MIN = 4800;
+export const NIGHTSCAR_SOFT_MMR_MAX = 9000;
+
 export function matchBandIndexForWait(waitS: number): number {
   let idx = 0;
   for (let i = 0; i < MATCH_CP_BANDS.length; i++) {
@@ -99,6 +107,53 @@ export function matchCpBandForQueue(
   let idx = matchBandIndexForWait(waitS);
   if (opts?.atTopOfLadder) idx = Math.min(MATCH_CP_BANDS.length - 1, idx + 1);
   return MATCH_CP_BANDS[idx]!;
+}
+
+/** Progress 0–1 along the 30s band meter (clamped). */
+export function queueBandMeterProgress(waitS: number): number {
+  return Math.max(0, Math.min(1, waitS / QUEUE_BAND_METER_S));
+}
+
+/** Short label for queue UI (Tight / Standard / Wide / Open). */
+export function matchBandTitle(band: MatchCpBand): string {
+  if (band.id === 'tight') return 'Tight';
+  if (band.id === 'standard') return 'Standard';
+  if (band.id === 'wide') return 'Wide';
+  return 'Open';
+}
+
+/**
+ * Soft MMR within Nightscar: BiS stacks climb, fresh teams stay near the soft base.
+ * Used only when natural bracket is Nightscar — Scout/Veteran ignore it.
+ */
+export function clampNightscarSoftMmr(mmr: number): number {
+  return Math.max(NIGHTSCAR_SOFT_MMR_MIN, Math.min(NIGHTSCAR_SOFT_MMR_MAX, Math.round(mmr)));
+}
+
+export function seedNightscarSoftMmr(teamCp: number): number {
+  // Blend team CP with the Nightscar mid so brand-new Nightscar aren't stuck at floor.
+  const blended = teamCp * 0.7 + NIGHTSCAR_SOFT_MMR_BASE * 0.3;
+  return clampNightscarSoftMmr(blended);
+}
+
+/** Elo-ish step after a Nightscar match (small so BiS edge stays seasonal, not a gate). */
+export function updateNightscarSoftMmr(current: number, won: boolean, teamCp: number): number {
+  const base = current > 0 ? current : seedNightscarSoftMmr(teamCp);
+  const expected = 1 / (1 + Math.pow(10, (teamCp - base) / 800));
+  const score = won ? 1 : 0;
+  const delta = Math.round(28 * (score - expected));
+  return clampNightscarSoftMmr(base + delta);
+}
+
+/**
+ * Soften Nightscar match avg so BiS stacks don't always stomp fresh Nightscar peers.
+ * Pulls rival target toward soft-MMR-implied avg (team MMR / 4).
+ */
+export function softNightscarMatchAvg(allyAvgCp: number, softMmr: number): number {
+  const mmr = softMmr > 0 ? softMmr : NIGHTSCAR_SOFT_MMR_BASE;
+  const peerAvg = mmr / 4;
+  // 55% ally strength, 45% soft peer — compresses extreme BiS vs fresh gaps.
+  return allyAvgCp * 0.55 + peerAvg * 0.45;
 }
 
 export function teamCpSum(roster: { cp: number }[]): number {

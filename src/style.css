@@ -2712,6 +2712,111 @@ button {
   background: #8a9bb0;
   color: #12151a;
 }
+.clan-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6cqw;
+  justify-content: flex-end;
+}
+.btn.tiny {
+  padding: 0.6cqw 1.2cqw;
+  font-size: 2.5cqw;
+  width: auto;
+  min-height: 0;
+}
+.clan-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8cqw;
+  padding: 1.4cqw 1.6cqw;
+  background: rgba(255, 255, 255, 0.22);
+  border: 0.25cqw solid rgba(60, 54, 44, 0.28);
+  border-radius: 1cqw;
+  text-align: left;
+}
+.clan-pending b {
+  font-family: var(--font-title);
+  font-size: 3cqw;
+  color: #2a2420;
+}
+.clan-member.pending {
+  background: rgba(232, 210, 150, 0.35);
+}
+.queue-wait-sheet .queue-band-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6cqw;
+  padding: 1.8cqw 2cqw;
+  background: linear-gradient(180deg, rgba(244, 230, 196, 0.55), rgba(210, 190, 150, 0.35));
+  border: 0.25cqw solid rgba(60, 54, 44, 0.35);
+  border-radius: 1.2cqw;
+  text-align: left;
+}
+.queue-band-head {
+  display: flex;
+  gap: 2cqw;
+  align-items: center;
+}
+.queue-band-head b {
+  display: block;
+  font-family: var(--font-title);
+  font-size: 3.4cqw;
+  color: #2a241c;
+}
+.queue-band-head span:not(.clan-bracket-pill) {
+  display: block;
+  font-size: 2.6cqw;
+  color: #5a5348;
+}
+.queue-band-meter {
+  position: relative;
+  height: 2.8cqw;
+  margin: 3.2cqw 0 4.5cqw;
+  background: rgba(40, 34, 28, 0.18);
+  border: 0.25cqw solid rgba(40, 34, 28, 0.35);
+  border-radius: 999px;
+  overflow: visible;
+}
+.queue-band-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7a9a62, #c9a04a 55%, #8a9bb0);
+  transition: width 0.08s linear;
+}
+.queue-band-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.queue-band-mark {
+  position: absolute;
+  top: 3.4cqw;
+  transform: translateX(-50%);
+  font-size: 2.2cqw;
+  font-weight: 700;
+  color: #7a7368;
+  white-space: nowrap;
+}
+.queue-band-mark.passed {
+  color: #4a5a38;
+}
+.queue-band-mark.on {
+  color: #2a241c;
+  font-size: 2.5cqw;
+}
+.clan-bracket-pill.tight {
+  background: #b7c4a8;
+}
+.clan-bracket-pill.standard {
+  background: #c9b07a;
+}
+.clan-bracket-pill.wide {
+  background: #c49a6c;
+}
+.clan-bracket-pill.open {
+  background: #8a9bb0;
+  color: #12151a;
+}
 .lb-hero {
   display: flex;
   gap: 2cqw;
