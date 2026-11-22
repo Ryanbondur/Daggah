@@ -11,9 +11,14 @@ import {
   sellValue,
   setCounts,
 } from '../data/gear';
-import type { HeroClass, Item, RarityId, SetId, StatKey } from '../data/types';
+import type { CapeId, HeroClass, Item, RarityId, SetId, StatKey } from '../data/types';
 import { HERO_CLASSES, STAT_LABEL } from '../data/types';
-import { missingSlotsForSet } from '../game/craft';
+import {
+  DUST_SOFT_CAP,
+  missingSlotsForSet,
+  type CraftCategory,
+} from '../game/craft';
+import { CAPES } from '../data/capes';
 import { CLASS_BLURB, availableSpeeds, xpToNext } from '../data/xp';
 import { CLAN_CREATE_COST, CLAN_MAX_SIZE, TOKEN_DAY_CAP } from '../game/clan';
 import type { ClanMember } from '../game/clan';
@@ -1466,56 +1471,91 @@ export function showClanArmorer(ctx: UIContext): void {
 }
 
 /**
- * Dust Blacksmith — craft class set pieces.
- * Set tabs + slot list (no card wall). Capes / Clanforged / Legendary not craftable.
+ * Categorized Blacksmith: Sets (incl. Legendary + craft-missing), Capes, Dust refine.
  */
 export function showBlacksmith(
   ctx: UIContext,
-  opts: { setId?: SetId; missingOnly?: boolean } = {},
+  opts: {
+    setId?: SetId;
+    missingOnly?: boolean;
+    legendary?: boolean;
+    category?: CraftCategory;
+  } = {},
 ): void {
   const g = ctx.game;
+  const category: CraftCategory = opts.category ?? 'sets';
   const sets = g.craftableSets();
   const missingOnly = opts.missingOnly ?? false;
+  const legendary = opts.legendary === true && g.legendaryCraftAvailable();
   const preferred = opts.setId && sets.includes(opts.setId) ? opts.setId : sets[0];
   const activeSet = preferred;
   const heroClass = g.save.heroClass;
   const wt = CLASS_WEAPON_TYPE[heroClass];
   const at = CLASS_ARMOR_TYPE[heroClass];
+  const legAvail = g.legendaryCraftAvailable();
 
-  const modeRow = `<div class="craft-modes" role="group" aria-label="Craft filter">
-    <button type="button" class="craft-mode${!missingOnly ? ' on' : ''}" data-action="craft-mode" data-mode="all">Browse set</button>
-    <button type="button" class="craft-mode${missingOnly ? ' on' : ''}" data-action="craft-mode" data-mode="missing">Missing only</button>
+  const catRow = `<div class="craft-cats" role="tablist" aria-label="Blacksmith">
+    <button type="button" class="craft-cat${category === 'sets' ? ' on' : ''}" role="tab" aria-selected="${category === 'sets'}" data-action="craft-cat" data-cat="sets">Sets</button>
+    <button type="button" class="craft-cat${category === 'capes' ? ' on' : ''}" role="tab" aria-selected="${category === 'capes'}" data-action="craft-cat" data-cat="capes">Capes</button>
+    <button type="button" class="craft-cat${category === 'refine' ? ' on' : ''}" role="tab" aria-selected="${category === 'refine'}" data-action="craft-cat" data-cat="refine">Refine</button>
   </div>`;
 
-  const setTabs =
-    sets.length === 0
-      ? '<p class="tagline">No craftable sets unlocked yet.</p>'
-      : `<div class="craft-set-tabs" role="tablist" aria-label="Gear sets">${sets
-          .map((id) => {
-            const def = SETS[id];
-            const owned = 11 - missingSlotsForSet(id, g.save.gear, g.save.bag).length;
-            const on = id === activeSet ? ' on' : '';
-            return `<button type="button" class="craft-set-tab${on}" role="tab" aria-selected="${id === activeSet}" data-action="craft-set" data-id="${id}">
+  let bodyInner = '';
+  if (category === 'sets') {
+    const modeRow = `<div class="craft-modes" role="group" aria-label="Craft filter">
+      <button type="button" class="craft-mode${!missingOnly ? ' on' : ''}" data-action="craft-mode" data-mode="all">Browse set</button>
+      <button type="button" class="craft-mode${missingOnly ? ' on' : ''}" data-action="craft-mode" data-mode="missing">Missing only</button>
+      ${
+        legAvail
+          ? `<button type="button" class="craft-mode craft-mode-leg${legendary ? ' on' : ''}" data-action="craft-leg" aria-pressed="${legendary}">Legendary</button>`
+          : ''
+      }
+    </div>`;
+
+    const setTabs =
+      sets.length === 0
+        ? '<p class="tagline">No craftable sets unlocked yet.</p>'
+        : `<div class="craft-set-tabs" role="tablist" aria-label="Gear sets">${sets
+            .map((id) => {
+              const def = SETS[id];
+              const owned = 11 - missingSlotsForSet(id, g.save.gear, g.save.bag).length;
+              const on = id === activeSet ? ' on' : '';
+              return `<button type="button" class="craft-set-tab${on}" role="tab" aria-selected="${id === activeSet}" data-action="craft-set" data-id="${id}">
               <img src="${itemIcon({ slot: 'chest', icon: def.icon, armorType: at })}" alt="" />
               <b>${escapeHtml(def.name)}</b>
               <small>${owned}/11</small>
             </button>`;
-          })
-          .join('')}</div>`;
+            })
+            .join('')}</div>`;
 
-  let slotList = '';
-  if (activeSet) {
-    const result = g.craftOffersForSet(activeSet, missingOnly);
-    if ('error' in result) {
-      slotList = `<p class="tagline">${escapeHtml(result.error)}</p>`;
-    } else if (result.length === 0) {
-      slotList = `<p class="tagline">${missingOnly ? 'You already own every piece of this set.' : 'No slots.'}</p>`;
-    } else {
-      const def = SETS[activeSet];
-      const rarity = RARITIES[result[0].rarity];
-      slotList = `<div class="craft-set-head">
+    let slotList = '';
+    if (activeSet) {
+      const result = g.craftOffersForSet(activeSet, missingOnly, legendary);
+      if ('error' in result) {
+        slotList = `<p class="tagline">${escapeHtml(result.error)}</p>`;
+      } else if (result.length === 0) {
+        slotList = `<p class="tagline">${missingOnly ? 'You already own every piece of this set.' : 'No slots.'}</p>`;
+      } else {
+        const def = SETS[activeSet];
+        const rarity = RARITIES[result[0].rarity];
+        const plan = g.craftMissingPlan(activeSet, legendary);
+        const missingCount = 'error' in plan ? 0 : plan.slots.length;
+        const canBatch =
+          !('error' in plan) && plan.affordableSlots.length > 0 && missingCount > 0;
+        const batchLabel =
+          'error' in plan || missingCount === 0
+            ? 'Set complete'
+            : canBatch
+              ? `Craft missing (−${fmt(plan.affordableDust)}${
+                  plan.affordableSlots.length < plan.slots.length
+                    ? ` · ${plan.affordableSlots.length}/${plan.slots.length}`
+                    : ''
+                })`
+              : `Need ${fmt(plan.totalDust)} dust`;
+        slotList = `<div class="craft-set-head">
           <b style="color:${rarity.color}">${escapeHtml(def.name)}</b>
           <span>${escapeHtml(rarity.label)} · Gear Lv.${result[0].gearLevel} · ${escapeHtml(def.favors)}</span>
+          <button type="button" class="btn gold craft-missing-btn${canBatch ? '' : ' disabled'}" data-action="craft-missing" data-set="${activeSet}" ${canBatch ? '' : 'aria-disabled="true"'}>${escapeHtml(batchLabel)}</button>
         </div>
         <div class="vendor-list craft-slots">${result
           .map((o) => {
@@ -1531,18 +1571,74 @@ export function showBlacksmith(
             </div>`;
           })
           .join('')}</div>`;
+      }
     }
+
+    bodyInner = `<p>Spend dust on <b>${escapeHtml(heroClass)}</b> set pieces.${
+      legAvail ? ' Legendary crafts are a late-game sink (Act 8+).' : ''
+    }</p>
+      ${modeRow}
+      ${setTabs}
+      ${slotList}`;
+  } else if (category === 'capes') {
+    const offers = g.craftCapeOffers();
+    const rows =
+      offers.length === 0
+        ? '<p class="tagline">No class capes.</p>'
+        : `<div class="vendor-list craft-slots">${offers
+            .map((o) => {
+              const ownedLabel =
+                o.owned === 'equipped' ? 'Equipped' : o.owned === 'bag' ? 'In bag' : 'Not owned';
+              const can = o.affordable;
+              const lock = o.unlocked ? '' : ` · Act ${o.minAct}`;
+              const rarity = RARITIES[o.rarity];
+              return `<div class="vendor-row craft-row craft-cape-row${can ? '' : ' is-dim'}" role="button" tabindex="${can ? '0' : '-1'}"
+                data-action="craft-cape" data-cape="${o.capeId}" ${can ? '' : 'aria-disabled="true"'}>
+                <img src="${itemIcon({ slot: 'cape', capeId: o.capeId, icon: CAPES[o.capeId].icon })}" alt="" />
+                <span><b style="color:${rarity.color}">${escapeHtml(o.name)}</b><small>${ownedLabel}${lock}</small><em class="craft-cape-fx">${escapeHtml(o.effectText)}</em></span>
+                <b class="price"><i class="dust"></i>${fmt(o.dustCost)}</b>
+              </div>`;
+            })
+            .join('')}</div>`;
+    bodyInner = `<p>Class-locked capes (3 for ${escapeHtml(heroClass)}). Real effects — late-act dust sink.</p>${rows}`;
+  } else {
+    const preview = g.dustRefinePreview();
+    const over = preview.excess > 0;
+    const canRefine = preview.maxCrystals > 0;
+    bodyInner = `<p>Soft cap <b>${fmt(DUST_SOFT_CAP)}</b> dust. Excess refines to crystals at a poor rate so salvage does not pile forever.</p>
+      <div class="craft-refine">
+        <div class="row"><span>Soft cap</span><b>${fmt(preview.softCap)}</b></div>
+        <div class="row"><span>Excess</span><b><i class="dust"></i> ${fmt(preview.excess)}</b></div>
+        <div class="row"><span>Rate</span><b>${preview.dustPerCrystal} dust → 1 crystal</b></div>
+        <div class="row"><span>Can refine</span><b>${fmt(preview.maxCrystals)} crystal${preview.maxCrystals === 1 ? '' : 's'}</b></div>
+        <button type="button" class="btn gold craft-refine-btn${canRefine ? '' : ' disabled'}" data-action="craft-refine" ${canRefine ? '' : 'aria-disabled="true"'}>
+          ${canRefine ? `Refine all excess (−${fmt(preview.maxCrystals * preview.dustPerCrystal)} dust)` : over ? 'Need more excess for 1 crystal' : 'Under soft cap'}
+        </button>
+      </div>`;
   }
+
+  const reopen = (next: {
+    setId?: SetId;
+    missingOnly?: boolean;
+    legendary?: boolean;
+    category?: CraftCategory;
+  }) => {
+    ctx.closeModal();
+    showBlacksmith(ctx, {
+      setId: next.setId ?? activeSet,
+      missingOnly: next.missingOnly ?? missingOnly,
+      legendary: next.legendary ?? legendary,
+      category: next.category ?? category,
+    });
+  };
 
   const el = ctx.openModal(
     `<div class="sheet craft-sheet">
       <h2>Blacksmith</h2>
       <div class="body">
-        <p>Spend dust to craft <b>${escapeHtml(heroClass)}</b> set pieces. Legendary BiS and capes stay farm-only.</p>
         <div class="row"><span>Your dust</span><b><i class="dust" aria-hidden="true"></i> ${fmt(g.save.dust)}</b></div>
-        ${modeRow}
-        ${setTabs}
-        ${slotList}
+        ${catRow}
+        ${bodyInner}
       </div>
       <div class="btns"><button class="btn gold" data-action="close">Close</button></div>
     </div>`,
@@ -1557,28 +1653,52 @@ export function showBlacksmith(
       ctx.closeModal();
       return;
     }
+    if (action === 'craft-cat') {
+      reopen({ category: t.dataset.cat as CraftCategory });
+      return;
+    }
     if (action === 'craft-mode') {
-      const nextMissing = t.dataset.mode === 'missing';
-      ctx.closeModal();
-      showBlacksmith(ctx, { setId: activeSet, missingOnly: nextMissing });
+      reopen({ missingOnly: t.dataset.mode === 'missing', category: 'sets' });
+      return;
+    }
+    if (action === 'craft-leg') {
+      reopen({ legendary: !legendary, category: 'sets' });
       return;
     }
     if (action === 'craft-set') {
-      const id = t.dataset.id as SetId;
-      ctx.closeModal();
-      showBlacksmith(ctx, { setId: id, missingOnly });
+      reopen({ setId: t.dataset.id as SetId, category: 'sets' });
       return;
     }
     if (action === 'craft-piece') {
       if (t.getAttribute('aria-disabled') === 'true') return;
       const setId = t.dataset.set as SetId;
       const slot = t.dataset.slot as Item['slot'];
-      const err = g.craftSetPiece(setId, slot);
+      const err = g.craftSetPiece(setId, slot, legendary);
       if (err) g.toast(err, 'bad');
-      else {
-        ctx.closeModal();
-        showBlacksmith(ctx, { setId, missingOnly });
-      }
+      else reopen({ setId, category: 'sets' });
+      return;
+    }
+    if (action === 'craft-missing') {
+      if (t.getAttribute('aria-disabled') === 'true') return;
+      const setId = t.dataset.set as SetId;
+      const result = g.craftMissingForSet(setId, legendary);
+      if (typeof result === 'string') g.toast(result, 'bad');
+      else reopen({ setId, category: 'sets', missingOnly: true });
+      return;
+    }
+    if (action === 'craft-cape') {
+      if (t.getAttribute('aria-disabled') === 'true') return;
+      const capeId = t.dataset.cape as CapeId;
+      const err = g.craftCape(capeId);
+      if (err) g.toast(err, 'bad');
+      else reopen({ category: 'capes' });
+      return;
+    }
+    if (action === 'craft-refine') {
+      if (t.getAttribute('aria-disabled') === 'true') return;
+      const result = g.refineExcessDust();
+      if (typeof result === 'string') g.toast(result, 'bad');
+      else reopen({ category: 'refine' });
     }
   });
 }

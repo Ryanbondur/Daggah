@@ -3030,16 +3030,42 @@ button {
   background: radial-gradient(circle, #ffe9a8, #c08a20);
   vertical-align: middle;
 }
-/* Blacksmith dust craft — set tabs + slot rows (no card wall) */
+/* Blacksmith dust craft — categories + set tabs + slot rows (no card wall) */
 .craft-sheet .body {
   max-height: 78cqw;
   overflow-y: auto;
+}
+.craft-cats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1cqw;
+  margin: 1cqw 0 1.2cqw;
+}
+.craft-cat {
+  margin: 0;
+  padding: 1.1cqw 0.8cqw;
+  border: 0.35cqw solid #6a5c45;
+  border-radius: 1cqw;
+  background: linear-gradient(180deg, #ebe2cc, #d8c9a8);
+  font: inherit;
+  font-family: var(--font-title);
+  font-size: 2.9cqw;
+  color: #3a3226;
+  cursor: pointer;
+}
+.craft-cat.on {
+  background: linear-gradient(180deg, #f0d58a, #c9a24a);
+  border-color: #6a4a18;
+  color: #2a1c08;
 }
 .craft-modes {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1cqw;
-  margin: 1.4cqw 0 1.2cqw;
+  margin: 0.4cqw 0 1.2cqw;
+}
+.craft-modes:has(.craft-mode-leg) {
+  grid-template-columns: 1fr 1fr 1fr;
 }
 .craft-mode {
   margin: 0;
@@ -3049,7 +3075,7 @@ button {
   background: linear-gradient(180deg, #ebe2cc, #d8c9a8);
   font: inherit;
   font-family: var(--font-title);
-  font-size: 3cqw;
+  font-size: 2.8cqw;
   color: #3a3226;
   cursor: pointer;
 }
@@ -3057,6 +3083,43 @@ button {
   background: linear-gradient(180deg, #f0d58a, #c9a24a);
   border-color: #6a4a18;
   color: #2a1c08;
+}
+.craft-mode-leg.on {
+  background: linear-gradient(180deg, #f6e0a0, #d4a020);
+  border-color: #8a6010;
+}
+.craft-missing-btn {
+  margin-top: 1cqw;
+  width: 100%;
+  font-size: 2.8cqw;
+  padding: 1.2cqw 1.4cqw;
+}
+.craft-missing-btn.disabled,
+.craft-refine-btn.disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.craft-cape-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3cqw;
+  min-width: 0;
+}
+.craft-cape-fx {
+  font-style: normal;
+  font-size: 2.2cqw;
+  color: #6b655a;
+  line-height: 1.25;
+}
+.craft-refine {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8cqw;
+  margin-top: 1cqw;
+}
+.craft-refine-btn {
+  margin-top: 0.6cqw;
+  width: 100%;
 }
 .craft-set-tabs {
   display: flex;

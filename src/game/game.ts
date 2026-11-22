@@ -37,7 +37,7 @@ import {
   isClanRaidDungeon,
   rollClanRaidReward,
 } from './clanRaid';
-import { dungeonAllowsCapes } from '../data/capes';
+import { CAPES, dungeonAllowsCapes } from '../data/capes';
 import type { DropSource } from '../data/gear';
 import {
   DROP_SET_IDS,
@@ -81,16 +81,35 @@ import {
   type TutorialStep,
 } from '../data/tutorial';
 import { APP_CONTENT_VERSION, shouldShowWhatsNew } from '../data/whatsNew';
-import type { HeroClass, Item, PlaystyleId, RarityId, SetId, SkillId, SlotId, StatKey } from '../data/types';
+import type {
+  CapeId,
+  HeroClass,
+  Item,
+  PlaystyleId,
+  RarityId,
+  SetId,
+  SkillId,
+  SlotId,
+  StatKey,
+} from '../data/types';
 import { HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
 import type { ClanData, ClanPlayerSnapshot } from './clan';
 import {
+  buildCapeCraftOffers,
   buildCraftOffers,
   craftDustCost,
+  craftRarityForCape,
   craftRarityForSet,
   craftableSetsForClass,
+  legendaryCraftUnlocked,
+  planCraftMissing,
+  refineDustAmount,
+  refinePreview,
+  type CraftCapeOffer,
+  type CraftMissingPlan,
   type CraftPieceOffer,
+  type RefinePreview,
 } from './craft';
 import {
   CLAN_CREATE_COST,
@@ -1616,10 +1635,22 @@ export class Game {
     return craftableSetsForClass(this.save.heroClass, this.craftActUnlocked());
   }
 
-  /** Slot offers for one set (Blacksmith). Capes / Clanforged excluded. */
-  craftOffersForSet(setId: SetId, missingOnly = false): CraftPieceOffer[] | { error: string } {
+  /** Legendary set crafts unlock at Act 8+. */
+  legendaryCraftAvailable(): boolean {
+    return legendaryCraftUnlocked(this.craftActUnlocked());
+  }
+
+  /** Slot offers for one set (Blacksmith). Clanforged excluded. */
+  craftOffersForSet(
+    setId: SetId,
+    missingOnly = false,
+    legendary = false,
+  ): CraftPieceOffer[] | { error: string } {
     if (SETS[setId] && SETS[setId].act > this.craftActUnlocked()) {
       return { error: `Reach Act ${SETS[setId].act} to craft this set.` };
+    }
+    if (legendary && !this.legendaryCraftAvailable()) {
+      return { error: 'Reach Act 8 to craft Legendary set pieces.' };
     }
     return buildCraftOffers({
       heroClass: this.save.heroClass,
@@ -1629,22 +1660,46 @@ export class Game {
       gear: this.save.gear,
       bag: this.save.bag,
       missingOnly,
+      legendary,
+    });
+  }
+
+  /** Preview one-tap craft of missing slots for the active set. */
+  craftMissingPlan(setId: SetId, legendary = false): CraftMissingPlan | { error: string } {
+    if (SETS[setId] && SETS[setId].act > this.craftActUnlocked()) {
+      return { error: `Reach Act ${SETS[setId].act} to craft this set.` };
+    }
+    if (legendary && !this.legendaryCraftAvailable()) {
+      return { error: 'Reach Act 8 to craft Legendary set pieces.' };
+    }
+    if (!setAllowedForClass(setId, this.save.heroClass)) return { error: 'Wrong class for this set.' };
+    return planCraftMissing({
+      heroClass: this.save.heroClass,
+      setId,
+      gearLevel: this.save.level,
+      dust: this.save.dust,
+      gear: this.save.gear,
+      bag: this.save.bag,
+      legendary,
     });
   }
 
   /**
    * Spend dust to craft a class set piece into the compare/bag queue.
-   * Blocks wrong-class sets, locked acts, capes, Clanforged, and Legendary.
+   * Blocks wrong-class sets, locked acts, and Clanforged. Capes use craftCape.
    */
-  craftSetPiece(setId: SetId, slot: SlotId): string | null {
-    if (slot === 'cape') return 'Capes cannot be crafted.';
+  craftSetPiece(setId: SetId, slot: SlotId, legendary = false): string | null {
+    if (slot === 'cape') return 'Use cape craft for capes.';
     if (!SET_SLOTS.includes(slot as Exclude<SlotId, 'cape'>)) return 'Unknown slot.';
     if (!(DROP_SET_IDS as readonly SetId[]).includes(setId)) return 'That set is not craftable.';
     if (!setAllowedForClass(setId, this.save.heroClass)) return 'Wrong class for this set.';
     if (SETS[setId].act > this.craftActUnlocked()) {
       return `Reach Act ${SETS[setId].act} to craft this set.`;
     }
-    const rarity = craftRarityForSet(setId);
+    if (legendary && !this.legendaryCraftAvailable()) {
+      return 'Reach Act 8 to craft Legendary set pieces.';
+    }
+    const rarity = legendary ? 'legendary' : craftRarityForSet(setId);
     const gearLevel = Math.max(1, Math.min(20, this.save.level));
     const cost = craftDustCost({ rarity, gearLevel, setId });
     if (this.save.dust < cost) return `Need ${cost} dust.`;
@@ -1661,6 +1716,118 @@ export class Game {
     this.toast(`Crafted ${item.name} (−${cost} dust)`, 'good');
     this.changed();
     return null;
+  }
+
+  /**
+   * One-tap: craft every missing piece for a set that dust can afford (slot order).
+   * Returns crafted count or an error string.
+   */
+  craftMissingForSet(setId: SetId, legendary = false): { crafted: number; dustSpent: number } | string {
+    const plan = this.craftMissingPlan(setId, legendary);
+    if ('error' in plan) return plan.error;
+    if (plan.slots.length === 0) return 'You already own every piece of this set.';
+    if (plan.affordableSlots.length === 0) {
+      return `Need ${plan.totalDust} dust for all missing (${plan.slots.length}).`;
+    }
+    if (!(DROP_SET_IDS as readonly SetId[]).includes(setId)) return 'That set is not craftable.';
+    if (!setAllowedForClass(setId, this.save.heroClass)) return 'Wrong class for this set.';
+    const rarity = plan.rarity;
+    const gearLevel = plan.gearLevel;
+    const items: Item[] = [];
+    let dustSpent = 0;
+    for (const slot of plan.affordableSlots) {
+      const cost = craftDustCost({ rarity, gearLevel, setId });
+      if (this.save.dust < cost) break;
+      this.save.dust -= cost;
+      dustSpent += cost;
+      items.push(
+        rollItem(this.rng, {
+          gearLevel,
+          rarity,
+          slot,
+          setId,
+          icon: SETS[setId].icon,
+          heroClass: this.save.heroClass,
+        }),
+      );
+    }
+    if (items.length === 0) return 'Could not craft any missing pieces.';
+    this.queueLoot(items, false);
+    const partial =
+      items.length < plan.slots.length
+        ? ` (${items.length}/${plan.slots.length} — dust ran out)`
+        : '';
+    this.toast(
+      `Crafted ${items.length} missing piece${items.length === 1 ? '' : 's'}${partial} (−${dustSpent} dust)`,
+      'good',
+    );
+    this.changed();
+    return { crafted: items.length, dustSpent };
+  }
+
+  /** Class cape craft catalog (3 per class). */
+  craftCapeOffers(): CraftCapeOffer[] {
+    return buildCapeCraftOffers({
+      heroClass: this.save.heroClass,
+      actUnlocked: this.craftActUnlocked(),
+      gearLevel: this.save.level,
+      dust: this.save.dust,
+      gear: this.save.gear,
+      bag: this.save.bag,
+    });
+  }
+
+  /** Spend dust to craft a class-locked cape into the compare/bag queue. */
+  craftCape(capeId: CapeId): string | null {
+    const def = CAPES[capeId];
+    if (!def) return 'Unknown cape.';
+    if (def.heroClass !== this.save.heroClass) return 'Wrong class for this cape.';
+    if (def.minAct > this.craftActUnlocked()) {
+      return `Reach Act ${def.minAct} to craft ${def.name}.`;
+    }
+    const rarity = craftRarityForCape(capeId);
+    const gearLevel = Math.max(1, Math.min(20, this.save.level));
+    const cost = craftDustCost({ rarity, gearLevel, cape: true });
+    if (this.save.dust < cost) return `Need ${cost} dust.`;
+    this.save.dust -= cost;
+    const item = rollCape(this.rng, {
+      gearLevel,
+      rarity,
+      heroClass: this.save.heroClass,
+      actId: this.craftActUnlocked(),
+      capeId,
+    });
+    if (!item) {
+      this.save.dust += cost;
+      return 'Could not craft that cape.';
+    }
+    this.queueLoot([item], false);
+    this.toast(`Crafted ${item.name} (−${cost} dust)`, 'good');
+    this.changed();
+    return null;
+  }
+
+  dustRefinePreview(): RefinePreview {
+    return refinePreview(this.save.dust);
+  }
+
+  /**
+   * Soft-cap dust sink: convert excess dust (over 4000) into crystals at a poor rate.
+   * Pass crystalsWanted or omit to refine as many as excess allows.
+   */
+  refineExcessDust(crystalsWanted?: number): { crystals: number; dustSpent: number } | string {
+    const preview = refinePreview(this.save.dust);
+    const want = crystalsWanted ?? preview.maxCrystals;
+    const result = refineDustAmount(this.save.dust, want);
+    if ('error' in result) return result.error;
+    this.save.dust -= result.dustSpent;
+    this.save.crystals += result.crystals;
+    this.toast(
+      `Refined ${result.dustSpent} dust → ${result.crystals} crystal${result.crystals === 1 ? '' : 's'}`,
+      'good',
+    );
+    this.changed();
+    return result;
   }
 
   noteSeasonLogin(now = Date.now()): void {
