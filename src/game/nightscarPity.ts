@@ -1,14 +1,40 @@
 import type { RarityId } from '../data/types';
 
 /**
- * Soft pity for Nightscar Apex (endgame dungeon).
+ * Soft pity / bad-luck protection for Nightscar Apex & Ascended Nightscar.
  *
- * Dry run: a successful clear or sweep whose loot has no Epic/Legendary
- * (high-tier Nightscar Regalia chase pieces). Commons/Rares-only = dry.
- * Success: ≥1 Epic or Legendary in that run → reset counter to 0.
- * Soft ramp: each dry stack shifts drop weight into Epic/Legendary.
+ * ## Dry-run definition
+ * - Counts: successful clear or sweep only (failed runs ignored).
+ * - Dry: loot has no Epic or Legendary (Commons/Rares only).
+ * - Success: ≥1 Epic or Legendary → counter resets to 0.
+ *
+ * ## Soft-ramp formula (per pity stack, cap {@link NIGHTSCAR_PITY_MAX})
+ * Move weight from Common, then Rare, into chase tiers:
+ * - **+2 Epic** weight points
+ * - **+1 Legendary** weight points
+ * Mass conserved. If Common+Rare cannot fund the full shift, shrink
+ * Epic:Legendary boosts proportionally (≈2:1). Never a hard pity
+ * guarantee — Legendary stays a seasonal chase.
+ *
+ * ## Dust / craft economy fit
+ * Soft pity eases dry farm streaks without replacing Blacksmith sinks:
+ * - Epic gets **2×** the weight shift of Legendary → Epic Nightscar fills
+ *   (clearability) stay farmable; dust craft remains the deterministic
+ *   gap-filler for missing slots.
+ * - Legendary craft is a steep late sink (salvage×10 × set×1.5 × GL × 2.5);
+ *   pity does **not** hard-drop Legendaries and does **not** reset on craft.
+ * - Target feel: ~42% of regular raiders finish 6pc Legendary Nightscar by
+ *   day 30 via farm + soft pity; craft is optional expensive insurance.
+ *
+ * UI shows soft “Fortune” bands out of combat only — never mid-fight odds.
  */
 export const NIGHTSCAR_PITY_MAX = 8;
+
+/** Epic weight points moved per dry stack. */
+export const PITY_EPIC_WEIGHT_PER_STACK = 2;
+
+/** Legendary weight points moved per dry stack. */
+export const PITY_LEGENDARY_WEIGHT_PER_STACK = 1;
 
 /** Epic or Legendary — the stingy chase tiers on Nightscar tables. */
 export function isNightscarHighTier(item: { rarity: RarityId }): boolean {
@@ -30,8 +56,9 @@ export function nextNightscarPity(
 }
 
 /**
- * Soft-ramp: per pity stack, move 2 Epic + 1 Legendary weight points from
- * Common then Rare. At 8 stacks, endgame boss leans hard into chase rarities
+ * Soft-ramp: per pity stack, move {@link PITY_EPIC_WEIGHT_PER_STACK} Epic +
+ * {@link PITY_LEGENDARY_WEIGHT_PER_STACK} Legendary weight points from
+ * Common then Rare. At max stacks, endgame tables lean into chase rarities
  * without a hard guarantee.
  */
 export function applyNightscarSoftPity(
@@ -47,8 +74,8 @@ export function applyNightscarSoftPity(
   };
   if (p <= 0) return w;
 
-  let epicBoost = 2 * p;
-  let legBoost = p;
+  let epicBoost = PITY_EPIC_WEIGHT_PER_STACK * p;
+  let legBoost = PITY_LEGENDARY_WEIGHT_PER_STACK * p;
   let need = epicBoost + legBoost;
 
   for (const r of ['common', 'rare'] as const) {

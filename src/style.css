@@ -2950,6 +2950,131 @@ button {
   font-weight: 800;
   font-size: 2.5cqw;
 }
+
+/* Set progress + Fortune tracker (Town / Hero) */
+.set-progress-sheet .body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6cqw;
+}
+.set-prog-card {
+  padding: 2cqw;
+  background: rgba(255, 255, 255, 0.22);
+  border: 0.3cqw solid rgba(60, 54, 44, 0.35);
+  text-align: left;
+}
+.set-prog-card.featured {
+  border-color: rgba(168, 120, 40, 0.75);
+  background: rgba(255, 245, 210, 0.35);
+}
+.set-prog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1.5cqw;
+  margin-bottom: 1cqw;
+}
+.set-prog-head b {
+  font-family: var(--font-title);
+  font-size: 3.4cqw;
+  color: #2a2420;
+}
+.set-prog-head span {
+  font-size: 2.4cqw;
+  color: #6b655a;
+}
+.set-prog-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 2.7cqw;
+  color: #4d473e;
+  margin-top: 0.6cqw;
+}
+.set-prog-meta b {
+  font-family: var(--font-num);
+  color: #2a2420;
+}
+.set-prog-bar {
+  height: 1.2cqw;
+  margin-top: 0.6cqw;
+  background: rgba(60, 54, 44, 0.18);
+  border-radius: 0.4cqw;
+  overflow: hidden;
+}
+.set-prog-bar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #8a6a28, #c9a24a);
+}
+.set-prog-bar.bis > span {
+  background: linear-gradient(90deg, #a87818, var(--legendary));
+}
+.set-prog-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7cqw;
+  margin-top: 1.4cqw;
+}
+.set-dot {
+  width: 2.2cqw;
+  height: 2.2cqw;
+  border-radius: 50%;
+  background: rgba(60, 54, 44, 0.22);
+  border: 0.25cqw solid rgba(60, 54, 44, 0.35);
+}
+.set-dot.on {
+  background: var(--rare);
+  border-color: #2a2420;
+}
+.set-dot.on.r-common {
+  background: var(--common);
+}
+.set-dot.on.r-rare {
+  background: var(--rare);
+}
+.set-dot.on.r-epic {
+  background: var(--epic);
+}
+.set-dot.on.r-legendary {
+  background: var(--legendary);
+}
+.fortune-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.4cqw;
+}
+.fortune-card {
+  padding: 1.8cqw;
+  background: rgba(255, 255, 255, 0.2);
+  border: 0.3cqw solid rgba(60, 54, 44, 0.35);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4cqw;
+}
+.fortune-card span {
+  font-size: 2.5cqw;
+  color: #6b655a;
+}
+.fortune-card b {
+  font-family: var(--font-title);
+  font-size: 3.6cqw;
+  color: #2a2420;
+}
+.fortune-card small {
+  font-family: var(--font-num);
+  font-size: 2.6cqw;
+  color: #4d473e;
+}
+.fortune-card.band-calm b {
+  color: #4d473e;
+}
+.fortune-card.band-rising b {
+  color: #8a5a18;
+}
+.fortune-card.band-strong b {
+  color: #8a281f;
+}
 .field {
   display: flex;
   flex-direction: column;

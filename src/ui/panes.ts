@@ -29,7 +29,7 @@ import type { ClanMember } from '../game/clan';
 import { localClanBoard, mergePlayerOntoBoard } from '../game/clanBoardClient';
 import { BRACKET_TOKEN_LOSS, BRACKET_TOKEN_WIN, bracketRangeLabel } from '../game/clanBrackets';
 import { CLAN_RAID_WEEKLY_ATTEMPTS } from '../game/clanRaid';
-import { NIGHTSCAR_PITY_MAX } from '../game/nightscarPity';
+import { pityAdventureHint } from '../game/setProgress';
 import { DAILY_SHOP_SIZE } from '../game/shop';
 import { HERO_CLASSES } from '../data/types';
 import {
@@ -272,8 +272,12 @@ function renderAscendedNightscarRow(ctx: UIContext): string {
   const sweepReady = g.dungeonSweepUnlocked(d);
   const afford = open && g.canAffordAscendedEntry();
   const costLabel = formatAscendedEntryCost();
-  const pityHint = open
-    ? ` <small style="font-weight:600;color:#6b655a">Pity ${s.ascendedPity ?? 0}/${NIGHTSCAR_PITY_MAX}</small>`
+  const fortune = pityAdventureHint(s.ascendedPity ?? 0, {
+    unlocked: open,
+    inBattle: g.inBattle,
+  });
+  const pityHint = fortune
+    ? ` <small style="font-weight:600;color:#6b655a">${fortune}</small>`
     : '';
   const sweepHint = open
     ? sweepReady
@@ -355,10 +359,16 @@ function renderNormalAdventureActs(ctx: UIContext): string {
     const keyCostLabel = formatDungeonKeyCost(keyCost);
     const lo = stageRecLevel(act.id, 1);
     const hi = stageRecLevel(act.id, 5);
-    const pityHint =
-      d.endgame && open
-        ? ` <small style="font-weight:600;color:#6b655a">Pity ${s.nightscarPity ?? 0}/${NIGHTSCAR_PITY_MAX}</small>`
+    const fortune =
+      d.endgame
+        ? pityAdventureHint(s.nightscarPity ?? 0, {
+            unlocked: open,
+            inBattle: g.inBattle,
+          })
         : '';
+    const pityHint = fortune
+      ? ` <small style="font-weight:600;color:#6b655a">${fortune}</small>`
+      : '';
     const sweepHint = open
       ? sweepReady
         ? ''
@@ -645,6 +655,15 @@ function renderClanBoardPane(ctx: UIContext): string {
   </div>`;
 }
 
+function nightscarTrackerLive(g: UIContext['game']): string {
+  let eq = 0;
+  for (const slot of SLOTS) {
+    if (g.save.gear[slot]?.setId === 'nightscar-regalia') eq += 1;
+  }
+  if (eq > 0 || g.craftActUnlocked() >= 10) return `Nightscar ${Math.min(eq, 6)}/6`;
+  return 'Track sets';
+}
+
 function renderClanTownPane(ctx: UIContext): string {
   const g = ctx.game;
   const day = g.seasonDay;
@@ -674,7 +693,12 @@ function renderClanTownPane(ctx: UIContext): string {
         <span>Spend dust to craft missing or chosen class set pieces.</span>
         <span class="live"><i class="dust"></i>${fmt(g.save.dust)} dust</span>
       </button>
-      <div class="town-card"><img src="${navIcon('crystal')}" alt="" /><b>Quartermaster</b><span>Spend crystals on keys and bag space.</span><span class="soon">Coming soon</span></div>
+      <button type="button" class="town-card clickable" data-action="set-progress">
+        <img src="${asset('icons/gear-j/chest.webp')}" alt="" />
+        <b>Set Tracker</b>
+        <span>Owned pieces toward set bonuses &amp; soft Fortune (out of combat).</span>
+        <span class="live">${nightscarTrackerLive(g)}</span>
+      </button>
       <button type="button" class="town-card clickable" data-action="season-board">
         <img src="${asset('ui/season-board.webp')}" alt="" />
         <b>Season Board</b>

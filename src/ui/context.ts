@@ -50,6 +50,7 @@ export interface UIContext {
   showSeasonBoard(): void;
   showClanArmorer(): void;
   showBlacksmith(): void;
+  showSetProgress(): void;
   flashSlot(slot: string): void;
 }
 

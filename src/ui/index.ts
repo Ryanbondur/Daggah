@@ -32,6 +32,7 @@ import {
   showPvpResult,
   showResult,
   showSeasonBoard,
+  showSetProgress,
   showSettings,
   showTutorialCoach,
   maybeShowLoginGate,
@@ -248,6 +249,7 @@ export function mountUI(
     showSeasonBoard: () => showSeasonBoard(ctx),
     showClanArmorer: () => showClanArmorer(ctx),
     showBlacksmith: () => showBlacksmith(ctx),
+    showSetProgress: () => showSetProgress(ctx),
     flashSlot(slot) {
       flash = slot;
     },
@@ -793,6 +795,9 @@ export function mountUI(
         break;
       case 'blacksmith':
         showBlacksmith(ctx);
+        break;
+      case 'set-progress':
+        showSetProgress(ctx);
         break;
       default:
         break;
