@@ -3,14 +3,17 @@
  * GET /api/daggah-clan-board?seasonId=1[&code=ABCD]
  *
  * Public read (no auth) so guests can view standings. Writes happen via cloud save PUT.
+ * Client falls back to local stub rivals when this returns 503 / unreachable.
  */
+import { clientIp } from './auth';
 import { isDatabaseUnavailable, isUndefinedTable } from './db';
 import { listClanResults, rankClanRows } from './clanBoard';
+import { hitRateLimit } from './rateLimit';
 
 const NO_STORE = { 'cache-control': 'private, no-store' } as const;
 
-function json(data: unknown, status = 200): Response {
-  return Response.json(data, { status, headers: NO_STORE });
+function json(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+  return Response.json(data, { status, headers: { ...NO_STORE, ...extraHeaders } });
 }
 
 function internalError(error: unknown, where: string): Response {
@@ -51,6 +54,15 @@ function parsePlayerCode(url: URL): string | null {
 
 export async function GET(request: Request): Promise<Response> {
   try {
+    const hit = await hitRateLimit(`clan-board:get:${clientIp(request)}`, 60, 10 * 60 * 1000);
+    if (!hit.ok) {
+      return json(
+        { error: 'rate_limited', retryAfterSec: hit.retryAfterSec },
+        429,
+        { 'retry-after': String(hit.retryAfterSec) },
+      );
+    }
+
     const url = new URL(request.url);
     const seasonId = parseSeasonId(url);
     const playerCode = parsePlayerCode(url);

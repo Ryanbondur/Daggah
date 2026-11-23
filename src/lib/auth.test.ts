@@ -76,6 +76,55 @@ describe('register / login / save roundtrip (PGlite)', () => {
     expect(tables.map((t) => t.table_name)).toEqual(['sessions', 'users']);
   });
 
+  it('applies saves, rate_limits, clan board columns, and clan hall tables', async () => {
+    await sql(`select 1`);
+    const tables = await sql<{ table_name: string }>(
+      `select table_name from information_schema.tables
+       where table_schema = 'public' and table_name = any($1)
+       order by table_name`,
+      [
+        [
+          'clan_hall_seats',
+          'clan_halls',
+          'clan_results',
+          'rate_limits',
+          'saves',
+          'season_stats',
+          'sessions',
+          'users',
+        ],
+      ],
+    );
+    expect(tables.map((t) => t.table_name)).toEqual([
+      'clan_hall_seats',
+      'clan_halls',
+      'clan_results',
+      'rate_limits',
+      'saves',
+      'season_stats',
+      'sessions',
+      'users',
+    ]);
+
+    const seasonCols = await sql<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_schema = 'public' and table_name = 'season_stats'
+         and column_name = any($1)
+       order by column_name`,
+      [['clan_name', 'members', 'tokens']],
+    );
+    expect(seasonCols.map((c) => c.column_name)).toEqual(['clan_name', 'members', 'tokens']);
+
+    const clanCols = await sql<{ column_name: string }>(
+      `select column_name from information_schema.columns
+       where table_schema = 'public' and table_name = 'clan_results'
+         and column_name = any($1)
+       order by column_name`,
+      [['clan_name', 'members', 'tokens']],
+    );
+    expect(clanCols.map((c) => c.column_name)).toEqual(['clan_name', 'members', 'tokens']);
+  });
+
   it('registers, logs in, and round-trips a cloud save keyed by user', async () => {
     const register = await authPost(
       new Request('http://localhost/api/daggah-auth', {

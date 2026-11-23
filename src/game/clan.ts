@@ -453,7 +453,7 @@ export function applyTokenCap(earnedToday: number, gain: number): { awarded: num
   return { awarded, earnedToday: earnedToday + awarded };
 }
 
-/** Local season ranking score for clan leaderboard (solo stub until live MP). */
+/** Season ranking score shared by live board + local stub rivals. */
 export function clanSeasonScore(wins: number, losses: number, tokens: number, members: number): number {
   return Math.max(0, wins * 100 + tokens + members * 8 - losses * 12);
 }

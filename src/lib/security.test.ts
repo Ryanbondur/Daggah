@@ -230,6 +230,38 @@ describe('auth abuse limits', () => {
     );
     expect(res.status).toBe(413);
   });
+
+  it('rate-limits change-password via Postgres (not an in-memory stub)', async () => {
+    const reg = await auth(
+      { action: 'register', username: 'pw_change', password: 'right-pass-1' },
+      '5.0.0.1',
+    );
+    expect(reg.status).toBe(200);
+    const { token } = (await reg.json()) as { token: string };
+
+    const change = (password: string) =>
+      authPost(
+        new Request('http://localhost/api/daggah-auth', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-daggah-session': token,
+            'x-forwarded-for': '5.0.0.1',
+          },
+          body: JSON.stringify({
+            action: 'change-password',
+            currentPassword: password,
+            newPassword: 'right-pass-2',
+          }),
+        }),
+      );
+
+    for (let i = 0; i < 10; i++) {
+      // Wrong current password still counts against the budget.
+      expect((await change('wrong-pass-1')).status).toBe(401);
+    }
+    expect((await change('wrong-pass-1')).status).toBe(429);
+  });
 });
 
 describe('readJsonBody size ceiling', () => {

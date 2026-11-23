@@ -1,6 +1,6 @@
 # Daggah
 
-Dark-fantasy, portrait (9:16) browser auto-combat RPG. Current slice: four classes (Warrior, Mage, Ranger, Rogue), Acts 1–10 through Nightscar Apex, gear sets, skills, dungeons, **local clans + 4v4 auto-battle PvP**, Clanforged vendor, and a 30-day season stub.
+Dark-fantasy, portrait (9:16) browser auto-combat RPG. Current slice: four classes (Warrior, Mage, Ranger, Rogue), Acts 1–10 through Nightscar Apex, gear sets, skills, dungeons, **clans + 4v4 auto-battle PvP** (cross-device halls when signed in), Clanforged vendor, and a 30-day season timer.
 
 Stack: Vite + TypeScript + Phaser 3. Phaser renders the stage (camp and battle); DOM/CSS renders the HUD, panes and modals.
 
@@ -31,13 +31,13 @@ npm run art        # re-slice generated art from art-src/ into public/assets/ (n
 - **Adventure**: Acts 1–10 (through Voidgate and Nightscar Depths), 5 stages each. Dungeons through Gate Reliquary and **Nightscar Apex** (endgame, stingy drops).
 - **Sets**: Ember Raider through Nightscar Regalia, plus vendor-only **Clanforged** (2pc +8% PvP CP, 4pc +10% token gains).
 - **Town**: Clan Hall (create/join, roster, 4v4 queue), Season Board (30-day timer + local reset), Clan Armorer (token shop). Blacksmith / Quartermaster still stubbed.
-- **Clans / 4v4 (client-local)**: create (500 crystals) or join by code; **Fill AI roster** for the other three classes (player stays human); queue when roster has one of each class. Enemy clan is AI with endgame/scaled gear. Auto-battle uses your gear + skills; win 20 / loss 5 tokens (200/day cap). Clear AI badges until live multiplayer.
-- **Clan leaderboard**: Clan tab → Leaderboard reads live season standings from Postgres (`GET /api/daggah-clan-board`) when the API is up; cloud save pushes publish `season_stats` / `clan_results`. Guests and offline play fall back to local stub rivals.
-- **Save**: stable `daggah.save` localStorage key (migrates legacy `daggah.save.v1`–`v3`). Autosaves on change and every 5s. **Settings → Export / Import save code** for a shareable `DAG1.…` backup (survives origin changes).
-- **Cloud sync**: Postgres-backed `GET/PUT /api/daggah-save`. Prefers **username/password** session (`/api/daggah-auth`), then Cursor identity when verified, otherwise an optional **account code** (`DGAC.…`). Debounced auto-push; pull on boot when linked. localStorage + Export/Import remain.
-- **Clan halls**: Postgres-backed `GET/POST /api/daggah-clan` for cross-device create/join/sync (auth required for membership). Invite codes + AI replace (weakest CP) + cap 25. Local/dev falls back to same-origin `daggah.clanHalls` when DB is missing.
+- **Clans / 4v4**: create (500 crystals) or join by code; **Fill AI roster** for the other three classes (player stays human); queue when roster has one of each class. Enemy clan is AI with endgame/scaled gear. Auto-battle uses your gear + skills; win 20 / loss 5 tokens (200/day cap). Matches are local AI (no live MP shared HP yet).
+- **Clan leaderboard**: Clan tab → Leaderboard reads live season standings from Postgres (`GET /api/daggah-clan-board`) when the API is up; cloud save pushes publish `season_stats` / `clan_results`. Guests and offline play fall back to local stub rivals (intentional).
+- **Save**: stable `daggah.save` localStorage key (migrates legacy `daggah.save.v1`–`v3`). Autosaves on change and every 5s. **Settings → Export / Import save code** for a shareable `DAG1.…` backup (survives origin changes). localStorage is the intentional offline cache — not a leftover stub.
+- **Cloud sync**: Postgres-backed `GET/PUT /api/daggah-save`. Prefers **username/password** session (`/api/daggah-auth`), then Cursor identity when verified, otherwise an optional **account code** (`DGAC.…`). Debounced auto-push; pull on boot when linked. localStorage + Export/Import remain when cloud is down.
+- **Clan halls**: Postgres-backed `GET/POST /api/daggah-clan` for cross-device create/join/sync (auth required for membership). Invite codes + AI replace (weakest CP) + cap 25. Guests / DB-missing intentionally fall back to same-origin `daggah.clanHalls`.
 
-Out of scope: server matchmaking / true multiplayer shared clan halls.
+Out of scope: server matchmaking / realtime shared-HP multiplayer. Cross-device clan halls + season board already use Postgres when signed in.
 
 ## Controls
 

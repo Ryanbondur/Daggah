@@ -80,7 +80,11 @@ async function getClient(): Promise<ReturnType<typeof postgres>> {
   return client;
 }
 
-/** Idempotent DDL safety net when build-time migrate.mjs did not run. */
+/**
+ * Idempotent DDL safety net when build-time migrate.mjs did not run
+ * (common on hosted publish if DATABASE_URL was unset during `npm run build`).
+ * Keeps 001–005 in sync: saves/board columns, users, rate_limits, clan halls.
+ */
 async function ensurePostgresSchema(c: ReturnType<typeof postgres>): Promise<void> {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {

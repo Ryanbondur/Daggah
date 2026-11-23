@@ -1,3 +1,4 @@
+-- Shared fixed-window budgets for auth / save / clan APIs (see api/_lib/rateLimit.ts).
 create table if not exists rate_limits (
   key text primary key,
   count integer not null default 0,

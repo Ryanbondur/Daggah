@@ -195,31 +195,13 @@ export function extractSessionToken(request: Request): string | null {
   return null;
 }
 
-/** Simple in-memory IP rate limit (best-effort; resets on process restart). */
-type Bucket = { count: number; resetAt: number };
-const rateBuckets = new Map<string, Bucket>();
-
-export function rateLimit(
-  key: string,
-  limit: number,
-  windowMs: number,
-): { ok: true } | { ok: false; retryAfterSec: number } {
-  const now = Date.now();
-  let bucket = rateBuckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    bucket = { count: 0, resetAt: now + windowMs };
-    rateBuckets.set(key, bucket);
-  }
-  bucket.count += 1;
-  if (bucket.count > limit) {
-    return { ok: false, retryAfterSec: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)) };
-  }
-  return { ok: true };
-}
-
-/** Test helper: clear rate-limit state between cases. */
+/**
+ * Test helper name kept for callers. Auth/save/clan budgets live in Postgres
+ * `rate_limits` (see rateLimit.ts); PGlite test resets wipe that table via
+ * resetPgliteForTests. This no-op remains so older test imports stay valid.
+ */
 export function resetRateLimitsForTests(): void {
-  rateBuckets.clear();
+  /* Postgres rate_limits cleared by resetPgliteForTests / resetRateLimitsDbForTests */
 }
 
 /**
