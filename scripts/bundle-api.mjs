@@ -19,6 +19,7 @@ const routes = [
   { entry: 'api/_entries/daggah-save.ts', outfile: 'api/daggah-save.js' },
   { entry: 'api/_entries/daggah-clan-board.ts', outfile: 'api/daggah-clan-board.js' },
   { entry: 'api/_entries/daggah-clan.ts', outfile: 'api/daggah-clan.js' },
+  { entry: 'api/_entries/daggah-match.ts', outfile: 'api/daggah-match.js' },
 ];
 
 async function bundleOne({ entry, outfile }) {
@@ -53,6 +54,7 @@ for (const stale of [
   'api/daggah-save.ts',
   'api/daggah-clan-board.ts',
   'api/daggah-clan.ts',
+  'api/daggah-match.ts',
 ]) {
   try {
     await unlink(join(root, stale));

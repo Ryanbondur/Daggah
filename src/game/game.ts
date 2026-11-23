@@ -94,7 +94,7 @@ import type {
 } from '../data/types';
 import { HERO_CLASSES, STAT_KEYS } from '../data/types';
 import { addXp, availableSpeeds, maxEnergy } from '../data/xp';
-import type { ClanData, ClanPlayerSnapshot, ClanRole } from './clan';
+import type { ClanData, ClanMember, ClanPlayerSnapshot, ClanRole } from './clan';
 import {
   buildCapeCraftOffers,
   buildCraftOffers,
@@ -180,9 +180,18 @@ import { Battle, STEP } from './combat';
 import type { PvpEvent, PvpFighterSnap, PvpResult } from './pvp';
 import { buildOpponentRoster, simulatePvp } from './pvp';
 import { readAuthSession } from './authSession';
+import {
+  canUseLiveMatchmaking,
+  cancelLiveMatch,
+  enqueueLiveMatch,
+  pollLiveMatch,
+  reportLiveMatch,
+  type LiveMatchPayload,
+  type MatchQueueResult,
+} from './matchmakingClient';
 import { nextNightscarPity } from './nightscarPity';
 import type { Rng } from './rng';
-import { defaultRng } from './rng';
+import { defaultRng, mulberry32 } from './rng';
 import { flushCloudPush, scheduleCloudPush } from './cloudSave';
 import { exportSaveCode, importSaveCode } from './saveCode';
 import { applyOfflineProgress, type OfflineSummary } from './offline';
@@ -2554,11 +2563,106 @@ export class Game {
   }
 
   /**
-   * Queue local 4v4 auto-battle.
-   * Sim + rewards resolve immediately; Phaser stage plays the log, then emits `pvp` for the breakdown modal.
+   * Snapshot the 4v4 queue roster with gear locked for matchmaking / peer sims.
+   * Player uses live save gear; AI / real teammates keep their stored gear.
+   */
+  buildLiveQueueRoster():
+    | {
+        roster: ClanMember[];
+        teamCp: number;
+        avgCp: number;
+        natural: ClanBracketId;
+        matchBracket: ClanBracketId;
+        usedChallenge: boolean;
+        atTop: boolean;
+      }
+    | { error: string } {
+    if (!this.save.clan) return { error: 'Join a clan first.' };
+    if (!meetsClanQueueFloor(this.save.stagesCleared, this.cp)) {
+      return { error: clanQueueFloorMessage() };
+    }
+    this.syncClanFromHall();
+    this.save.clan.members = this.save.clan.members.map(normalizeClanMember);
+    this.syncPlayerClanMember();
+    const picked = pickQueueRoster(this.save.clan.members, this.save.heroClass);
+    if (!picked) return { error: 'Need 4 members with one of each class ready.' };
+    const roster = picked.map((m) =>
+      m.isPlayer
+        ? { ...m, gear: this.save.gear, level: this.save.level, cp: this.cp, isAi: false }
+        : { ...m },
+    );
+    const teamCp = teamCpSum(roster);
+    const natural = assignBracket(teamCp);
+    return {
+      roster,
+      teamCp,
+      avgCp: teamCp / roster.length,
+      natural,
+      matchBracket: natural,
+      usedChallenge: false,
+      atTop: natural === 'nightscar',
+    };
+  }
+
+  /** True when signed in and live matchmaking API can be attempted. */
+  canQueueLiveMatchmaking(): boolean {
+    return canUseLiveMatchmaking(this.storage);
+  }
+
+  async enqueueLivePvp(opts?: {
+    challengeUp?: boolean;
+  }): Promise<MatchQueueResult | { ok: false; error: string; status: number; fallback: boolean }> {
+    const built = this.buildLiveQueueRoster();
+    if ('error' in built) {
+      return { ok: false, error: built.error, status: 400, fallback: false };
+    }
+    let matchBracket = built.natural;
+    let usedChallenge = false;
+    if (opts?.challengeUp) {
+      const nxt = nextBracket(built.natural);
+      if (!nxt) return { ok: false, error: 'Already Nightscar — no higher bracket.', status: 400, fallback: false };
+      const today = dayKey();
+      if (!challengeUpAvailable(this.save.clanChallengeUpDayKey, today)) {
+        return { ok: false, error: 'Challenge-up already used today.', status: 400, fallback: false };
+      }
+      matchBracket = nxt;
+      usedChallenge = true;
+    }
+    const clan = this.save.clan!;
+    return enqueueLiveMatch(this.storage, {
+      clanCode: clan.code,
+      clanName: clan.name,
+      teamCp: built.teamCp,
+      avgCp: Math.round(built.avgCp),
+      bracket: matchBracket,
+      challengeUp: usedChallenge,
+      atTop: built.atTop || matchBracket === 'nightscar',
+      roster: built.roster,
+      seasonId: this.save.season.seasonId,
+    });
+  }
+
+  pollLivePvp(): Promise<MatchQueueResult> {
+    return pollLiveMatch(this.storage);
+  }
+
+  cancelLivePvp(): Promise<MatchQueueResult> {
+    return cancelLiveMatch(this.storage);
+  }
+
+  /**
+   * Queue 4v4 auto-battle.
+   * Local AI practice (default) or a live peer match from matchmaking.
+   * Sim + rewards resolve immediately; Phaser stage plays the log, then emits `pvp`.
    * Pass `waitS` from the live queue meter (defaults to practice tight band).
    */
-  queueClanPvp(opts?: { challengeUp?: boolean; waitS?: number }): string | null {
+  queueClanPvp(opts?: {
+    challengeUp?: boolean;
+    waitS?: number;
+    liveMatch?: LiveMatchPayload;
+    /** Explicit AI practice label (no peers / guest / DB down). */
+    practiceFallback?: boolean;
+  }): string | null {
     if (this.mode === 'pvp') return 'Clan fight in progress.';
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
     if (!this.save.clan) return 'Join a clan first.';
@@ -2574,7 +2678,14 @@ export class Game {
     const natural = assignBracket(teamCp);
     let matchBracket: ClanBracketId = natural;
     let usedChallenge = false;
-    if (opts?.challengeUp) {
+    const live = opts?.liveMatch;
+    if (live) {
+      matchBracket = live.bracket;
+      // Challenge-up was already validated at enqueue; mark used if bracket > natural.
+      if (live.bracket !== natural) {
+        usedChallenge = true;
+      }
+    } else if (opts?.challengeUp) {
       const nxt = nextBracket(natural);
       if (!nxt) return 'Already Nightscar — no higher bracket.';
       const today = dayKey();
@@ -2587,7 +2698,7 @@ export class Game {
     const avgCp = teamCp / roster.length;
     let matchAvg = usedChallenge ? BRACKET_TARGET_AVG_CP[matchBracket] : avgCp;
     // Soft MMR within Nightscar: pull rival target so BiS stacks don't always stomp fresh peers.
-    if (natural === 'nightscar' && !usedChallenge) {
+    if (natural === 'nightscar' && !usedChallenge && !live) {
       if (!this.save.clanNightscarMmr) {
         this.save.clanNightscarMmr = seedNightscarSoftMmr(teamCp);
       }
@@ -2596,12 +2707,16 @@ export class Game {
     const atTop = natural === 'nightscar';
     const waitS = opts?.waitS ?? PRACTICE_MATCH_WAIT_S;
     const band = matchCpBandForQueue(waitS, { atTopOfLadder: atTop });
-    const enemies = buildOpponentRoster(this.rng, roster, matchAvg, { bandPct: band.pct });
-    const result = simulatePvp(roster, enemies, this.save.gear, this.save.level, this.rng, {
+    const enemies = live
+      ? live.enemy.roster.map((m) => normalizeClanMember({ ...m, isPlayer: false }))
+      : buildOpponentRoster(this.rng, roster, matchAvg, { bandPct: band.pct });
+    const simRng = live ? mulberry32(live.seed) : this.rng;
+    const result = simulatePvp(roster, enemies, this.save.gear, this.save.level, simRng, {
       bracket: matchBracket,
       challengeUp: usedChallenge,
       teamCp,
-      matchBandLabel: band.label,
+      matchBandLabel: live?.bandLabel || band.label,
+      liveMatch: !!live,
     });
     this.refreshClanTokenDay();
     if (usedChallenge) this.save.clanChallengeUpDayKey = dayKey();
@@ -2626,12 +2741,28 @@ export class Game {
     const tierNote = ` [${CLAN_BRACKET_LABEL[matchBracket]}${usedChallenge ? '↑' : ''}]`;
     const capNote =
       awarded < gain ? ` (day cap ${TOKEN_DAY_CAP}; +${awarded})` : ` (+${awarded} tokens)`;
-    this.say(
-      `Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${tierNote}${capNote}${result.practiceAi ? ' (AI practice)' : ''}.`,
-    );
+    const modeNote = live
+      ? ` vs ${live.enemy.clanName}`
+      : result.practiceAi || opts?.practiceFallback
+        ? ' (AI practice)'
+        : '';
+    this.say(`Clan 4v4 ${result.won ? 'WIN' : 'LOSS'}${tierNote}${capNote}${modeNote}.`);
     this.toast(`${result.won ? 'Victory' : 'Defeat'}${tierNote}${capNote}`, result.won ? 'good' : 'bad');
     this.beginPvpPlayback(result, awarded);
     this.changed();
+    if (live) {
+      void reportLiveMatch(this.storage, {
+        matchId: live.matchId,
+        won: result.won,
+        seasonId: this.save.season.seasonId,
+        clanCode: this.save.clan.code,
+        clanName: this.save.clan.name,
+        wins: this.save.clanWins,
+        losses: this.save.clanLosses,
+        tokens: this.save.clanTokens,
+        members: this.save.clan.members.length,
+      });
+    }
     return null;
   }
 

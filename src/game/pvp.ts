@@ -323,6 +323,8 @@ export function simulatePvp(
     challengeUp: boolean;
     teamCp: number;
     matchBandLabel?: string;
+    /** True for cross-device peer matches (AI roster fillers allowed; rivals are real). */
+    liveMatch?: boolean;
   } = {
     bracket: 'veteran',
     challengeUp: false,
@@ -479,8 +481,11 @@ export function simulatePvp(
         isAi: f.isAi,
       }));
 
-  const practiceAi =
-    fighters.some((f) => f.team === 'ally' && f.isAi) || fighters.some((f) => f.team === 'enemy' && f.isAi);
+  // Live peer matches keep AI clan fillers but are not "AI practice".
+  const practiceAi = meta.liveMatch
+    ? false
+    : fighters.some((f) => f.team === 'ally' && f.isAi) ||
+      fighters.some((f) => f.team === 'enemy' && f.isAi);
 
   const fighterSnaps: PvpFighterSnap[] = fighters.map((f) => ({
     id: f.id,

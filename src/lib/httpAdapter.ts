@@ -10,6 +10,7 @@ import {
   OPTIONS as clanOptions,
   POST as clanPost,
 } from '../../api/_lib/clanApi';
+import { OPTIONS as matchOptions, POST as matchPost } from '../../api/_lib/matchApi';
 import { GET, OPTIONS, PUT } from '../../api/_lib/saveApi';
 import { GET as pingGet } from '../../api/ping';
 
@@ -142,6 +143,29 @@ export async function handleDaggahSaveApi(
           {
             status: 405,
             headers: { allow: 'GET, POST, OPTIONS', 'cache-control': 'private, no-store' },
+          },
+        );
+    }
+    await writeWebResponse(res, response);
+    return true;
+  }
+
+  if (path === '/api/daggah-match') {
+    const request = await nodeToWebRequest(req);
+    let response: Response;
+    switch (req.method) {
+      case 'POST':
+        response = await matchPost(request);
+        break;
+      case 'OPTIONS':
+        response = await matchOptions();
+        break;
+      default:
+        response = Response.json(
+          { error: 'method_not_allowed' },
+          {
+            status: 405,
+            headers: { allow: 'POST, OPTIONS', 'cache-control': 'private, no-store' },
           },
         );
     }

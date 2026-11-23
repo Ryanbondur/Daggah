@@ -54,6 +54,7 @@ import {
 } from '../game/clanBrackets';
 import { canApproveJoins, canKickAi, canPromoteDemote } from '../game/clan';
 import { CLAN_VENDOR, type RunResult } from '../game/game';
+import type { LiveMatchPayload } from '../game/matchmakingClient';
 import type { PvpResult } from '../game/pvp';
 import {
   BAG_CAP,
@@ -1224,8 +1225,9 @@ function clanMemberBadgeHtml(m: ClanMember): string {
 }
 
 /**
- * Live queue wait UI: ~30s meter, CP band expands tight → open, then starts the match.
- * Local AI finds a peer after a short delay so the meter is visible without a full 30s wait.
+ * Live queue wait UI: ~30s meter, CP band expands tight → open.
+ * Signed-in players poll /api/daggah-match for real peers; guests / no-DB / timeout
+ * fall back to clearly labeled AI practice.
  */
 export function showClanQueueWait(
   ctx: UIContext,
@@ -1233,11 +1235,20 @@ export function showClanQueueWait(
 ): void {
   const g = ctx.game;
   const atTop = g.clanBracketStatus().bracket === 'nightscar';
-  // Local peers always exist — match once the meter has shown at least one band step.
-  const findAtS = 4 + Math.floor(Math.random() * 5); // 4–8s
+  const practiceOnly = !!opts.practice || !g.canQueueLiveMatchmaking();
+  // Local AI practice: short delay so the meter is visible. Live: wait full band window.
+  const aiFindAtS = 4 + Math.floor(Math.random() * 5); // 4–8s
   let closed = false;
   let started = performance.now();
   let raf = 0;
+  let pollBusy = false;
+  let lastPollAt = 0;
+  let statusLine = practiceOnly
+    ? opts.practice
+      ? 'AI practice queue'
+      : 'Sign in for live peers — AI practice'
+    : 'Searching live peers…';
+  let enqueued = false;
 
   const paint = (waitS: number) => {
     const band = matchCpBandForQueue(waitS, { atTopOfLadder: atTop });
@@ -1246,10 +1257,19 @@ export function showClanQueueWait(
       const on = band.id === b.id ? 'on' : waitS >= b.waitS ? 'passed' : '';
       return `<span class="queue-band-mark ${on}" style="left:${(b.waitS / QUEUE_BAND_METER_S) * 100}%">${escapeHtml(matchBandTitle(b))}</span>`;
     }).join('');
+    const modeTag = practiceOnly
+      ? ' (AI practice)'
+      : opts.challengeUp
+        ? ' · Challenge-up · live'
+        : ' · live';
     return `<div class="sheet clan-sheet queue-wait-sheet">
       <h2>Finding match</h2>
       <div class="body">
-        <p class="ai-banner">CP band expands over ~${QUEUE_BAND_METER_S}s — tighter peers first.</p>
+        <p class="ai-banner">${
+          practiceOnly
+            ? 'AI practice — CP band still expands for familiar timing.'
+            : `Live matchmaking — CP band expands over ~${QUEUE_BAND_METER_S}s. AI practice if no peers.`
+        }</p>
         <div class="queue-band-card">
           <div class="queue-band-head">
             <span class="clan-bracket-pill ${band.id}">${escapeHtml(matchBandTitle(band))}</span>
@@ -1260,16 +1280,52 @@ export function showClanQueueWait(
             <div class="queue-band-marks">${marks}</div>
           </div>
         </div>
-        <p class="tagline">Searching${opts.practice ? ' (AI practice)' : ''}${opts.challengeUp ? ' · Challenge-up' : ''}…</p>
+        <p class="tagline">${escapeHtml(statusLine)}${modeTag}</p>
       </div>
       <div class="btns"><button class="btn tan" data-action="queue-cancel">Cancel</button></div>
     </div>`;
+  };
+
+  const finishAi = (waitS: number, reason: string) => {
+    if (closed) return;
+    closed = true;
+    cancelAnimationFrame(raf);
+    ctx.closeModal();
+    statusLine = reason;
+    void ctx.ensureStage().then(() => {
+      const err = opts.practice
+        ? g.queuePractice4v4({ challengeUp: opts.challengeUp, waitS })
+        : g.queueClanPvp({
+            challengeUp: opts.challengeUp,
+            waitS,
+            practiceFallback: true,
+          });
+      if (err) g.toast(err, 'bad');
+      else if (!opts.practice) g.toast('No live peers — AI practice match', 'info');
+    });
+  };
+
+  const finishLive = (waitS: number, match: LiveMatchPayload) => {
+    if (closed || !match) return;
+    closed = true;
+    cancelAnimationFrame(raf);
+    ctx.closeModal();
+    void ctx.ensureStage().then(() => {
+      const err = g.queueClanPvp({
+        challengeUp: opts.challengeUp,
+        waitS,
+        liveMatch: match,
+      });
+      if (err) g.toast(err, 'bad');
+      else g.toast(`Matched vs ${match.enemy.clanName}`, 'good');
+    });
   };
 
   const el = ctx.openModal(paint(0), {
     onDismiss: () => {
       closed = true;
       cancelAnimationFrame(raf);
+      if (enqueued) void g.cancelLivePvp();
       ctx.closeModal();
     },
   });
@@ -1278,16 +1334,66 @@ export function showClanQueueWait(
     if (closed) return;
     const waitS = (performance.now() - started) / 1000;
     el.innerHTML = paint(waitS);
-    if (waitS >= findAtS || waitS >= QUEUE_BAND_METER_S) {
-      closed = true;
-      cancelAnimationFrame(raf);
-      ctx.closeModal();
-      void ctx.ensureStage().then(() => {
-        const err = opts.practice
-          ? g.queuePractice4v4({ challengeUp: opts.challengeUp, waitS })
-          : g.queueClanPvp({ challengeUp: opts.challengeUp, waitS });
-        if (err) g.toast(err, 'bad');
+
+    if (practiceOnly) {
+      if (waitS >= aiFindAtS || waitS >= QUEUE_BAND_METER_S) {
+        finishAi(waitS, 'AI practice');
+        return;
+      }
+      raf = requestAnimationFrame(tick);
+      return;
+    }
+
+    // Live path: enqueue once, poll ~1/s, AI fallback at 30s.
+    if (!enqueued && !pollBusy) {
+      pollBusy = true;
+      void g.enqueueLivePvp({ challengeUp: opts.challengeUp }).then((res) => {
+        pollBusy = false;
+        if (closed) return;
+        if (!res.ok) {
+          if (res.fallback) {
+            finishAi(waitS, 'Matchmaking offline — AI practice');
+            return;
+          }
+          g.toast(res.error, 'bad');
+          closed = true;
+          cancelAnimationFrame(raf);
+          ctx.closeModal();
+          return;
+        }
+        if (res.status === 'matched') {
+          finishLive(waitS, res.match);
+          return;
+        }
+        enqueued = true;
+        statusLine = 'In live queue — waiting for peers in band';
       });
+    } else if (enqueued && !pollBusy && performance.now() - lastPollAt > 900) {
+      pollBusy = true;
+      lastPollAt = performance.now();
+      void g.pollLivePvp().then((res) => {
+        pollBusy = false;
+        if (closed) return;
+        if (!res.ok) {
+          if (res.fallback) {
+            void g.cancelLivePvp();
+            finishAi(waitS, 'Matchmaking offline — AI practice');
+          }
+          return;
+        }
+        if (res.status === 'matched') {
+          finishLive(waitS, res.match);
+          return;
+        }
+        if (res.status === 'queued') {
+          statusLine = `Live queue · ${Math.floor(res.waitS)}s · widening CP band`;
+        }
+      });
+    }
+
+    if (waitS >= QUEUE_BAND_METER_S) {
+      void g.cancelLivePvp();
+      finishAi(waitS, 'No peers in band — AI practice');
       return;
     }
     raf = requestAnimationFrame(tick);
@@ -1300,6 +1406,7 @@ export function showClanQueueWait(
     if (t.dataset.action === 'queue-cancel') {
       closed = true;
       cancelAnimationFrame(raf);
+      if (enqueued) void g.cancelLivePvp();
       ctx.closeModal();
     }
   });
@@ -1398,9 +1505,10 @@ export function showClanHall(ctx: UIContext): void {
         ${inviteBtn}
         <button class="btn red ${g.clanRosterReady() && bracket.floorMet ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
         ${challengeBtn}
+        <button class="btn stone" data-action="clan-practice">Practice 4v4 (AI)</button>
         <button class="btn tan" data-action="clan-leave">Leave</button>
       </div>
-      <p class="tagline">${escapeHtml(bracket.label)} Win +${win} / Loss +${loss} (cap ${TOKEN_DAY_CAP}/day).</p>`;
+      <p class="tagline">${escapeHtml(bracket.label)} Win +${win} / Loss +${loss} (cap ${TOKEN_DAY_CAP}/day). Live queue needs sign-in; AI if no peers.</p>`;
   }
   const el = ctx.openModal(
     `<div class="sheet clan-sheet">
