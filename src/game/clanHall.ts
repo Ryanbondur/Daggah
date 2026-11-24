@@ -1,7 +1,12 @@
 /**
  * Local shared clan-hall registry (same-origin storage).
- * Lets real players join by code across saves that share this key.
- * Does not touch DG-42 season_stats / clan_results stubs.
+ *
+ * Intentional fallback when Postgres `/api/daggah-clan` is unavailable:
+ * guests, offline play, and `database_unavailable` / `schema_missing`.
+ * Signed-in clients prefer the cloud API (see clanHallCloud.ts); this key
+ * still mirrors the last known roster for same-origin multi-save joins.
+ *
+ * Does not write DG-120 season_stats / clan_results (those come from cloud save).
  */
 import type { ClanData, ClanPlayerSnapshot } from './clan';
 import {

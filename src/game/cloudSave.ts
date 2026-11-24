@@ -18,7 +18,11 @@ import { loadSaveFromRaw, writeSave } from './state';
 /**
  * Cloud sync via GET/PUT /api/daggah-save.
  * Auth: username session (primary); Cursor identity (private/team); else account code.
- * localStorage + DAG1 Export/Import remain the always-on fallback.
+ *
+ * Intentional local fallbacks (not stubs to migrate away):
+ * - `daggah.save` localStorage = fast cache + offline play
+ * - DAG1 Export/Import = origin-portable backup
+ * Cloud is best-effort; guest/DB-down play keeps working on device.
  */
 export const CLOUD_SAVE_PATH = '/api/daggah-save';
 

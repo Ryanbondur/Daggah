@@ -132,7 +132,9 @@ describe('clan season leaderboard (DG-120)', () => {
     });
 
     const res = await boardGet(
-      new Request('http://localhost/api/daggah-clan-board?seasonId=2&code=VOID'),
+      new Request('http://localhost/api/daggah-clan-board?seasonId=2&code=VOID', {
+        headers: { 'x-forwarded-for': '8.8.8.8' },
+      }),
     );
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
@@ -146,6 +148,17 @@ describe('clan season leaderboard (DG-120)', () => {
     expect(body.entries[0]!.name).toBe('Void Lark');
     expect(body.entries[0]!.isPlayer).toBe(true);
     expect(body.entries[0]!.rank).toBe(1);
+  });
+
+  it('rate-limits clan-board GET per IP', async () => {
+    const req = () =>
+      boardGet(
+        new Request('http://localhost/api/daggah-clan-board?seasonId=1', {
+          headers: { 'x-forwarded-for': '7.7.7.7' },
+        }),
+      );
+    for (let i = 0; i < 60; i++) expect((await req()).status).toBe(200);
+    expect((await req()).status).toBe(429);
   });
 
   it('cloud save PUT publishes clan standings', async () => {

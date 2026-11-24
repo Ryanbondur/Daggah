@@ -349,20 +349,6 @@ function extractSessionToken(request) {
   if (m?.[1]) return m[1].trim();
   return null;
 }
-var rateBuckets = /* @__PURE__ */ new Map();
-function rateLimit(key, limit, windowMs) {
-  const now = Date.now();
-  let bucket = rateBuckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    bucket = { count: 0, resetAt: now + windowMs };
-    rateBuckets.set(key, bucket);
-  }
-  bucket.count += 1;
-  if (bucket.count > limit) {
-    return { ok: false, retryAfterSec: Math.max(1, Math.ceil((bucket.resetAt - now) / 1e3)) };
-  }
-  return { ok: true };
-}
 function clientIp(request) {
   const xf = request.headers.get("x-forwarded-for");
   if (xf) {
@@ -667,14 +653,8 @@ async function POST(request) {
       const auth = await requireUser(request);
       if ("error" in auth && auth.error) return auth.error;
       const { token, user } = auth;
-      const limited2 = rateLimit(`auth:change-password:${user.id}`, 10, 15 * 60 * 1e3);
-      if (!limited2.ok) {
-        return json(
-          { error: "rate_limited", retryAfterSec: limited2.retryAfterSec },
-          429,
-          { "retry-after": String(limited2.retryAfterSec) }
-        );
-      }
+      const pwHit = await hitRateLimit(`auth:change-password:${user.id}`, 10, 15 * 60 * 1e3);
+      if (!pwHit.ok) return limited(pwHit);
       const currentPassword = typeof obj.currentPassword === "string" ? obj.currentPassword : "";
       const nextPassword = typeof obj.newPassword === "string" ? obj.newPassword : "";
       const pwErr = validatePassword(nextPassword);

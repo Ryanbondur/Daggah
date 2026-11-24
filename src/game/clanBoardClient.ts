@@ -1,6 +1,9 @@
 /**
  * Client fetch for live clan season leaderboard (DG-120).
- * Falls back to local stub rivals when the API is unreachable.
+ *
+ * Prefers Postgres `GET /api/daggah-clan-board`. Intentional fallback: local
+ * stub rivals (deterministic) when the API is unreachable, empty, or guests
+ * play without cloud — not a leftover localStorage board registry.
  */
 import type { ClanLeaderboardEntry } from './clan';
 import { buildClanLeaderboard, clanSeasonScore } from './clan';

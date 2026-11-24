@@ -1,4 +1,6 @@
--- Cross-device clan halls (invite code → shared roster). Independent of DG-42 season stubs.
+-- Cross-device clan halls (invite code → shared roster). Independent of season board tables.
+-- Mirrored in api/_lib/db.ts INLINE_SCHEMA_STATEMENTS so first API hit creates tables
+-- even if build-time migrate.mjs skipped (DATABASE_URL unset at build).
 create table if not exists clan_halls (
   code text primary key,
   clan_id text not null,

@@ -153,6 +153,20 @@ var INLINE_SCHEMA_STATEMENTS = [
   `create index if not exists clan_hall_seats_clan_code_idx on clan_hall_seats (clan_code)`
 ];
 
+// api/_lib/webCrypto.ts
+var textEncoder = new TextEncoder();
+
+// api/_lib/auth.ts
+function clientIp(request) {
+  const xf = request.headers.get("x-forwarded-for");
+  if (xf) {
+    const hops = xf.split(",").map((h) => h.trim()).filter(Boolean);
+    const last = hops[hops.length - 1];
+    if (last) return last.slice(0, 64);
+  }
+  return "local";
+}
+
 // api/_lib/clanBoard.ts
 function clanSeasonScore(wins, losses, tokens, members) {
   return Math.max(0, wins * 100 + tokens + members * 8 - losses * 12);
@@ -197,10 +211,39 @@ function rankClanRows(rows, playerCode = null) {
   return entries.map((e, i) => ({ ...e, rank: i + 1 }));
 }
 
+// api/_lib/rateLimit.ts
+function retryAfter(resetAt) {
+  const t = resetAt instanceof Date ? resetAt.getTime() : new Date(resetAt).getTime();
+  return Math.max(1, Math.ceil((t - Date.now()) / 1e3));
+}
+function maybePrune() {
+  if (Math.random() < 0.02) {
+    void sql(`delete from rate_limits where reset_at < now() - interval '1 hour'`).catch(
+      () => void 0
+    );
+  }
+}
+async function hitRateLimit(key, limit, windowMs) {
+  maybePrune();
+  const rows = await sql(
+    `insert into rate_limits (key, count, reset_at)
+     values ($1, 1, now() + ($2::int * interval '1 millisecond'))
+     on conflict (key) do update set
+       count = case when rate_limits.reset_at <= now() then 1 else rate_limits.count + 1 end,
+       reset_at = case when rate_limits.reset_at <= now()
+         then now() + ($2::int * interval '1 millisecond') else rate_limits.reset_at end
+     returning count, reset_at`,
+    [key, Math.floor(windowMs)]
+  );
+  const row = rows[0];
+  if (!row) return { ok: true };
+  return Number(row.count) > limit ? { ok: false, retryAfterSec: retryAfter(row.reset_at) } : { ok: true };
+}
+
 // api/_lib/clanBoardApi.ts
 var NO_STORE = { "cache-control": "private, no-store" };
-function json(data, status = 200) {
-  return Response.json(data, { status, headers: NO_STORE });
+function json(data, status = 200, extraHeaders = {}) {
+  return Response.json(data, { status, headers: { ...NO_STORE, ...extraHeaders } });
 }
 function internalError(error, where) {
   console.error(`${where} failed`, error instanceof Error ? error.message : "unknown");
@@ -237,6 +280,14 @@ function parsePlayerCode(url) {
 }
 async function GET(request) {
   try {
+    const hit = await hitRateLimit(`clan-board:get:${clientIp(request)}`, 60, 10 * 60 * 1e3);
+    if (!hit.ok) {
+      return json(
+        { error: "rate_limited", retryAfterSec: hit.retryAfterSec },
+        429,
+        { "retry-after": String(hit.retryAfterSec) }
+      );
+    }
     const url = new URL(request.url);
     const seasonId = parseSeasonId(url);
     const playerCode = parsePlayerCode(url);

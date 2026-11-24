@@ -12,7 +12,6 @@ import {
   findUserByUsername,
   isUniqueViolation,
   normalizeUsername,
-  rateLimit,
   revokeAllSessions,
   revokeSession,
   resolveSessionToken,
@@ -212,14 +211,8 @@ export async function POST(request: Request): Promise<Response> {
         user: { id: string; username: string };
       };
 
-      const limited = rateLimit(`auth:change-password:${user.id}`, 10, 15 * 60 * 1000);
-      if (!limited.ok) {
-        return json(
-          { error: 'rate_limited', retryAfterSec: limited.retryAfterSec },
-          429,
-          { 'retry-after': String(limited.retryAfterSec) },
-        );
-      }
+      const pwHit = await hitRateLimit(`auth:change-password:${user.id}`, 10, 15 * 60 * 1000);
+      if (!pwHit.ok) return limited(pwHit);
 
       const currentPassword = typeof obj.currentPassword === 'string' ? obj.currentPassword : '';
       const nextPassword = typeof obj.newPassword === 'string' ? obj.newPassword : '';
