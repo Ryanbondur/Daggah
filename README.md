@@ -31,13 +31,14 @@ npm run art        # re-slice generated art from art-src/ into public/assets/ (n
 - **Adventure**: Acts 1–10 (through Voidgate and Nightscar Depths), 5 stages each. Dungeons through Gate Reliquary and **Nightscar Apex** (endgame, stingy drops).
 - **Sets**: Ember Raider through Nightscar Regalia, plus vendor-only **Clanforged** (2pc +8% PvP CP, 4pc +10% token gains).
 - **Town**: Clan Hall (create/join, roster, 4v4 queue), Season Board (30-day timer + local reset), Clan Armorer (token shop). Blacksmith / Quartermaster still stubbed.
-- **Clans / 4v4**: create (500 crystals) or join by code; **Fill AI roster** for the other three classes (player stays human); queue when roster has one of each class. Enemy clan is AI with endgame/scaled gear. Auto-battle uses your gear + skills; win 20 / loss 5 tokens (200/day cap). Matches are local AI (no live MP shared HP yet).
-- **Clan leaderboard**: Clan tab → Leaderboard reads live season standings from Postgres (`GET /api/daggah-clan-board`) when the API is up; cloud save pushes publish `season_stats` / `clan_results`. Guests and offline play fall back to local stub rivals (intentional).
+- **Clans / 4v4**: create (500 crystals) or join by code; **Fill AI roster** for missing classes (player stays human); queue when roster has one of each class. **Live matchmaking** (`POST /api/daggah-match`) pairs signed-in players across devices within progressive CP bands; no peers / no DB → clearly labeled **AI practice**. Bracket token payouts (Scout/Veteran/Nightscar) with 200/day cap.
+- **Clan leaderboard**: Clan tab → Leaderboard reads live season standings from Postgres (`GET /api/daggah-clan-board`) when the API is up; cloud save + match reports publish `season_stats` / `clan_results`. Guests and offline play fall back to local stub rivals (intentional).
 - **Save**: stable `daggah.save` localStorage key (migrates legacy `daggah.save.v1`–`v3`). Autosaves on change and every 5s. **Settings → Export / Import save code** for a shareable `DAG1.…` backup (survives origin changes). localStorage is the intentional offline cache — not a leftover stub.
 - **Cloud sync**: Postgres-backed `GET/PUT /api/daggah-save`. Prefers **username/password** session (`/api/daggah-auth`), then Cursor identity when verified, otherwise an optional **account code** (`DGAC.…`). Debounced auto-push; pull on boot when linked. localStorage + Export/Import remain when cloud is down.
 - **Clan halls**: Postgres-backed `GET/POST /api/daggah-clan` for cross-device create/join/sync (auth required for membership). Invite codes + AI replace (weakest CP) + cap 25. Guests / DB-missing intentionally fall back to same-origin `daggah.clanHalls`.
+- **Matchmaking**: Postgres-backed `POST /api/daggah-match` (`enqueue` / `poll` / `cancel` / `report`). Shared sim seed for both clients; season board hooks preserved (DG-120).
 
-Out of scope: server matchmaking / realtime shared-HP multiplayer. Cross-device clan halls + season board already use Postgres when signed in.
+Out of scope: realtime shared-HP multiplayer. Cross-device clan halls, season board, and matchmaking already use Postgres when signed in.
 
 ## Controls
 
@@ -49,8 +50,8 @@ Out of scope: server matchmaking / realtime shared-HP multiplayer. Cross-device 
 ## Project layout
 
 ```
-api/         hosted routes: ping.ts (health) + daggah-auth.js / daggah-save.js / daggah-clan-board.js / daggah-clan.js (bundled)
-api/_lib/    auth/save/clan-board/clan-hall/db source (edit here, then npm run bundle:api)
+api/         hosted routes: ping.ts (health) + daggah-auth.js / daggah-save.js / daggah-clan-board.js / daggah-clan.js / daggah-match.js (bundled)
+api/_lib/    auth/save/clan-board/clan-hall/matchmaking/db source (edit here, then npm run bundle:api)
 src/data/    types, XP, skills (all classes), gear/sets/CP, acts 1-10 + enemies, quests
 src/game/    combat engine, clan/PvP, Game controller, save, tests
 src/stage/   Phaser StageScene

@@ -569,9 +569,10 @@ function renderClanHallPane(ctx: UIContext): string {
       ${inviteBtn}
       <button type="button" class="btn red ${ready && bracket.floorMet ? '' : 'disabled'}" data-action="clan-queue">Queue 4v4</button>
       ${challengeBtn}
+      <button type="button" class="btn stone" data-action="clan-practice">Practice 4v4 (AI)</button>
       <button type="button" class="btn tan" data-action="clan-leave">Leave clan</button>
     </div>
-    <p class="tagline">${escapeHtml(bracket.label)} payout Win +${win} / Loss +${loss} (cap ${TOKEN_DAY_CAP}/day). Scout ${BRACKET_TOKEN_WIN.scout}/${BRACKET_TOKEN_LOSS.scout} · Veteran ${BRACKET_TOKEN_WIN.veteran}/${BRACKET_TOKEN_LOSS.veteran} · Nightscar ${BRACKET_TOKEN_WIN.nightscar}/${BRACKET_TOKEN_LOSS.nightscar}.</p>
+    <p class="tagline">${escapeHtml(bracket.label)} payout Win +${win} / Loss +${loss} (cap ${TOKEN_DAY_CAP}/day). Live queue needs sign-in; AI practice if no peers. Scout ${BRACKET_TOKEN_WIN.scout}/${BRACKET_TOKEN_LOSS.scout} · Veteran ${BRACKET_TOKEN_WIN.veteran}/${BRACKET_TOKEN_LOSS.veteran} · Nightscar ${BRACKET_TOKEN_WIN.nightscar}/${BRACKET_TOKEN_LOSS.nightscar}.</p>
   </div>`;
 }
 
