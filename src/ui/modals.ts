@@ -77,6 +77,12 @@ import { SEASON_MILESTONES } from '../data/season';
 import { TUTORIAL_STEPS } from '../data/tutorial';
 import { WHATS_NEW } from '../data/whatsNew';
 import { playstyleCommitted } from '../data/skills';
+import {
+  SET_BONUS_TARGET,
+  buildSetProgressSnapshot,
+  pityBandLabel,
+  type SetPieceProgress,
+} from '../game/setProgress';
 
 const STAT_ORDER: StatKey[] = [
   'atk',
@@ -598,13 +604,14 @@ export function showHero(ctx: UIContext): void {
         .join('')}`;
     })
     .join('');
-  ctx.openModal(
+  const el = ctx.openModal(
     `<div class="sheet">
       <h2>${g.save.heroClass} - Lv.${g.save.level}</h2>
       <div class="body">
         <div class="row"><span>Combat Power</span><b>${fmt(t.cp)}</b></div>
         ${rows}
         ${sets || '<p style="margin-top:2cqw">Equip 2, 4 or 6 pieces of one set for bonuses.</p>'}
+        <button type="button" class="chip" data-action="set-tracker" style="margin-top:2cqw">Set progress &amp; fortune</button>
         <h3>Resources</h3>
         <div class="row"><span>Crystals</span><b>${fmt(g.save.crystals)}</b></div>
         <div class="row"><span>Dust</span><b>${fmt(g.save.dust)}</b></div>
@@ -614,8 +621,117 @@ export function showHero(ctx: UIContext): void {
       <div class="btns"><button class="btn gold" data-action="close">Close</button></div>
     </div>`,
     { onDismiss: () => ctx.closeModal() },
-  ).addEventListener('click', (ev) => {
-    if ((ev.target as HTMLElement).closest('[data-action="close"]')) ctx.closeModal();
+  );
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    if (t.dataset.action === 'close') ctx.closeModal();
+    else if (t.dataset.action === 'set-tracker') {
+      ctx.closeModal();
+      showSetProgress(ctx);
+    }
+  });
+}
+
+function setProgressRowHtml(p: SetPieceProgress): string {
+  const bonusPct = Math.min(100, Math.round((p.equipped / SET_BONUS_TARGET) * 100));
+  const bisPct = Math.min(100, Math.round((p.legendarySlots / SET_BONUS_TARGET) * 100));
+  const dots = p.slots
+    .map((s) => {
+      const cls = s.owned ? `on${s.rarity ? ` r-${s.rarity}` : ''}` : '';
+      const title = s.owned
+        ? `${SLOT_LABEL[s.slot]}${s.rarity ? ` · ${RARITIES[s.rarity].label}` : ''}`
+        : `${SLOT_LABEL[s.slot]} · missing`;
+      return `<i class="set-dot ${cls}" title="${escapeHtml(title)}"></i>`;
+    })
+    .join('');
+  const feat = p.featured ? ' featured' : '';
+  const bis =
+    p.featured
+      ? `<div class="set-prog-meta"><span>Legendary BiS</span><b>${p.legendarySlots}/${SET_BONUS_TARGET}</b></div>
+         <div class="set-prog-bar bis" aria-hidden="true"><span style="width:${bisPct}%"></span></div>`
+      : '';
+  return `<div class="set-prog-card${feat}">
+    <div class="set-prog-head">
+      <b>${escapeHtml(p.name)}</b>
+      <span>Act ${p.act}</span>
+    </div>
+    <div class="set-prog-meta"><span>Bonus</span><b>${p.equipped}/${SET_BONUS_TARGET}</b></div>
+    <div class="set-prog-bar" aria-hidden="true"><span style="width:${bonusPct}%"></span></div>
+    <div class="set-prog-meta"><span>Owned slots</span><b>${p.ownedSlots}/${p.slotCap}</b></div>
+    ${bis}
+    <div class="set-prog-dots" aria-label="Slots">${dots}</div>
+  </div>`;
+}
+
+/** Set ownership + soft Fortune tracker (hidden mid-fight). Out of combat only. */
+export function showSetProgress(ctx: UIContext): void {
+  const g = ctx.game;
+  const apex = getDungeon('nightscar-apex');
+  const snap = buildSetProgressSnapshot({
+    heroClass: g.save.heroClass,
+    actUnlocked: g.craftActUnlocked(),
+    gear: g.save.gear,
+    bag: g.save.bag,
+    nightscarPity: g.save.nightscarPity,
+    ascendedPity: g.save.ascendedPity,
+    inBattle: g.inBattle,
+    apexUnlocked: g.dungeonUnlocked(apex),
+    ascendedUnlocked: g.ascendedUnlocked(),
+  });
+
+  const fortuneBody = g.inBattle
+    ? `<p class="tagline">Fortune is hidden while fighting — no mid-fight drop spoilers.</p>`
+    : `<div class="fortune-grid">
+        <div class="fortune-card band-${snap.pity.apexBand}">
+          <span>Apex</span>
+          <b>${pityBandLabel(snap.pity.apexBand)}</b>
+          <small>${snap.pity.apex}/${snap.pity.max}</small>
+        </div>
+        <div class="fortune-card band-${snap.pity.ascendedBand}">
+          <span>Ascended</span>
+          <b>${pityBandLabel(snap.pity.ascendedBand)}</b>
+          <small>${snap.pity.ascended}/${snap.pity.max}</small>
+        </div>
+      </div>
+      <p class="tagline">Dry Apex/Ascended clears soft-ramp Epic (+2) &amp; Legendary (+1) weight per stack (cap ${snap.pity.max}). Dust craft still fills gaps — pity never hard-guarantees BiS.</p>`;
+
+  const nightscarHtml = snap.nightscar
+    ? setProgressRowHtml(snap.nightscar)
+    : `<p class="tagline">Clear toward Act 10 to track Nightscar Regalia.</p>`;
+
+  const others = snap.sets
+    .filter((s) => !s.featured)
+    .slice(0, 8)
+    .map(setProgressRowHtml)
+    .join('');
+
+  const el = ctx.openModal(
+    `<div class="sheet set-progress-sheet">
+      <h2>Set Progress</h2>
+      <div class="body">
+        <h3>Nightscar Regalia</h3>
+        ${nightscarHtml}
+        <h3>Fortune</h3>
+        ${fortuneBody}
+        <h3>Other sets</h3>
+        ${others || '<p class="tagline">No other class sets unlocked yet.</p>'}
+      </div>
+      <div class="btns">
+        <button class="btn stone" data-action="blacksmith">Blacksmith</button>
+        <button class="btn gold" data-action="close">Close</button>
+      </div>
+    </div>`,
+    { onDismiss: () => ctx.closeModal() },
+  );
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    if (t.dataset.action === 'close') ctx.closeModal();
+    else if (t.dataset.action === 'blacksmith') {
+      ctx.closeModal();
+      showBlacksmith(ctx);
+    }
   });
 }
 
