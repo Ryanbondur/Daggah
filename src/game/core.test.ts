@@ -652,3 +652,47 @@ describe('dungeon key cost by act', () => {
     expect(game.save.classPicked).toBe(false);
   });
 });
+
+describe('last-fight summary', () => {
+  it('records Act stageClear fight stats and loot after a clear', () => {
+    const game = new Game(memoryStorage(), mulberry32(42));
+    game.pickClass('Warrior');
+    const kinds: string[] = [];
+    game.on((e) => {
+      if (e.t === 'result') kinds.push(e.result.kind);
+    });
+    game.startBattle();
+    expect(game.battle).toBeTruthy();
+    let guard = 0;
+    while (!game.lastFight && guard < 20_000) {
+      game.tick(0.25);
+      guard += 1;
+    }
+    expect(game.lastFight).toBeTruthy();
+    expect(game.lastFight!.kind).toBe('stage');
+    expect(game.lastFight!.success).toBe(true);
+    expect(game.lastFight!.dpsBoard.length).toBeGreaterThanOrEqual(1);
+    expect(game.lastFight!.dpsBoard[0]!.damage).toBeGreaterThan(0);
+    expect(game.lastFight!.loot.length).toBeGreaterThanOrEqual(1);
+    expect(kinds).toContain('stageClear');
+  });
+
+  it('skips stageClear modal emit while quiet (offline catch-up)', () => {
+    const game = new Game(memoryStorage(), mulberry32(7));
+    game.pickClass('Warrior');
+    const kinds: string[] = [];
+    game.on((e) => {
+      if (e.t === 'result') kinds.push(e.result.kind);
+    });
+    game.beginQuiet();
+    game.startBattle();
+    let guard = 0;
+    while (!game.lastFight && guard < 20_000) {
+      game.tick(0.25);
+      guard += 1;
+    }
+    game.endQuiet();
+    expect(game.lastFight).toBeTruthy();
+    expect(kinds.includes('stageClear')).toBe(false);
+  });
+});

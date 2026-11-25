@@ -177,6 +177,11 @@ import {
 } from './clanHallCloud';
 import type { BattleEvent, HeroInput, RunDef } from './combat';
 import { Battle, STEP } from './combat';
+import {
+  summaryFromAct,
+  summaryFromPvp,
+  type FightSummary,
+} from './fightSummary';
 import type { PvpEvent, PvpFighterSnap, PvpResult } from './pvp';
 import { buildOpponentRoster, simulatePvp } from './pvp';
 import { readAuthSession } from './authSession';
@@ -221,7 +226,7 @@ export { OFFLINE_CAP_MS, OFFLINE_MIN_MS, formatOfflineToast } from './offline';
 export type Mode = 'camp' | 'stage' | 'dungeon' | 'pvp';
 
 export interface RunResult {
-  kind: 'dungeon' | 'actClear' | 'stageFailed' | 'clanRaid';
+  kind: 'dungeon' | 'actClear' | 'stageFailed' | 'clanRaid' | 'stageClear';
   title: string;
   success: boolean;
   loot: Item[];
@@ -235,6 +240,8 @@ export interface RunResult {
   /** Clan Raid / seal craft spoils (never gear). */
   ascendedSeals?: number;
   ascendedSealFragments?: number;
+  /** Compact last-fight stats (damage, KO order, loot snapshot). */
+  fight?: FightSummary;
 }
 
 /** Live fighter state while the Phaser stage replays a resolved 4v4. */
@@ -352,11 +359,17 @@ export class Game {
   chat: string[] = ['Welcome to Daggah. Tap Battle to begin.'];
   /** Authoritative sim result playing out on the Phaser stage before the breakdown modal. */
   pvpPlayback: PvpPlayback | null = null;
+  /** Most recent Act / PvP fight summary (runtime; reopen from Camp). */
+  lastFight: FightSummary | null = null;
   readonly rng: Rng;
   readonly storage: Storage | undefined;
   private listeners = new Set<Listener>();
   private acc = 0;
   private dungeonCtx: DungeonCtx | null = null;
+  /** Gear rolled during the current Act run (for last-fight loot). */
+  private fightLoot: Item[] = [];
+  /** Hero lives spent during the current Act run. */
+  private fightDeaths = 0;
   /** Suppress per-event toasts/chat while applying AFK catch-up. */
   private quiet = false;
 
@@ -649,6 +662,7 @@ export class Game {
     const b = this.battle;
     if (!b) return;
     this.lives -= 1;
+    this.fightDeaths += 1;
     if (this.lives > 0) {
       this.say(`You fell! ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.`);
       this.toast(`Defeated - ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left`, 'bad');
@@ -660,6 +674,15 @@ export class Game {
     if (this.mode === 'dungeon' && this.dungeonCtx) {
       const ctx = this.dungeonCtx;
       this.dungeonCtx = null;
+      const fight = this.captureActFight({
+        kind: ctx.clanRaid ? 'clanRaid' : 'dungeon',
+        title: ctx.clanRaid ? 'Clan Raid - Failed' : `${ctx.dungeon.name} - Failed`,
+        success: false,
+        loot: ctx.clanRaid ? [] : ctx.loot,
+        note: ctx.clanRaid
+          ? 'Out of lives. No seals this attempt.'
+          : 'You ran out of lives. Loot gathered so far is yours.',
+      });
       this.endRun();
       if (ctx.clanRaid) {
         this.emit({
@@ -671,6 +694,7 @@ export class Game {
             loot: [],
             xp: ctx.xp,
             note: 'Out of lives. No seals this attempt.',
+            fight,
           },
         });
       } else {
@@ -683,6 +707,7 @@ export class Game {
             loot: ctx.loot,
             xp: ctx.xp,
             note: 'You ran out of lives. Loot gathered so far is yours.',
+            fight,
           },
         });
       }
@@ -696,6 +721,13 @@ export class Game {
       const farmHint = underpowered
         ? 'Farm gear → retry: your CP is below this stage. Clear the act dungeon for set pieces, then push again.'
         : 'Farm gear → retry: swap skills or farm the act dungeon for an edge, then push again.';
+      const fight = this.captureActFight({
+        kind: 'stage',
+        title,
+        success: false,
+        loot: this.fightLoot,
+        note: 'Out of lives. Stage progress is kept.',
+      });
       this.endRun();
       this.emit({
         t: 'result',
@@ -709,6 +741,7 @@ export class Game {
           yourCp,
           recCp,
           farmHint,
+          fight,
         },
       });
     }
@@ -723,8 +756,9 @@ export class Game {
     const idx = this.save.currentStage;
     const { act, stage } = stageToActStage(idx);
     const first = idx === this.save.stagesCleared && idx < PLAYABLE_STAGES;
+    const title = stageTitle(act, stage);
     this.dropFromStage('stage-boss');
-    this.say(`${stageTitle(act, stage)} cleared!`);
+    this.say(`${title} cleared!`);
     this.save.nodeProgress = 0;
     let actCleared = false;
     if (first) {
@@ -738,6 +772,13 @@ export class Game {
       this.toast(`Stage ${act}-${stage} cleared`, 'good');
     }
     this.save.currentStage = first ? Math.min(this.save.stagesCleared, PLAYABLE_STAGES - 1) : idx;
+
+    const fight = this.captureActFight({
+      kind: 'stage',
+      title: actCleared ? `Act ${act} Cleared` : title,
+      success: true,
+      loot: this.fightLoot,
+    });
 
     if (actCleared) {
       const a = getAct(act);
@@ -756,6 +797,20 @@ export class Game {
               ? `Act ${act + 1} awaits.`
               : 'Acts 7-10 arrive in a future update. Farm dungeons and gear up!'
           }`,
+          fight,
+        },
+      });
+    } else if (!this.quiet) {
+      // Interactive play: compact last-fight sheet. Offline catch-up skips the modal.
+      this.emit({
+        t: 'result',
+        result: {
+          kind: 'stageClear',
+          title,
+          success: true,
+          loot: [],
+          xp: 0,
+          fight,
         },
       });
     }
@@ -777,12 +832,26 @@ export class Game {
     this.resolveNightscarPity(ctx.dungeon, ctx.loot);
     this.bumpDaily('dungeons');
     this.advanceTutorial('dungeon-key');
+    const note =
+      rec.clears === SWEEP_UNLOCK_CLEARS
+        ? `Sweep unlocked: loot instantly for ${
+            isAscendedDungeon(ctx.dungeon)
+              ? formatAscendedEntryCost()
+              : formatDungeonKeyCost(dungeonKeyCost(ctx.dungeon.actId))
+          }.`
+        : rec.clears < SWEEP_UNLOCK_CLEARS
+          ? `Sweep unlocks after ${SWEEP_UNLOCK_CLEARS} clears (${rec.clears}/${SWEEP_UNLOCK_CLEARS}).`
+          : undefined;
+    const fight = this.captureActFight({
+      kind: 'dungeon',
+      title: `${ctx.dungeon.name} - Cleared`,
+      success: true,
+      loot: ctx.loot,
+      note,
+    });
     this.dungeonCtx = null;
     this.endRun();
     this.say(`${ctx.dungeon.name} cleared!`);
-    const entryNote = isAscendedDungeon(ctx.dungeon)
-      ? formatAscendedEntryCost()
-      : formatDungeonKeyCost(dungeonKeyCost(ctx.dungeon.actId));
     this.emit({
       t: 'result',
       result: {
@@ -791,12 +860,8 @@ export class Game {
         success: true,
         loot: ctx.loot,
         xp: ctx.xp,
-        note:
-          rec.clears === SWEEP_UNLOCK_CLEARS
-            ? `Sweep unlocked: loot instantly for ${entryNote}.`
-            : rec.clears < SWEEP_UNLOCK_CLEARS
-              ? `Sweep unlocks after ${SWEEP_UNLOCK_CLEARS} clears (${rec.clears}/${SWEEP_UNLOCK_CLEARS}).`
-              : undefined,
+        note,
+        fight,
       },
     });
     this.changed();
@@ -806,9 +871,17 @@ export class Game {
     const reward = rollClanRaidReward(this.rng);
     this.save.ascendedSeals += reward.ascendedSeals;
     this.save.ascendedSealFragments += reward.ascendedSealFragments;
+    const label = formatClanRaidReward(reward);
+    const note = `${label}. Craft fragments into Seals in Adventure (5 → 1).`;
+    const fight = this.captureActFight({
+      kind: 'clanRaid',
+      title: 'Clan Raid - Cleared',
+      success: true,
+      loot: [],
+      note,
+    });
     this.dungeonCtx = null;
     this.endRun();
-    const label = formatClanRaidReward(reward);
     this.say(`Clan Raid cleared! ${label}.`);
     this.toast(label, 'good');
     this.emit({
@@ -821,7 +894,8 @@ export class Game {
         xp: ctx.xp,
         ascendedSeals: reward.ascendedSeals,
         ascendedSealFragments: reward.ascendedSealFragments,
-        note: `${label}. Craft fragments into Seals in Adventure (5 → 1).`,
+        note,
+        fight,
       },
     });
     this.changed();
@@ -923,6 +997,7 @@ export class Game {
     const nodes = STAGE_NODES.length;
     const start = this.save.nodeProgress >= nodes ? 0 : this.save.nodeProgress;
     const run = this.buildStageRun(idx, start);
+    this.resetFightTracking();
     this.battle = new Battle(run, this.heroInput(), this.rng);
     this.mode = 'stage';
     this.lives = MAX_LIVES;
@@ -1099,6 +1174,7 @@ export class Game {
     }
     if (this.mode === 'dungeon') return false;
     if (!this.payDungeonEntry(d.actId)) return false;
+    this.resetFightTracking();
     this.dungeonCtx = { dungeon: d, loot: [], xp: 0 };
     this.battle = new Battle(this.buildDungeonRun(d), this.heroInput(), this.rng);
     this.mode = 'dungeon';
@@ -1124,6 +1200,7 @@ export class Game {
       return false;
     }
     if (!this.payAscendedEntry()) return false;
+    this.resetFightTracking();
     this.dungeonCtx = { dungeon: d, loot: [], xp: 0, ascended: true };
     this.battle = new Battle(this.buildDungeonRun(d), this.heroInput(), this.rng);
     this.mode = 'dungeon';
@@ -1171,9 +1248,36 @@ export class Game {
     this.resolveNightscarPity(d, loot);
     this.gainXp(xp);
     this.say(`Swept ${d.name}.`);
+    const fight = summaryFromAct({
+      kind: 'dungeon',
+      title: `${d.name} - Sweep`,
+      success: true,
+      duration: 0,
+      accum: {
+        damageHero: 0,
+        allyDamage: new Map(),
+        kills: [],
+        allyDowns: [],
+        heroDeaths: 0,
+        loot,
+      },
+      heroName: this.heroFightName(),
+      heroClass: this.save.heroClass,
+      loot,
+      note: 'Instant Sweep — loot only (no combat telemetry).',
+    });
+    this.lastFight = fight;
     this.emit({
       t: 'result',
-      result: { kind: 'dungeon', title: `${d.name} - Sweep`, success: true, loot, xp },
+      result: {
+        kind: 'dungeon',
+        title: `${d.name} - Sweep`,
+        success: true,
+        loot,
+        xp,
+        fight,
+        note: 'Instant Sweep — loot only (no combat telemetry).',
+      },
     });
     this.changed();
     return true;
@@ -1217,9 +1321,36 @@ export class Game {
     this.resolveNightscarPity(d, loot);
     this.gainXp(xp);
     this.say(`Swept Ascended Nightscar.`);
+    const fight = summaryFromAct({
+      kind: 'dungeon',
+      title: `${d.name} - Sweep`,
+      success: true,
+      duration: 0,
+      accum: {
+        damageHero: 0,
+        allyDamage: new Map(),
+        kills: [],
+        allyDowns: [],
+        heroDeaths: 0,
+        loot,
+      },
+      heroName: this.heroFightName(),
+      heroClass: this.save.heroClass,
+      loot,
+      note: 'Instant Sweep — loot only (no combat telemetry).',
+    });
+    this.lastFight = fight;
     this.emit({
       t: 'result',
-      result: { kind: 'dungeon', title: `${d.name} - Sweep`, success: true, loot, xp },
+      result: {
+        kind: 'dungeon',
+        title: `${d.name} - Sweep`,
+        success: true,
+        loot,
+        xp,
+        fight,
+        note: 'Instant Sweep — loot only (no combat telemetry).',
+      },
     });
     this.changed();
     return true;
@@ -1239,7 +1370,62 @@ export class Game {
       rarity: rollRarity(this.rng, source),
       heroClass: this.save.heroClass,
     });
+    this.fightLoot.push(item);
     this.queueLoot([item]);
+  }
+
+  private resetFightTracking(): void {
+    this.fightLoot = [];
+    this.fightDeaths = 0;
+  }
+
+  private heroFightName(): string {
+    const clan = this.save.clan;
+    const me = clan?.members.find((m) => m.isPlayer);
+    return me?.name?.trim() || 'You';
+  }
+
+  /** Snapshot Act/dungeon/raid combat into lastFight + return for RunResult. */
+  private captureActFight(opts: {
+    kind: 'stage' | 'dungeon' | 'clanRaid';
+    title: string;
+    success: boolean;
+    loot: Item[];
+    note?: string;
+  }): FightSummary {
+    const b = this.battle;
+    const duration = b?.time ?? 0;
+    const summary = summaryFromAct({
+      kind: opts.kind,
+      title: opts.title,
+      success: opts.success,
+      duration,
+      accum: {
+        damageHero: b?.heroDamageDealt ?? 0,
+        allyDamage: new Map(),
+        kills: (b?.killLog ?? []).map((k) => ({
+          name: k.name,
+          side: 'foe' as const,
+          role: k.role,
+          time: k.time,
+        })),
+        allyDowns: (b?.allyDownLog ?? []).map((d) => ({
+          name: d.name,
+          side: 'ally' as const,
+          time: d.time,
+          isPlayer: d.isPlayer,
+        })),
+        heroDeaths: this.fightDeaths,
+        loot: opts.loot,
+      },
+      heroName: this.heroFightName(),
+      heroClass: this.save.heroClass,
+      allies: b?.raidAllies,
+      loot: opts.loot,
+      note: opts.note,
+    });
+    this.lastFight = summary;
+    return summary;
   }
 
   private dungeonDropSource(d: DungeonDef, type: NodeType): DropSource {
@@ -2518,6 +2704,7 @@ export class Game {
     );
     this.save.clanRaidAttemptsUsed += 1;
     const d = CLAN_RAID_DUNGEON;
+    this.resetFightTracking();
     this.dungeonCtx = { dungeon: d, loot: [], xp: 0, clanRaid: true };
     this.battle = new Battle(this.buildDungeonRun(d), input, this.rng, {
       raidAllies: allies,
@@ -2879,6 +3066,7 @@ export class Game {
     const { result, tokens } = pb;
     this.pvpPlayback = null;
     this.mode = 'camp';
+    this.lastFight = summaryFromPvp(result, tokens);
     this.emit({ t: 'pvp', result, tokens });
     this.emit({ t: 'run' });
     this.emit({ t: 'change' });

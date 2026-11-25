@@ -3802,6 +3802,39 @@ button {
   font-family: var(--font-num);
 }
 
+/* Last-fight / match summary — compact first viewport */
+.fight-sheet .body {
+  text-align: left;
+}
+.fight-headline {
+  font-family: var(--font-title);
+  font-size: 3.6cqw;
+  font-weight: 700;
+  color: #3a2a14;
+  margin: 0 0 1cqw;
+}
+.fight-summary {
+  margin-top: 0.8cqw;
+}
+.fight-summary .loot-row.fight-loot-row {
+  grid-template-columns: repeat(auto-fill, minmax(14cqw, 1fr));
+  max-width: 100%;
+}
+.last-fight-chip {
+  font-size: 2.6cqw;
+  padding: 1.2cqw 2cqw;
+  white-space: nowrap;
+}
+@media (max-width: 420px) {
+  .fight-summary .pvp-dps-row {
+    grid-template-columns: 3.6cqw minmax(0, 1.2fr) minmax(0, 1fr) auto;
+    font-size: 2.3cqw;
+  }
+  .fight-loot-row {
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+}
+
 .setinfo .sf {
   font-size: 2.4cqw;
   color: #8a6a2a;

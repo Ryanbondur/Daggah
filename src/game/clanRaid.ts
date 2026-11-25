@@ -187,6 +187,7 @@ export function buildClanRaidAllies(
         hitFlash: 0,
         dead: false,
         deathT: 0,
+        damageDealt: 0,
       } satisfies RaidAlly;
     }
     const loadout = (m.loadout.length ? m.loadout : DEFAULT_LOADOUT[m.heroClass]).slice(0, 4);
@@ -210,6 +211,7 @@ export function buildClanRaidAllies(
       hitFlash: 0,
       dead: false,
       deathT: 0,
+      damageDealt: 0,
     } satisfies RaidAlly;
   });
 }
