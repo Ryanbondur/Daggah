@@ -401,15 +401,15 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
   const replaceCls = `btn ${replacePrimary ? 'gold' : 'stone'} ${info.levelOk ? '' : 'disabled'}`;
   const salvageCls = `btn ${replacePrimary ? 'tan' : 'gold'}`;
   const rightFooter = `
-    <div class="autochk ${auto ? 'on' : ''}" data-action="auto-toggle" title="Salvage the piece you replace">
-      <div class="box">${CHECK_SVG}</div><div>Auto-salvage old piece</div>
-    </div>
+    <button type="button" class="autochk ${auto ? 'on' : ''}" data-action="auto-toggle" title="Salvage the piece you replace" aria-pressed="${auto ? 'true' : 'false'}">
+      <span class="box" aria-hidden="true">${CHECK_SVG}</span><span>Auto-salvage old piece</span>
+    </button>
     <div class="cmp-btns">
-      <button class="${salvageCls}" data-action="cmp-salvage">${cmpBtnLabel('Salvage', salvageRewardLabel(item))}</button>
-      <button class="${replaceCls}" data-action="cmp-replace">${replaceLabel}</button>
+      <button type="button" class="${salvageCls}" data-action="cmp-salvage">${cmpBtnLabel('Salvage', salvageRewardLabel(item))}</button>
+      <button type="button" class="${replaceCls}" data-action="cmp-replace">${replaceLabel}</button>
     </div>
     <div class="cmp-btns cmp-secondary">
-      <button class="btn stone cmp-keep" data-action="cmp-keep">${source === 'pending' ? 'Keep in bag' : 'Back to bag'}</button>
+      <button type="button" class="btn stone cmp-keep" data-action="cmp-keep">${source === 'pending' ? 'Keep in bag' : 'Back to bag'}</button>
     </div>`;
   const right = cardHtml(item, {
     gear: g.save.gear,
@@ -446,6 +446,7 @@ export function showCompare(ctx: UIContext, itemId: string, source: 'pending' | 
     if (action === 'auto-toggle') {
       auto = !auto;
       t.classList.toggle('on', auto);
+      t.setAttribute('aria-pressed', auto ? 'true' : 'false');
       g.setAutoSalvageReplaced(auto);
     } else if (action === 'cmp-salvage') {
       g.salvage(item);

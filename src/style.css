@@ -49,6 +49,21 @@ button {
   cursor: pointer;
 }
 
+/* Keyboard focus — gold ring matching existing accent; mouse clicks stay quiet. */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 0.4cqw solid #e2a53a;
+  outline-offset: 0.35cqw;
+}
+.sheet :focus-visible,
+.card :focus-visible,
+.pane-inner :focus-visible,
+.cmp :focus-visible {
+  outline-color: #a87828;
+}
+
 #app {
   position: fixed;
   inset: 0;
@@ -1518,15 +1533,18 @@ button {
   align-items: center;
   gap: 1.6cqw;
   margin: 2cqw 0 1.6cqw;
+  min-height: max(44px, 8cqw);
+  width: 100%;
   font-size: 3.2cqw;
   line-height: 1.15;
-  color: #4d473e;
+  color: #3a342c;
   text-align: left;
+  cursor: pointer;
 }
 .autochk .box {
   flex: none;
-  width: 5.2cqw;
-  height: 5.2cqw;
+  width: max(22px, 5.2cqw);
+  height: max(22px, 5.2cqw);
   background: #25211f;
   border: 0.35cqw solid #5d574d;
   display: grid;
@@ -1540,6 +1558,11 @@ button {
 .autochk.on .box svg {
   display: block;
 }
+.autochk:focus-visible {
+  outline: 0.4cqw solid #a87828;
+  outline-offset: 0.3cqw;
+  border-radius: 0.6cqw;
+}
 .cmp-btns {
   display: flex;
   gap: 1.6cqw;
@@ -1548,13 +1571,14 @@ button {
 .cmp-btns > .btn {
   flex: 1 1 0;
   min-width: 0;
-  min-height: 11cqw;
+  /* ≥44px tap target on SE-width frames; scale up on larger phones */
+  min-height: max(44px, 12cqw);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.4cqw;
-  padding: 1.4cqw 0.8cqw;
+  padding: 1.8cqw 0.8cqw;
   line-height: 1.1;
   clip-path: none;
   border-radius: 1.2cqw;
@@ -1582,10 +1606,16 @@ button {
 }
 .cmp-btns.cmp-secondary .btn {
   flex: 1;
-  min-height: 8cqw;
+  min-height: max(44px, 10cqw);
   font-size: 3.4cqw;
-  padding: 1.4cqw 1cqw;
+  padding: 1.8cqw 1cqw;
   opacity: 0.92;
+}
+.cmp-btns > .btn:focus-visible,
+.cmp-btns.cmp-secondary .btn:focus-visible {
+  outline: 0.45cqw solid #ffe9a8;
+  outline-offset: 0.25cqw;
+  z-index: 1;
 }
 .bag-yield {
   margin: 0.6cqw 0 1.2cqw;
@@ -1599,6 +1629,7 @@ button {
 }
 .bag-quick .btn {
   flex: 1;
+  min-height: max(44px, 10cqw);
 }
 .btn {
   flex: 1;
@@ -1611,6 +1642,10 @@ button {
   box-shadow: inset 0 0.4cqw 0 rgba(255, 255, 255, 0.28), 0 0.5cqw 0 rgba(0, 0, 0, 0.35);
   color: #fff;
   text-shadow: 0 0.3cqw 0 rgba(0, 0, 0, 0.45);
+}
+.btn:focus-visible {
+  outline: 0.45cqw solid #ffe9a8;
+  outline-offset: 0.25cqw;
 }
 .btn:active {
   transform: translateY(0.3cqw);
@@ -1740,6 +1775,9 @@ button {
   display: flex;
   gap: 2cqw;
   margin-top: 2.4cqw;
+}
+.sheet .btns .btn {
+  min-height: max(44px, 10cqw);
 }
 .key-buy-lead {
   font-size: 3.3cqw;
@@ -2451,11 +2489,17 @@ button {
   font-size: 2.6cqw;
   color: #b9b2a3;
 }
+/* Fortune pity on dark dungeon rows — was parchment brown (#6b655a), failed contrast. */
+.dg .dn .fortune-hint {
+  font-weight: 700;
+  color: #f0d78a;
+}
 .dg .btn {
   flex: none;
   padding: 1.6cqw 2.4cqw;
   font-size: 3cqw;
   min-width: 16cqw;
+  min-height: max(44px, 9cqw);
 }
 .dg.ascended {
   margin-top: 1.2cqw;
@@ -2943,12 +2987,17 @@ button {
 .town-card.clickable:focus-visible {
   border-color: #a87828;
   outline: none;
+  box-shadow: 0 0 0 0.4cqw rgba(168, 120, 40, 0.45);
   transform: translateY(-0.3cqw);
 }
 .town-card .live {
-  color: #1f6b2a;
+  color: #1a5c24;
   font-weight: 800;
   font-size: 2.5cqw;
+}
+/* Set Tracker card copy — darker secondary ink for AA on parchment. */
+.town-card[data-action='set-progress'] span:not(.live) {
+  color: #3a342c;
 }
 
 /* Set progress + Fortune tracker (Town / Hero) */
@@ -2956,6 +3005,14 @@ button {
   display: flex;
   flex-direction: column;
   gap: 1.6cqw;
+}
+.set-progress-sheet .tagline {
+  color: #3a342c;
+  font-style: normal;
+  font-weight: 600;
+}
+.set-progress-sheet .btns .btn {
+  min-height: max(44px, 10cqw);
 }
 .set-prog-card {
   padding: 2cqw;
@@ -2981,13 +3038,14 @@ button {
 }
 .set-prog-head span {
   font-size: 2.4cqw;
-  color: #6b655a;
+  color: #4a4238;
+  font-weight: 700;
 }
 .set-prog-meta {
   display: flex;
   justify-content: space-between;
   font-size: 2.7cqw;
-  color: #4d473e;
+  color: #3a342c;
   margin-top: 0.6cqw;
 }
 .set-prog-meta b {
@@ -3054,7 +3112,8 @@ button {
 }
 .fortune-card span {
   font-size: 2.5cqw;
-  color: #6b655a;
+  color: #3a342c;
+  font-weight: 700;
 }
 .fortune-card b {
   font-family: var(--font-title);
@@ -3064,16 +3123,17 @@ button {
 .fortune-card small {
   font-family: var(--font-num);
   font-size: 2.6cqw;
-  color: #4d473e;
+  color: #2a2420;
+  font-weight: 700;
 }
 .fortune-card.band-calm b {
-  color: #4d473e;
+  color: #2a2420;
 }
 .fortune-card.band-rising b {
-  color: #8a5a18;
+  color: #6b4210;
 }
 .fortune-card.band-strong b {
-  color: #8a281f;
+  color: #7a1f18;
 }
 .field {
   display: flex;
@@ -3655,7 +3715,7 @@ button {
 .sheet.class-pick p{margin:0 0 2.5cqw;font-size:3.1cqw;color:#6b655a;text-align:center}
 .class-grid{display:grid;grid-template-columns:1fr 1fr;gap:2.2cqw}
 .class-card{display:flex;flex-direction:column;align-items:center;gap:1cqw;padding:2.4cqw 1.6cqw;border:0.45cqw solid #6a5c45;border-radius:1.6cqw;background:linear-gradient(180deg,#f4ead2,#e6d7b4);color:#2c261c;cursor:pointer;font:inherit;box-shadow:inset 0 0 0 0.3cqw rgba(255,255,255,.35)}
-.class-card:hover,.class-card:focus-visible{border-color:#a87828;outline:none}
+.class-card:hover,.class-card:focus-visible{border-color:#a87828;outline:none;box-shadow:0 0 0 0.4cqw rgba(168,120,40,0.45)}
 .class-card img{width:22cqw;height:22cqw;object-fit:contain;filter:drop-shadow(0 0.6cqw 0.8cqw rgba(0,0,0,.35))}
 .class-card b{font-family:var(--font-title);font-size:4.2cqw;letter-spacing:.02em;color:#2a2420}
 .class-card span{font-size:2.7cqw;color:#5a5348;line-height:1.25;text-align:center}
