@@ -51,6 +51,7 @@ export interface UIContext {
   showClanArmorer(): void;
   showBlacksmith(): void;
   showSetProgress(): void;
+  showGearLoadouts(): void;
   flashSlot(slot: string): void;
 }
 

@@ -19,6 +19,8 @@ import {
 import { normalizeNonNegInt } from './ascended';
 import { clanRaidWeekKey } from './clanRaid';
 import { normalizeNightscarPity } from './nightscarPity';
+import type { GearPreset } from './gearPresets';
+import { sanitizeGearPresets } from './gearPresets';
 import type { DailyShopSave } from './shop';
 import { defaultDailyShop, normalizeDailyShop } from './shop';
 
@@ -191,6 +193,11 @@ export interface SaveData {
   clanRaidWeekKey: string;
   /** Clan Raid attempts used in the current week. */
   clanRaidAttemptsUsed: number;
+  /**
+   * Named gear loadout presets (2–3 slots). Null entries are empty.
+   * Stores item ids by slot; apply swaps from bag without salvaging.
+   */
+  gearPresets: (GearPreset | null)[];
 }
 
 export function defaultSave(now = Date.now()): SaveData {
@@ -258,6 +265,7 @@ export function defaultSave(now = Date.now()): SaveData {
     ascendedSealFragments: 0,
     clanRaidWeekKey: clanRaidWeekKey(now),
     clanRaidAttemptsUsed: 0,
+    gearPresets: [null, null, null],
   };
 }
 
@@ -466,6 +474,7 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
   | 'ascendedSealFragments'
   | 'clanRaidWeekKey'
   | 'clanRaidAttemptsUsed'
+  | 'gearPresets'
 > {
   const day = new Date(now).toISOString().slice(0, 10);
   const tut = parsed.tutorial;
@@ -529,6 +538,9 @@ function migrateClanFields(parsed: Partial<SaveData>, fresh: SaveData, now: numb
         ? parsed.clanRaidWeekKey
         : clanRaidWeekKey(now),
     clanRaidAttemptsUsed: normalizeNonNegInt(parsed.clanRaidAttemptsUsed, 99),
+    gearPresets: sanitizeGearPresets(
+      (parsed as Partial<SaveData> & { gearPresets?: unknown }).gearPresets,
+    ),
   };
 }
 

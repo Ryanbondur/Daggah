@@ -134,6 +134,7 @@ function renderCampGear(ctx: UIContext): string {
       ${quest}
       <div class="round-btns">
         ${tut}
+        <button class="round-btn" data-action="gear-loadouts" aria-label="Gear loadouts">${ICON.loadouts}</button>
         <button class="round-btn bag" data-action="bag" aria-label="Bag">${ICON.bag}${bagBadge}</button>
         <button class="round-btn" data-action="hero" aria-label="Hero">${ICON.crown}</button>
         <button class="round-btn" data-action="settings" aria-label="Settings">${ICON.shield}</button>
@@ -398,6 +399,24 @@ function renderNormalAdventureActs(ctx: UIContext): string {
   }).join('');
 }
 
+/** Compact one-tap gear preset chips (Adventure / Clan Hall). */
+function gearLoadoutQuickBar(ctx: UIContext): string {
+  const g = ctx.game;
+  const active = g.activeGearPresetIndex();
+  const chips = g.gearPresets
+    .map((preset, i) => {
+      if (!preset) return '';
+      const on = i === active ? ' on' : '';
+      return `<button type="button" class="chip${on}" data-action="loadout-apply" data-i="${i}">${escapeHtml(preset.name)}</button>`;
+    })
+    .filter(Boolean)
+    .join('');
+  return `<div class="loadout-bar" role="group" aria-label="Gear loadouts">
+    <button type="button" class="chip" data-action="gear-loadouts">${ICON.loadouts} Loadouts</button>
+    ${chips}
+  </div>`;
+}
+
 export function renderAdventure(ctx: UIContext): string {
   const g = ctx.game;
   const s = g.save;
@@ -416,6 +435,7 @@ export function renderAdventure(ctx: UIContext): string {
   return `<div class="pane-inner scroll">
     <div class="tab-title">Adventure <small>[${titleLabel}]</small></div>
     ${res}
+    ${gearLoadoutQuickBar(ctx)}
     ${renderSealCraftPanel(ctx)}
     <div class="cp-vs-stage ${powerCls}">
       <span>Your CP <b>${fmt(power.yourCp)}</b></span>
@@ -574,6 +594,7 @@ function renderClanHallPane(ctx: UIContext): string {
         : `<p class="clan-ok">Roster ready — one of each class.</p>`
     }
     ${floorBlock}
+    ${gearLoadoutQuickBar(ctx)}
     <div class="clan-actions-row">
       <button type="button" class="btn stone" data-action="clan-recruit">Fill AI roster</button>
       ${inviteBtn}
@@ -693,6 +714,12 @@ function renderClanTownPane(ctx: UIContext): string {
         <b>Blacksmith</b>
         <span>Spend dust to craft missing or chosen class set pieces.</span>
         <span class="live"><i class="dust"></i>${fmt(g.save.dust)} dust</span>
+      </button>
+      <button type="button" class="town-card clickable" data-action="gear-loadouts">
+        <img src="${asset('icons/gear-a/chest.webp')}" alt="" />
+        <b>Gear Loadouts</b>
+        <span>Save 3 kits and swap before Acts or 4v4.</span>
+        <span class="live">${g.gearPresets.filter(Boolean).length}/3 saved</span>
       </button>
       <button type="button" class="town-card clickable" data-action="set-progress">
         <img src="${asset('icons/gear-j/chest.webp')}" alt="" />

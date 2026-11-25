@@ -3401,6 +3401,76 @@ button {
   box-shadow: inset 0 0 0 0.25cqw rgba(180, 120, 30, 0.35);
   background: linear-gradient(180deg, #f8e8b8, #e6d090);
 }
+/* Gear loadout presets — vendor rows + quick chips (Adventure / Clan) */
+.loadout-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1cqw;
+  align-items: center;
+  margin: 0 0 1.4cqw;
+}
+.loadout-bar .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6cqw;
+}
+.loadout-bar .chip svg {
+  width: 3.4cqw;
+  height: 3.4cqw;
+}
+.loadout-row {
+  align-items: center;
+  cursor: default;
+}
+.loadout-row-filled {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1cqw;
+  grid-template-columns: unset;
+}
+.loadout-row.on {
+  border-color: #8a5a18;
+  background: linear-gradient(180deg, #f8e8b8, #e6d090);
+}
+.loadout-row.empty {
+  opacity: 0.92;
+}
+.loadout-row > span,
+.loadout-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3cqw;
+  min-width: 0;
+  flex: 1;
+}
+.loadout-head b {
+  font-size: 3cqw;
+}
+.loadout-head small {
+  color: #6b655a;
+  font-size: 2.3cqw;
+  line-height: 1.25;
+}
+.loadout-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6cqw;
+  width: 100%;
+}
+.loadout-actions-one {
+  grid-template-columns: 1fr;
+}
+.loadout-btn {
+  font-size: 2.3cqw !important;
+  padding: 0.9cqw 0.4cqw !important;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.loadout-quick {
+  margin-bottom: 1.2cqw;
+}
 .craft-set-head {
   display: flex;
   flex-direction: column;

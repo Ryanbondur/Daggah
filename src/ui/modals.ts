@@ -54,6 +54,7 @@ import {
 } from '../game/clanBrackets';
 import { canApproveJoins, canKickAi, canPromoteDemote } from '../game/clan';
 import { CLAN_VENDOR, type RunResult } from '../game/game';
+import { defaultGearPresetName } from '../game/gearPresets';
 import type { LiveMatchPayload } from '../game/matchmakingClient';
 import type { PvpResult } from '../game/pvp';
 import {
@@ -2342,6 +2343,113 @@ export function showResult(ctx: UIContext, r: RunResult): void {
         break;
       default:
         break;
+    }
+  });
+}
+
+/**
+ * Gear loadout presets — save 3 named kits, one-tap swap before Act / PvP.
+ * Sheet matches Blacksmith (vendor rows, no card wall).
+ */
+export function showGearLoadouts(ctx: UIContext): void {
+  const g = ctx.game;
+  const active = g.activeGearPresetIndex();
+  const presets = g.gearPresets;
+
+  const rows = presets
+    .map((preset, i) => {
+      const name = preset?.name ?? defaultGearPresetName(i);
+      if (!preset) {
+        return `<div class="vendor-row loadout-row loadout-row-filled empty" data-slot="${i}">
+          <div class="loadout-head">
+            <b>${escapeHtml(name)}</b>
+            <small>Empty — save current gear</small>
+          </div>
+          <div class="loadout-actions loadout-actions-one">
+            <button type="button" class="btn stone loadout-btn" data-action="loadout-save" data-i="${i}">Save</button>
+          </div>
+        </div>`;
+      }
+      const sum = g.gearPresetSummary(i)!;
+      const on = i === active ? ' on' : '';
+      const meta =
+        sum.missing > 0
+          ? `${sum.ready}/${sum.pieces} ready · ${sum.missing} missing`
+          : `${sum.pieces} pieces · ready`;
+      return `<div class="vendor-row loadout-row loadout-row-filled${on}" data-slot="${i}">
+        <div class="loadout-head">
+          <b>${escapeHtml(preset.name)}</b>
+          <small>${escapeHtml(meta)}${i === active ? ' · equipped' : ''}</small>
+        </div>
+        <div class="loadout-actions">
+          <button type="button" class="btn gold loadout-btn" data-action="loadout-apply" data-i="${i}">Equip</button>
+          <button type="button" class="btn stone loadout-btn" data-action="loadout-save" data-i="${i}">Overwrite</button>
+          <button type="button" class="btn tan loadout-btn" data-action="loadout-rename" data-i="${i}">Rename</button>
+          <button type="button" class="btn stone loadout-btn" data-action="loadout-clear" data-i="${i}">Clear</button>
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  const quick = presets
+    .map((preset, i) => {
+      if (!preset) return '';
+      const on = i === active ? ' on' : '';
+      return `<button type="button" class="craft-mode${on}" data-action="loadout-apply" data-i="${i}">${escapeHtml(preset.name)}</button>`;
+    })
+    .filter(Boolean)
+    .join('');
+
+  const el = ctx.openModal(
+    `<div class="sheet craft-sheet loadout-sheet">
+      <h2>Gear Loadouts</h2>
+      <div class="body">
+        <p>Save up to <b>3</b> kits and one-tap swap before Acts or 4v4. Class and level rules still apply — missing pieces stay as-is.</p>
+        ${quick ? `<div class="craft-modes loadout-quick" role="group" aria-label="Quick equip">${quick}</div>` : ''}
+        <div class="vendor-list craft-slots">${rows}</div>
+      </div>
+      <div class="btns"><button class="btn gold" data-action="close">Close</button></div>
+    </div>`,
+    { onDismiss: () => ctx.closeModal() },
+  );
+
+  const reopen = () => {
+    ctx.closeModal();
+    showGearLoadouts(ctx);
+  };
+
+  el.addEventListener('click', (ev) => {
+    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+    if (!t) return;
+    const action = t.dataset.action;
+    const i = Number(t.dataset.i);
+    if (action === 'close') {
+      ctx.closeModal();
+      return;
+    }
+    if (action === 'loadout-save' && Number.isFinite(i)) {
+      const err = g.saveGearPreset(i);
+      if (err) g.toast(err, 'bad');
+      else reopen();
+      return;
+    }
+    if (action === 'loadout-apply' && Number.isFinite(i)) {
+      g.applyGearPreset(i);
+      reopen();
+      return;
+    }
+    if (action === 'loadout-clear' && Number.isFinite(i)) {
+      g.clearGearPreset(i);
+      reopen();
+      return;
+    }
+    if (action === 'loadout-rename' && Number.isFinite(i)) {
+      const cur = g.gearPresets[i]?.name ?? defaultGearPresetName(i);
+      const next = window.prompt('Loadout name', cur);
+      if (next == null) return;
+      const err = g.renameGearPreset(i, next);
+      if (err) g.toast(err, 'bad');
+      else reopen();
     }
   });
 }
