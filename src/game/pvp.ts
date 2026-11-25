@@ -202,21 +202,31 @@ export function buildOpponentRoster(
   const team: ClanMember[] = [];
   for (const cls of HERO_CLASSES) {
     const mirror = ally.find((m) => m.heroClass === cls);
+    // Seed level from target avg CP so low practice bands don't inherit Act-cleared mirror levels.
+    const fromAvg = Math.max(3, Math.min(18, Math.round(avgCp / 70)));
+    const fromMirror = mirror?.level ?? fromAvg;
     const baseLevel = Math.max(
       1,
-      Math.min(20, Math.max(mirror?.level ?? 10, Math.round(avgCp > 0 ? 12 : 10)) + Math.floor(rng.next() * 3) - 1),
+      Math.min(20, (avgCp < 600 ? fromAvg : Math.max(fromMirror, fromAvg)) + Math.floor(rng.next() * 3) - 1),
     );
-    // Prefer endgame kit when allies are mid/high CP or high level; else scale down.
-    const useEndgame = avgCp >= 600 || baseLevel >= 12;
+    // Endgame kits only when the *target* avg is high — mirror level alone used to
+    // stick endgame gear on low-CP practice bands and blow past ±band.
+    const useEndgame = avgCp >= 600;
     let m = buildAiMember(rng, cls, useEndgame ? Math.max(baseLevel, 16) : baseLevel, 'member', useEndgame ? 'endgame' : 'scaled');
     const target = avgCp * (lo + rng.next() * span);
     if (m.cp > 0 && target > 0) {
-      const ratio = target / m.cp;
-      const gl = Math.max(1, Math.min(20, Math.round(m.level * Math.sqrt(Math.max(0.5, ratio)))));
-      const tier = gl >= 16 || useEndgame ? 'endgame' : 'scaled';
-      m = buildAiMember(rng, cls, gl, 'member', tier);
+      // A few rescale passes; allow stronger downshifts than the old 0.5 sqrt floor.
+      for (let step = 0; step < 4; step++) {
+        const ratio = target / m.cp;
+        if (ratio >= 1 - bandPct && ratio <= 1 + bandPct) break;
+        const gl = Math.max(1, Math.min(20, Math.round(m.level * Math.sqrt(Math.max(0.18, Math.min(3, ratio))))));
+        const tier = gl >= 16 && avgCp >= 600 ? 'endgame' : 'scaled';
+        if (gl === m.level && (tier === 'endgame') === useEndgame && step > 0) break;
+        m = buildAiMember(rng, cls, gl, 'member', tier);
+      }
     }
-    m.name = `AI Rival ${cls}`;
+    // Badge already says AI — keep the display name clean.
+    m.name = `Rival ${cls}`;
     team.push(m);
   }
   return team;

@@ -165,6 +165,22 @@ describe('clan shell', () => {
 });
 
 describe('4v4 auto-battle', () => {
+  it('keeps low-CP practice rivals near the match band (not endgame stomps)', () => {
+    const rng = mulberry32(42);
+    const player = createClan(rng, 'A', snap('Warrior', 5, 250));
+    player.members.push(...fillAiRoster(player, rng, 8));
+    const roster = pickQueueRoster(player.members, 'Warrior')!;
+    const avgCp = 450;
+    const band = matchCpBandForQueue(PRACTICE_MATCH_WAIT_S);
+    const enemies = buildOpponentRoster(rng, roster, avgCp, { bandPct: band.pct });
+    expect(enemies).toHaveLength(4);
+    expect(enemies.every((m) => m.name.startsWith('Rival '))).toBe(true);
+    const enemyAvg = enemies.reduce((s, m) => s + m.cp, 0) / enemies.length;
+    // Discrete gear steps still wobble; guard against the old endgame-stomp regime (~6×+).
+    expect(enemyAvg).toBeLessThan(avgCp * 2.5);
+    expect(enemyAvg).toBeGreaterThan(avgCp * 0.25);
+  });
+
   it('simulates a decisive match using gear and loadouts', () => {
     const rng = mulberry32(99);
     const player = createClan(rng, 'A', snap('Warrior', 12, 800));
