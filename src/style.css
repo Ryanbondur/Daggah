@@ -2959,13 +2959,13 @@ button {
 }
 .set-prog-card {
   padding: 2cqw;
-  background: rgba(255, 255, 255, 0.22);
-  border: 0.3cqw solid rgba(60, 54, 44, 0.35);
+  background: rgba(255, 255, 255, 0.28);
+  border: 0.3cqw solid rgba(60, 54, 44, 0.45);
   text-align: left;
 }
 .set-prog-card.featured {
-  border-color: rgba(168, 120, 40, 0.75);
-  background: rgba(255, 245, 210, 0.35);
+  border-color: rgba(168, 120, 40, 0.85);
+  background: rgba(255, 245, 210, 0.42);
 }
 .set-prog-head {
   display: flex;
@@ -2980,14 +2980,15 @@ button {
   color: #2a2420;
 }
 .set-prog-head span {
-  font-size: 2.4cqw;
-  color: #6b655a;
+  font-size: 2.5cqw;
+  color: #5a544a;
+  font-weight: 600;
 }
 .set-prog-meta {
   display: flex;
   justify-content: space-between;
-  font-size: 2.7cqw;
-  color: #4d473e;
+  font-size: 2.8cqw;
+  color: #3f3a32;
   margin-top: 0.6cqw;
 }
 .set-prog-meta b {
@@ -2995,10 +2996,10 @@ button {
   color: #2a2420;
 }
 .set-prog-bar {
-  height: 1.2cqw;
-  margin-top: 0.6cqw;
-  background: rgba(60, 54, 44, 0.18);
-  border-radius: 0.4cqw;
+  height: 2cqw;
+  margin-top: 0.7cqw;
+  background: rgba(60, 54, 44, 0.32);
+  border-radius: 0.5cqw;
   overflow: hidden;
 }
 .set-prog-bar > span {
@@ -3016,11 +3017,11 @@ button {
   margin-top: 1.4cqw;
 }
 .set-dot {
-  width: 2.2cqw;
-  height: 2.2cqw;
+  width: 2.4cqw;
+  height: 2.4cqw;
   border-radius: 50%;
-  background: rgba(60, 54, 44, 0.22);
-  border: 0.25cqw solid rgba(60, 54, 44, 0.35);
+  background: rgba(60, 54, 44, 0.28);
+  border: 0.3cqw solid rgba(60, 54, 44, 0.5);
 }
 .set-dot.on {
   background: var(--rare);
@@ -3043,18 +3044,22 @@ button {
   grid-template-columns: 1fr 1fr;
   gap: 1.4cqw;
 }
+.fortune-grid.solo {
+  grid-template-columns: 1fr;
+}
 .fortune-card {
   padding: 1.8cqw;
-  background: rgba(255, 255, 255, 0.2);
-  border: 0.3cqw solid rgba(60, 54, 44, 0.35);
+  background: rgba(255, 255, 255, 0.28);
+  border: 0.3cqw solid rgba(60, 54, 44, 0.45);
   text-align: center;
   display: flex;
   flex-direction: column;
   gap: 0.4cqw;
 }
 .fortune-card span {
-  font-size: 2.5cqw;
-  color: #6b655a;
+  font-size: 2.6cqw;
+  color: #5a544a;
+  font-weight: 600;
 }
 .fortune-card b {
   font-family: var(--font-title);
@@ -3063,17 +3068,23 @@ button {
 }
 .fortune-card small {
   font-family: var(--font-num);
-  font-size: 2.6cqw;
-  color: #4d473e;
+  font-size: 2.7cqw;
+  color: #3f3a32;
 }
 .fortune-card.band-calm b {
-  color: #4d473e;
+  color: #3f3a32;
 }
 .fortune-card.band-rising b {
   color: #8a5a18;
 }
 .fortune-card.band-strong b {
   color: #8a281f;
+}
+/* Adventure dungeon rows — light ink on dark cards (never parchment grey). */
+.dg .fortune-hint {
+  font-weight: 700;
+  color: #f0d78a;
+  white-space: nowrap;
 }
 .field {
   display: flex;
@@ -3260,9 +3271,9 @@ button {
   background: radial-gradient(circle, #ffe9a8, #c08a20);
   vertical-align: middle;
 }
-/* Blacksmith dust craft — categories + set tabs + slot rows (no card wall) */
+/* Blacksmith dust craft — categories + set tabs + slot rows (no card wall).
+   Rely on .sheet flex + max-height:84% so short phones keep more slot list room. */
 .craft-sheet .body {
-  max-height: 78cqw;
   overflow-y: auto;
 }
 .craft-cats {
@@ -3326,8 +3337,13 @@ button {
 }
 .craft-missing-btn.disabled,
 .craft-refine-btn.disabled {
-  opacity: 0.55;
+  opacity: 1;
   pointer-events: none;
+  background: linear-gradient(180deg, #d8cfc0, #b8ad98);
+  color: #3a3226;
+  text-shadow: none;
+  border-color: #6a5c45;
+  filter: none;
 }
 .craft-cape-row span {
   display: flex;
@@ -3356,8 +3372,17 @@ button {
   gap: 1cqw;
   margin: 0 0 1.4cqw;
   overflow-x: auto;
-  padding-bottom: 0.4cqw;
+  padding: 0.2cqw 0.4cqw 0.8cqw;
   -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.craft-set-tabs::-webkit-scrollbar {
+  height: 0.8cqw;
+}
+.craft-set-tabs::-webkit-scrollbar-thumb {
+  background: rgba(90, 80, 60, 0.45);
+  border-radius: 0.4cqw;
 }
 .craft-set-tab {
   flex: 0 0 auto;
@@ -3377,6 +3402,7 @@ button {
   cursor: pointer;
   box-sizing: border-box;
   max-width: 42cqw;
+  scroll-snap-align: center;
 }
 .craft-set-tab img {
   grid-row: 1 / span 2;
