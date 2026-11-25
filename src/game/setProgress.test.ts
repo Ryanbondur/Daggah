@@ -102,4 +102,21 @@ describe('set progress + pity tracker helpers', () => {
     expect(fighting.pity.apexLabel).toBe('');
     expect(fighting.pity.ascendedLabel).toBe('');
   });
+
+  it('hides fortune labels until Apex / Ascended unlock (new-player empty)', () => {
+    const locked = buildSetProgressSnapshot({
+      heroClass: 'Warrior',
+      actUnlocked: 1,
+      gear: {},
+      bag: [],
+      nightscarPity: 5,
+      ascendedPity: 2,
+      inBattle: false,
+      apexUnlocked: false,
+      ascendedUnlocked: false,
+    });
+    expect(locked.pity.apexLabel).toBe('');
+    expect(locked.pity.ascendedLabel).toBe('');
+    expect(locked.nightscar).toBeNull();
+  });
 });

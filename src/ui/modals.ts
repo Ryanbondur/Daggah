@@ -2,6 +2,7 @@ import { getDungeon } from '../data/acts';
 import {
   RARITIES,
   SETS,
+  SET_SLOTS,
   SLOT_LABEL,
   computeHero,
   formatStat,
@@ -82,6 +83,7 @@ import {
   SET_BONUS_TARGET,
   buildSetProgressSnapshot,
   pityBandLabel,
+  type PityBand,
   type SetPieceProgress,
 } from '../game/setProgress';
 import { friendlyApiError, isRateLimitFailure } from '../util/apiErrors';
@@ -636,6 +638,14 @@ export function showHero(ctx: UIContext): void {
   });
 }
 
+function fortuneCardHtml(label: string, band: PityBand, value: number, max: number): string {
+  return `<div class="fortune-card band-${band}">
+    <span>${escapeHtml(label)}</span>
+    <b>${pityBandLabel(band)}</b>
+    <small>${value}/${max}</small>
+  </div>`;
+}
+
 function setProgressRowHtml(p: SetPieceProgress): string {
   const bonusPct = Math.min(100, Math.round((p.equipped / SET_BONUS_TARGET) * 100));
   const bisPct = Math.min(100, Math.round((p.legendarySlots / SET_BONUS_TARGET) * 100));
@@ -659,7 +669,7 @@ function setProgressRowHtml(p: SetPieceProgress): string {
       <b>${escapeHtml(p.name)}</b>
       <span>Act ${p.act}</span>
     </div>
-    <div class="set-prog-meta"><span>Bonus</span><b>${p.equipped}/${SET_BONUS_TARGET}</b></div>
+    <div class="set-prog-meta"><span>Equipped (bonus)</span><b>${p.equipped}/${SET_BONUS_TARGET}</b></div>
     <div class="set-prog-bar" aria-hidden="true"><span style="width:${bonusPct}%"></span></div>
     <div class="set-prog-meta"><span>Owned slots</span><b>${p.ownedSlots}/${p.slotCap}</b></div>
     ${bis}
@@ -683,21 +693,27 @@ export function showSetProgress(ctx: UIContext): void {
     ascendedUnlocked: g.ascendedUnlocked(),
   });
 
-  const fortuneBody = g.inBattle
-    ? `<p class="tagline">Fortune is hidden while fighting — no mid-fight drop spoilers.</p>`
-    : `<div class="fortune-grid">
-        <div class="fortune-card band-${snap.pity.apexBand}">
-          <span>Apex</span>
-          <b>${pityBandLabel(snap.pity.apexBand)}</b>
-          <small>${snap.pity.apex}/${snap.pity.max}</small>
-        </div>
-        <div class="fortune-card band-${snap.pity.ascendedBand}">
-          <span>Ascended</span>
-          <b>${pityBandLabel(snap.pity.ascendedBand)}</b>
-          <small>${snap.pity.ascended}/${snap.pity.max}</small>
-        </div>
-      </div>
-      <p class="tagline">Dry Apex/Ascended clears soft-ramp Epic (+2) &amp; Legendary (+1) weight per stack (cap ${snap.pity.max}). Dust craft still fills gaps — pity never hard-guarantees BiS.</p>`;
+  // Match Adventure: hide stacks until Apex / Ascended unlock (labels empty when locked).
+  const showApexFortune = Boolean(snap.pity.apexLabel);
+  const showAscendedFortune = Boolean(snap.pity.ascendedLabel);
+  let fortuneBody: string;
+  if (g.inBattle) {
+    fortuneBody = `<p class="tagline">Fortune is hidden while fighting — no mid-fight drop spoilers.</p>`;
+  } else if (!showApexFortune && !showAscendedFortune) {
+    fortuneBody = `<p class="tagline">Fortune tracks dry Apex &amp; Ascended clears once those modes unlock. Dust craft still fills set gaps.</p>`;
+  } else {
+    const cards = [
+      showApexFortune
+        ? fortuneCardHtml('Apex', snap.pity.apexBand, snap.pity.apex, snap.pity.max)
+        : '',
+      showAscendedFortune
+        ? fortuneCardHtml('Ascended', snap.pity.ascendedBand, snap.pity.ascended, snap.pity.max)
+        : '',
+    ].join('');
+    const solo = showApexFortune !== showAscendedFortune ? ' solo' : '';
+    fortuneBody = `<div class="fortune-grid${solo}">${cards}</div>
+      <p class="tagline">Dry clears soft-ramp Epic (+2) &amp; Legendary (+1) weight per stack (cap ${snap.pity.max}). Dust craft fills gaps — pity never hard-guarantees BiS.</p>`;
+  }
 
   const nightscarHtml = snap.nightscar
     ? setProgressRowHtml(snap.nightscar)
@@ -718,7 +734,7 @@ export function showSetProgress(ctx: UIContext): void {
         <h3>Fortune</h3>
         ${fortuneBody}
         <h3>Other sets</h3>
-        ${others || '<p class="tagline">No other class sets unlocked yet.</p>'}
+        ${others || '<p class="tagline">No other class sets unlocked yet. Clear early acts or craft at the Blacksmith.</p>'}
       </div>
       <div class="btns">
         <button class="btn stone" data-action="blacksmith">Blacksmith</button>
@@ -1937,16 +1953,16 @@ export function showBlacksmith(
 
     const setTabs =
       sets.length === 0
-        ? '<p class="tagline">No craftable sets unlocked yet.</p>'
+        ? '<p class="tagline">No craftable sets unlocked yet. Clear Act 1 stages to unlock your first set.</p>'
         : `<div class="craft-set-tabs" role="tablist" aria-label="Gear sets">${sets
             .map((id) => {
               const def = SETS[id];
-              const owned = 11 - missingSlotsForSet(id, g.save.gear, g.save.bag).length;
+              const owned = SET_SLOTS.length - missingSlotsForSet(id, g.save.gear, g.save.bag).length;
               const on = id === activeSet ? ' on' : '';
               return `<button type="button" class="craft-set-tab${on}" role="tab" aria-selected="${id === activeSet}" data-action="craft-set" data-id="${id}">
               <img src="${itemIcon({ slot: 'chest', icon: def.icon, armorType: at })}" alt="" />
               <b>${escapeHtml(def.name)}</b>
-              <small>${owned}/11</small>
+              <small>${owned}/${SET_SLOTS.length}</small>
             </button>`;
             })
             .join('')}</div>`;
@@ -2067,6 +2083,15 @@ export function showBlacksmith(
     </div>`,
     { onDismiss: () => ctx.closeModal() },
   );
+
+  // Keep the selected set chip visible in the horizontal strip after reopen.
+  queueMicrotask(() => {
+    const tabs = el.querySelector('.craft-set-tabs') as HTMLElement | null;
+    const on = el.querySelector('.craft-set-tab.on') as HTMLElement | null;
+    if (!tabs || !on) return;
+    const left = on.offsetLeft - (tabs.clientWidth - on.offsetWidth) / 2;
+    tabs.scrollLeft = Math.max(0, left);
+  });
 
   el.addEventListener('click', (ev) => {
     const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
