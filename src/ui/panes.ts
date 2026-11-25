@@ -276,9 +276,7 @@ function renderAscendedNightscarRow(ctx: UIContext): string {
     unlocked: open,
     inBattle: g.inBattle,
   });
-  const pityHint = fortune
-    ? ` <small style="font-weight:600;color:#6b655a">${fortune}</small>`
-    : '';
+  const pityHint = fortune ? ` <small class="fortune-hint">${fortune}</small>` : '';
   const sweepHint = open
     ? sweepReady
       ? ''
@@ -366,9 +364,7 @@ function renderNormalAdventureActs(ctx: UIContext): string {
             inBattle: g.inBattle,
           })
         : '';
-    const pityHint = fortune
-      ? ` <small style="font-weight:600;color:#6b655a">${fortune}</small>`
-      : '';
+    const pityHint = fortune ? ` <small class="fortune-hint">${fortune}</small>` : '';
     const sweepHint = open
       ? sweepReady
         ? ''

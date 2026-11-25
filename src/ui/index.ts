@@ -45,6 +45,7 @@ import {
 } from './modals';
 import { copyTextToClipboard } from './clipboard';
 import { escapeHtml } from './escape';
+import { activateModalFocus, type ModalFocusHandle } from './modalFocus';
 import { renderAdventure, renderCamp, renderClan, renderSkill } from './panes';
 import { ICON } from './svg';
 import { heroSprite } from './assets';
@@ -120,6 +121,7 @@ export function mountUI(
 
   let modalEl: HTMLElement | null = null;
   let modalOpts: ModalOpts = {};
+  let modalFocus: ModalFocusHandle | null = null;
   const resultQueue: RunResult[] = [];
   let flash: string | null = null;
   let renderQueued = false;
@@ -243,7 +245,7 @@ export function mountUI(
       });
     },
     openModal(html, opts = {}) {
-      if (modalEl) closeModalInternal(false);
+      if (modalEl) closeModalInternal(false, { restoreFocus: false });
       // Level-up banners sit under the dim and read as garbled overlays on compare/sheets.
       frame.querySelectorAll('.levelup').forEach((el) => el.remove());
       const dim = document.createElement('div');
@@ -258,6 +260,8 @@ export function mountUI(
       modalEl = dim;
       modalOpts = opts;
       game.paused = true;
+      // Focus first control, trap Tab, Escape dismisses when onDismiss is set.
+      modalFocus = activateModalFocus(dim, { onEscape: opts.onDismiss });
       return dim;
     },
     closeModal() {
@@ -284,8 +288,11 @@ export function mountUI(
     },
   };
 
-  function closeModalInternal(resume: boolean): void {
+  function closeModalInternal(resume: boolean, focusOpts: { restoreFocus?: boolean } = {}): void {
     if (!modalEl) return;
+    const restoreFocus = focusOpts.restoreFocus !== false;
+    modalFocus?.release({ restore: restoreFocus });
+    modalFocus = null;
     modalEl.remove();
     modalEl = null;
     modalOpts.onClose?.();
@@ -506,7 +513,7 @@ export function mountUI(
         resultQueue.push(e.result);
         break;
       case 'pvp':
-        if (modalEl) closeModalInternal(false);
+        if (modalEl) closeModalInternal(false, { restoreFocus: false });
         showPvpResult(ctx, e.result, e.tokens);
         break;
       default:
