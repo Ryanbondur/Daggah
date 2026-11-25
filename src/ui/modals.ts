@@ -52,13 +52,14 @@ import {
   matchBandTitle,
   matchCpBandForQueue,
   queueBandMeterProgress,
+  teamCpSum,
 } from '../game/clanBrackets';
 import { canApproveJoins, canKickAi, canPromoteDemote } from '../game/clan';
 import { CLAN_VENDOR, type RunResult } from '../game/game';
 import type { FightSummary } from '../game/fightSummary';
 import { defaultGearPresetName } from '../game/gearPresets';
 import type { LiveMatchPayload } from '../game/matchmakingClient';
-import type { PvpDpsEntry, PvpResult } from '../game/pvp';
+import { buildOpponentRoster, type PvpDpsEntry, type PvpResult } from '../game/pvp';
 import {
   BAG_CAP,
   DUNGEON_CRYSTAL_COST_PER_KEY,
@@ -1360,6 +1361,24 @@ function clanMemberBadgeHtml(m: ClanMember): string {
   return '<span class="ai-pill real">REAL</span>';
 }
 
+function queueRosterRowHtml(m: Pick<ClanMember, 'name' | 'heroClass' | 'cp' | 'isAi' | 'isPlayer'>): string {
+  return `<div class="queue-roster-row"><span>${clanMemberBadgeHtml(m as ClanMember)} ${escapeHtml(m.name)}</span><b>${escapeHtml(m.heroClass)} · ${fmt(m.cp)} CP</b></div>`;
+}
+
+function queueRosterBlockHtml(
+  title: string,
+  clanName: string,
+  teamCp: number,
+  roster: Array<Pick<ClanMember, 'name' | 'heroClass' | 'cp' | 'isAi' | 'isPlayer'>>,
+): string {
+  const rows = roster.map(queueRosterRowHtml).join('');
+  return `<div class="queue-roster-col">
+    <h3>${escapeHtml(title)}</h3>
+    <p class="tagline">${escapeHtml(clanName)} · Team CP ${fmt(teamCp)}</p>
+    ${rows}
+  </div>`;
+}
+
 /**
  * Live queue wait UI: ~30s meter, CP band expands tight → open.
  * Signed-in players poll /api/daggah-match for real peers; guests / no-DB / timeout
@@ -1381,71 +1400,112 @@ export function showClanQueueWait(
   let lastPollAt = 0;
   let statusLine = practiceOnly
     ? opts.practice
-      ? 'AI practice queue'
-      : 'Sign in for live peers — AI practice'
-    : 'Searching live peers…';
+      ? 'Queued for AI practice'
+      : 'Not signed in — AI practice only'
+    : 'Joining live queue…';
   let enqueued = false;
+  /** True while an enqueue request is in flight (cancel must still drop the ticket). */
+  let enqueuePending = false;
+  /** When set, backdrop dismiss starts the locked match instead of abandoning it. */
+  let startFoundFight: (() => void) | null = null;
+  let el!: HTMLElement;
+
+  // Practice path: open Practice Hall + fillers first so the wait sheet can show lineup.
+  if (opts.practice) {
+    const warmErr = g.ensurePracticeClanRoster();
+    if (warmErr) {
+      g.toast(warmErr, 'bad');
+      return;
+    }
+  }
+
+  const built = g.buildLiveQueueRoster();
+  const allyPreview =
+    'error' in built
+      ? null
+      : {
+          clanName: g.save.clan?.name ?? 'Your clan',
+          teamCp: built.teamCp,
+          roster: built.roster,
+        };
 
   const paint = (waitS: number) => {
     const band = matchCpBandForQueue(waitS, { atTopOfLadder: atTop });
     const prog = queueBandMeterProgress(waitS);
-    const marks = MATCH_CP_BANDS.map((b) => {
+    const marks = MATCH_CP_BANDS.map((b, i) => {
       const on = band.id === b.id ? 'on' : waitS >= b.waitS ? 'passed' : '';
-      return `<span class="queue-band-mark ${on}" style="left:${(b.waitS / QUEUE_BAND_METER_S) * 100}%">${escapeHtml(matchBandTitle(b))}</span>`;
+      const edge = i === 0 ? ' edge-start' : i === MATCH_CP_BANDS.length - 1 ? ' edge-end' : '';
+      return `<span class="queue-band-mark ${on}${edge}" style="left:${(b.waitS / QUEUE_BAND_METER_S) * 100}%">${escapeHtml(matchBandTitle(b))}</span>`;
     }).join('');
-    const modeTag = practiceOnly
-      ? ' (AI practice)'
+    const modeHint = practiceOnly
+      ? ''
       : opts.challengeUp
         ? ' · Challenge-up · live'
-        : ' · live';
+        : ' · Live peers';
+    const lineup = allyPreview
+      ? `<div class="queue-roster-preview" aria-label="Your lineup">
+          <h3>Your lineup</h3>
+          ${allyPreview.roster.map(queueRosterRowHtml).join('')}
+        </div>`
+      : '';
     return `<div class="sheet clan-sheet queue-wait-sheet">
       <h2>Finding match</h2>
       <div class="body">
         <p class="ai-banner">${
           practiceOnly
-            ? 'AI practice — CP band still expands for familiar timing.'
-            : `Live matchmaking — CP band expands over ~${QUEUE_BAND_METER_S}s. AI practice if no peers.`
+            ? 'AI practice — meter still expands so timing feels familiar.'
+            : `Live matchmaking — band opens over ~${QUEUE_BAND_METER_S}s. Falls back to AI practice if no peers.`
         }</p>
         <div class="queue-band-card">
           <div class="queue-band-head">
             <span class="clan-bracket-pill ${band.id}">${escapeHtml(matchBandTitle(band))}</span>
-            <div><b>${escapeHtml(band.label)}</b><span>${waitS.toFixed(0)}s / ${QUEUE_BAND_METER_S}s${atTop ? ' · Nightscar starts wider' : ''}</span></div>
+            <div><b>${escapeHtml(band.label)}</b><span data-queue-timer>${waitS.toFixed(0)}s / ${QUEUE_BAND_METER_S}s${atTop ? ' · Nightscar starts wider' : ''}</span></div>
           </div>
-          <div class="queue-band-meter" role="progressbar" aria-valuemin="0" aria-valuemax="${QUEUE_BAND_METER_S}" aria-valuenow="${Math.min(QUEUE_BAND_METER_S, Math.floor(waitS))}">
-            <div class="queue-band-fill" style="width:${(prog * 100).toFixed(1)}%"></div>
-            <div class="queue-band-marks">${marks}</div>
+          <div class="queue-band-meter" role="progressbar" aria-valuemin="0" aria-valuemax="${QUEUE_BAND_METER_S}" aria-valuenow="${Math.min(QUEUE_BAND_METER_S, Math.floor(waitS))}" data-queue-meter>
+            <div class="queue-band-fill" data-queue-fill style="width:${(prog * 100).toFixed(1)}%"></div>
+            <div class="queue-band-marks" data-queue-marks>${marks}</div>
           </div>
         </div>
-        <p class="tagline">${escapeHtml(statusLine)}${modeTag}</p>
+        ${lineup}
+        <p class="tagline" data-queue-status><span data-queue-status-text>${escapeHtml(statusLine)}</span>${escapeHtml(modeHint)}</p>
       </div>
-      <div class="btns"><button class="btn tan" data-action="queue-cancel">Cancel</button></div>
+      <div class="btns"><button type="button" class="btn tan" data-action="queue-cancel">Leave queue</button></div>
     </div>`;
   };
 
-  const finishAi = (waitS: number, reason: string) => {
+  const leaveQueue = () => {
     if (closed) return;
     closed = true;
     cancelAnimationFrame(raf);
+    // Cancel whenever we may have a server ticket (confirmed or still in flight).
+    if (enqueued || enqueuePending) void g.cancelLivePvp();
     ctx.closeModal();
-    statusLine = reason;
+  };
+
+  const startAiFight = (
+    waitS: number,
+    reason: string,
+    enemyRoster?: Array<Pick<ClanMember, 'name' | 'heroClass' | 'cp' | 'isAi' | 'isPlayer'> & Partial<ClanMember>>,
+  ) => {
     void ctx.ensureStage().then(() => {
       const err = opts.practice
-        ? g.queuePractice4v4({ challengeUp: opts.challengeUp, waitS })
+        ? g.queuePractice4v4({
+            challengeUp: opts.challengeUp,
+            waitS,
+            enemyRoster: enemyRoster as ClanMember[] | undefined,
+          })
         : g.queueClanPvp({
             challengeUp: opts.challengeUp,
             waitS,
             practiceFallback: true,
+            enemyRoster: enemyRoster as ClanMember[] | undefined,
           });
       if (err) g.toast(err, 'bad');
-      else if (!opts.practice) g.toast('No live peers — AI practice match', 'info');
+      else if (!opts.practice) g.toast(reason, 'info');
     });
   };
 
-  const finishLive = (waitS: number, match: LiveMatchPayload) => {
-    if (closed || !match) return;
-    closed = true;
-    cancelAnimationFrame(raf);
-    ctx.closeModal();
+  const startLiveFight = (waitS: number, match: LiveMatchPayload) => {
     void ctx.ensureStage().then(() => {
       const err = g.queueClanPvp({
         challengeUp: opts.challengeUp,
@@ -1457,23 +1517,152 @@ export function showClanQueueWait(
     });
   };
 
-  const el = ctx.openModal(paint(0), {
-    onDismiss: () => {
-      closed = true;
-      cancelAnimationFrame(raf);
-      if (enqueued) void g.cancelLivePvp();
+  /** Brief match-found sheet so lined-up rosters are visible before the fight. */
+  const showMatchFound = (
+    waitS: number,
+    kind: 'live' | 'ai',
+    match: LiveMatchPayload | null,
+    reason: string,
+  ) => {
+    if (closed) return;
+    closed = true;
+    cancelAnimationFrame(raf);
+    const ally =
+      match?.ally ??
+      (allyPreview
+        ? {
+            clanName: allyPreview.clanName,
+            teamCp: allyPreview.teamCp,
+            roster: allyPreview.roster,
+          }
+        : null);
+    let enemy: {
+      clanName: string;
+      teamCp: number;
+      roster: ClanMember[];
+    } | null = match?.enemy ?? null;
+    let seededAi: ClanMember[] | undefined;
+    if (!enemy && kind === 'ai' && allyPreview) {
+      const band = matchCpBandForQueue(waitS, { atTopOfLadder: atTop });
+      seededAi = buildOpponentRoster(g.rng, allyPreview.roster, allyPreview.teamCp / 4, {
+        bandPct: band.pct,
+      });
+      enemy = {
+        clanName: 'AI Rivals',
+        teamCp: teamCpSum(seededAi),
+        roster: seededAi,
+      };
+    }
+    const title = kind === 'live' ? 'Match found' : 'AI practice ready';
+    const banner =
+      kind === 'live'
+        ? `Live peers locked · ${escapeHtml(match?.bandLabel || 'CP band')}`
+        : escapeHtml(reason);
+    const enemyBlock = enemy
+      ? queueRosterBlockHtml('Rivals', enemy.clanName, enemy.teamCp, enemy.roster)
+      : `<div class="queue-roster-col">
+          <h3>Rivals</h3>
+          <p class="tagline">AI clan · similar CP band</p>
+          <p class="queue-roster-pending">Rivals appear when the fight starts.</p>
+        </div>`;
+    const allyBlock = ally
+      ? queueRosterBlockHtml('Your clan', ally.clanName, ally.teamCp, ally.roster)
+      : '<p class="tagline">Lineup locked.</p>';
+
+    el.innerHTML = `<div class="sheet clan-sheet queue-wait-sheet queue-found-sheet">
+      <h2>${title}</h2>
+      <div class="body">
+        <p class="ai-banner">${banner}</p>
+        <div class="queue-roster-vs">${allyBlock}${enemyBlock}</div>
+      </div>
+      <div class="btns">
+        <button type="button" class="btn gold" data-action="queue-fight">Fight</button>
+      </div>
+    </div>`;
+
+    let startedFight = false;
+    let auto = 0;
+    const go = () => {
+      if (startedFight) return;
+      startedFight = true;
+      startFoundFight = null;
+      window.clearTimeout(auto);
       ctx.closeModal();
+      if (kind === 'live' && match) startLiveFight(waitS, match);
+      else startAiFight(waitS, reason, seededAi);
+    };
+    // Auto-continue so a missed tap still starts the match.
+    auto = window.setTimeout(go, 2800);
+    startFoundFight = go;
+    el.querySelector('[data-action="queue-fight"]')?.addEventListener(
+      'pointerdown',
+      (ev) => {
+        ev.preventDefault();
+        go();
+      },
+      { once: true },
+    );
+  };
+
+  const finishAi = (waitS: number, reason: string) => {
+    if (closed) return;
+    if (enqueued || enqueuePending) void g.cancelLivePvp();
+    showMatchFound(waitS, 'ai', null, reason);
+  };
+
+  const finishLive = (waitS: number, match: LiveMatchPayload) => {
+    if (closed || !match) return;
+    showMatchFound(waitS, 'live', match, `Matched vs ${match.enemy.clanName}`);
+  };
+
+  el = ctx.openModal(paint(0), {
+    onDismiss: () => {
+      if (startFoundFight) {
+        startFoundFight();
+        return;
+      }
+      leaveQueue();
     },
   });
+
+  const syncPaint = (waitS: number) => {
+    const band = matchCpBandForQueue(waitS, { atTopOfLadder: atTop });
+    const prog = queueBandMeterProgress(waitS);
+    const fill = el.querySelector('[data-queue-fill]') as HTMLElement | null;
+    const meter = el.querySelector('[data-queue-meter]') as HTMLElement | null;
+    const timer = el.querySelector('[data-queue-timer]');
+    const status = el.querySelector('[data-queue-status-text]');
+    const marks = el.querySelector('[data-queue-marks]');
+    if (fill) fill.style.width = `${(prog * 100).toFixed(1)}%`;
+    if (meter) meter.setAttribute('aria-valuenow', String(Math.min(QUEUE_BAND_METER_S, Math.floor(waitS))));
+    if (timer) {
+      timer.textContent = `${waitS.toFixed(0)}s / ${QUEUE_BAND_METER_S}s${atTop ? ' · Nightscar starts wider' : ''}`;
+    }
+    if (status) status.textContent = statusLine;
+    const pill = el.querySelector('.queue-band-head .clan-bracket-pill');
+    const bandLabel = el.querySelector('.queue-band-head b');
+    if (pill) {
+      pill.className = `clan-bracket-pill ${band.id}`;
+      pill.textContent = matchBandTitle(band);
+    }
+    if (bandLabel) bandLabel.textContent = band.label;
+    if (marks) {
+      marks.innerHTML = MATCH_CP_BANDS.map((b, i) => {
+        const on = band.id === b.id ? 'on' : waitS >= b.waitS ? 'passed' : '';
+        const edge = i === 0 ? ' edge-start' : i === MATCH_CP_BANDS.length - 1 ? ' edge-end' : '';
+        return `<span class="queue-band-mark ${on}${edge}" style="left:${(b.waitS / QUEUE_BAND_METER_S) * 100}%">${escapeHtml(matchBandTitle(b))}</span>`;
+      }).join('');
+    }
+  };
 
   const tick = () => {
     if (closed) return;
     const waitS = (performance.now() - started) / 1000;
-    el.innerHTML = paint(waitS);
+    syncPaint(waitS);
 
     if (practiceOnly) {
       if (waitS >= aiFindAtS || waitS >= QUEUE_BAND_METER_S) {
-        finishAi(waitS, 'AI practice');
+        finishAi(waitS, 'AI practice match');
         return;
       }
       raf = requestAnimationFrame(tick);
@@ -1481,11 +1670,19 @@ export function showClanQueueWait(
     }
 
     // Live path: enqueue once, poll ~1/s, AI fallback at 30s.
-    if (!enqueued && !pollBusy) {
+    if (!enqueued && !pollBusy && !enqueuePending) {
       pollBusy = true;
+      enqueuePending = true;
       void g.enqueueLivePvp({ challengeUp: opts.challengeUp }).then((res) => {
         pollBusy = false;
-        if (closed) return;
+        enqueuePending = false;
+        if (closed) {
+          // User left while enqueue was in flight — drop any ticket that landed.
+          if (res.ok && (res.status === 'queued' || res.status === 'matched')) {
+            void g.cancelLivePvp();
+          }
+          return;
+        }
         if (!res.ok) {
           if (res.fallback) {
             finishAi(waitS, 'Matchmaking offline — AI practice');
@@ -1503,9 +1700,7 @@ export function showClanQueueWait(
             finishAi(waitS, 'Matchmaking rate-limited — AI practice');
             return;
           }
-          closed = true;
-          cancelAnimationFrame(raf);
-          ctx.closeModal();
+          leaveQueue();
           return;
         }
         if (res.status === 'matched') {
@@ -1513,7 +1708,8 @@ export function showClanQueueWait(
           return;
         }
         enqueued = true;
-        statusLine = 'In live queue — waiting for peers in band';
+        statusLine = 'In live queue — waiting for peers';
+        syncPaint(waitS);
       });
     } else if (enqueued && !pollBusy && performance.now() - lastPollAt > 900) {
       pollBusy = true;
@@ -1544,7 +1740,8 @@ export function showClanQueueWait(
           return;
         }
         if (res.status === 'queued') {
-          statusLine = `Live queue · ${Math.floor(res.waitS)}s · widening CP band`;
+          statusLine = `Live queue · ${Math.floor(res.waitS)}s · widening band`;
+          syncPaint(waitS);
         }
       });
     }
@@ -1558,16 +1755,19 @@ export function showClanQueueWait(
   };
   raf = requestAnimationFrame(tick);
 
-  el.addEventListener('click', (ev) => {
-    const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
-    if (!t) return;
-    if (t.dataset.action === 'queue-cancel') {
-      closed = true;
-      cancelAnimationFrame(raf);
-      if (enqueued) void g.cancelLivePvp();
-      ctx.closeModal();
-    }
-  });
+  // pointerdown + capture: leave still works while the meter animates (no full HTML rebuild).
+  el.addEventListener(
+    'pointerdown',
+    (ev) => {
+      const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
+      if (!t) return;
+      if (t.dataset.action === 'queue-cancel') {
+        ev.preventDefault();
+        leaveQueue();
+      }
+    },
+    true,
+  );
 }
 
 export function showClanHall(ctx: UIContext): void {

@@ -2836,10 +2836,17 @@ button {
   position: absolute;
   top: 3.4cqw;
   transform: translateX(-50%);
-  font-size: 2.2cqw;
+  font-size: max(10px, 2.2cqw);
   font-weight: 700;
   color: #7a7368;
   white-space: nowrap;
+}
+/* Keep first/last labels inside the sheet on narrow portrait frames. */
+.queue-band-mark.edge-start {
+  transform: translateX(0);
+}
+.queue-band-mark.edge-end {
+  transform: translateX(-100%);
 }
 .queue-band-mark.passed {
   color: #4a5a38;
@@ -2847,6 +2854,51 @@ button {
 .queue-band-mark.on {
   color: #2a241c;
   font-size: 2.5cqw;
+}
+.queue-wait-sheet .queue-roster-preview,
+.queue-wait-sheet .queue-roster-vs {
+  margin: 1.2cqw 0 0.4cqw;
+  text-align: left;
+}
+.queue-wait-sheet .queue-roster-preview h3,
+.queue-wait-sheet .queue-roster-col h3 {
+  margin: 0 0 0.6cqw;
+  font-size: 3.2cqw;
+}
+/* Portrait frame is always narrow — stack clan vs rivals for readable names. */
+.queue-roster-vs {
+  display: flex;
+  flex-direction: column;
+  gap: 2cqw;
+}
+.queue-roster-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1cqw;
+  padding: 0.55cqw 0;
+  font-size: 2.6cqw;
+  border-bottom: 0.25cqw dotted rgba(90, 80, 60, 0.3);
+}
+.queue-roster-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue-roster-row b {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: #26211d;
+  white-space: nowrap;
+}
+.queue-roster-pending {
+  margin: 0.6cqw 0 0;
+  font-size: 2.5cqw;
+  color: #6a6358;
+  font-style: italic;
+}
+.queue-found-sheet .btns {
+  flex-wrap: wrap;
 }
 .clan-bracket-pill.tight {
   background: #b7c4a8;

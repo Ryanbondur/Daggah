@@ -2768,21 +2768,37 @@ export class Game {
   }
 
   /**
-   * Playtest helper: ensure a clan exists, fill AI teammates, queue 4v4 vs AI rivals.
-   * Creates a free "Practice Hall" clan when the player is not in one.
-   * Soft floor still applies (same as ranked queue) so solo test mirrors live rules.
+   * Ensure a free Practice Hall + AI fillers exist (playtest / AI practice queue).
+   * Does not start a fight — used by the queue wait sheet to show lineup early.
    */
-  queuePractice4v4(opts?: { challengeUp?: boolean; waitS?: number }): string | null {
-    if (this.mode === 'pvp') return 'Clan fight in progress.';
-    if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
+  ensurePracticeClanRoster(): string | null {
     if (!this.save.classPicked) return 'Pick a class first.';
     if (!this.save.clan) {
       this.save.clan = createClan(this.rng, 'Practice Hall', this.playerClanSnapshot());
       this.publishHall();
       this.say(`Practice Hall opened (AI playtest clan). Code ${this.save.clan.code}.`);
+      this.changed();
     }
     const fillErr = this.fillAiClanRoster();
     if (fillErr && !this.clanRosterReady()) return fillErr;
+    return null;
+  }
+
+  /**
+   * Playtest helper: ensure a clan exists, fill AI teammates, queue 4v4 vs AI rivals.
+   * Creates a free "Practice Hall" clan when the player is not in one.
+   * Soft floor still applies (same as ranked queue) so solo test mirrors live rules.
+   */
+  queuePractice4v4(opts?: {
+    challengeUp?: boolean;
+    waitS?: number;
+    /** Pre-seeded rivals from the match-found sheet (keeps preview = fight). */
+    enemyRoster?: ClanMember[];
+  }): string | null {
+    if (this.mode === 'pvp') return 'Clan fight in progress.';
+    if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
+    const warm = this.ensurePracticeClanRoster();
+    if (warm) return warm;
     this.advanceTutorial('clan');
     return this.queueClanPvp(opts);
   }
@@ -3003,6 +3019,8 @@ export class Game {
     liveMatch?: LiveMatchPayload;
     /** Explicit AI practice label (no peers / guest / DB down). */
     practiceFallback?: boolean;
+    /** Pre-seeded AI rivals (match-found preview). Ignored when liveMatch is set. */
+    enemyRoster?: ClanMember[];
   }): string | null {
     if (this.mode === 'pvp') return 'Clan fight in progress.';
     if (this.mode !== 'camp' || this.battle) return 'Retreat to camp before queuing.';
@@ -3050,7 +3068,9 @@ export class Game {
     const band = matchCpBandForQueue(waitS, { atTopOfLadder: atTop });
     const enemies = live
       ? live.enemy.roster.map((m) => normalizeClanMember({ ...m, isPlayer: false }))
-      : buildOpponentRoster(this.rng, roster, matchAvg, { bandPct: band.pct });
+      : opts?.enemyRoster && opts.enemyRoster.length === 4
+        ? opts.enemyRoster.map((m) => normalizeClanMember({ ...m, isPlayer: false }))
+        : buildOpponentRoster(this.rng, roster, matchAvg, { bandPct: band.pct });
     const simRng = live ? mulberry32(live.seed) : this.rng;
     const result = simulatePvp(roster, enemies, this.save.gear, this.save.level, simRng, {
       bracket: matchBracket,
