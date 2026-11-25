@@ -175,6 +175,11 @@ import {
   cloudPublishHall,
   cloudSyncHall,
 } from './clanHallCloud';
+import {
+  claimApiErrorAnnounce,
+  friendlyApiError,
+  shouldAnnounceApiFailure,
+} from '../util/apiErrors';
 import type { BattleEvent, HeroInput, RunDef } from './combat';
 import { Battle, STEP } from './combat';
 import type { PvpEvent, PvpFighterSnap, PvpResult } from './pvp';
@@ -2079,12 +2084,25 @@ export class Game {
     this.save.clan = viewClanForHuman(hall, humanId);
   }
 
+  private toastClanApiFailure(
+    result: { error: string; status: number },
+    key: string,
+  ): void {
+    if (!shouldAnnounceApiFailure({ error: result.error, status: result.status })) return;
+    if (!claimApiErrorAnnounce(key)) return;
+    this.toast(
+      friendlyApiError({ error: result.error, status: result.status, surface: 'clan' }),
+      'bad',
+    );
+  }
+
   private async syncClanFromCloudHall(): Promise<void> {
     const clan = this.save.clan;
     if (!clan || !canUseClanHallCloud(this.storage)) return;
     const result = await cloudSyncHall(this.storage, clan.code, this.playerClanSnapshot());
     if (!result.ok) {
       if (result.fallback) this.syncClanFromLocalHall();
+      else this.toastClanApiFailure(result, 'clan-sync');
       return;
     }
     const humanId = this.ensureClanHumanId();
@@ -2097,7 +2115,9 @@ export class Game {
     if (!this.save.clan) return;
     publishClanHall(this.storage, this.save.clan);
     if (canUseClanHallCloud(this.storage)) {
-      void cloudPublishHall(this.storage, this.save.clan);
+      void cloudPublishHall(this.storage, this.save.clan).then((result) => {
+        if (!result.ok) this.toastClanApiFailure(result, 'clan-publish');
+      });
     }
   }
 
@@ -2141,7 +2161,11 @@ export class Game {
       } else {
         this.save.clan = null;
         this.save.crystals += CLAN_CREATE_COST;
-        return cloud.error;
+        return friendlyApiError({
+          error: cloud.error,
+          status: cloud.status,
+          surface: 'clan',
+        });
       }
     } else {
       publishClanHall(this.storage, local);
@@ -2211,7 +2235,11 @@ export class Game {
             if (!lookup.ok) {
               return lookup.fallback
                 ? 'No clan with that code on this device. Sign-in halls need the cloud API.'
-                : lookup.error;
+                : friendlyApiError({
+                    error: lookup.error,
+                    status: lookup.status,
+                    surface: 'clan',
+                  });
             }
             const result = admitRealMember(lookup.clan, this.playerClanSnapshot());
             if (!result.ok) return result.error;
@@ -2232,7 +2260,11 @@ export class Game {
         } else {
           return cloud.error === 'not_found'
             ? 'No clan with that code. Ask an officer for an invite.'
-            : cloud.error;
+            : friendlyApiError({
+                error: cloud.error,
+                status: cloud.status,
+                surface: 'clan',
+              });
         }
       } else {
         const hall = lookupClanHall(this.storage, clean);
@@ -2355,7 +2387,10 @@ export class Game {
       const cloud = await cloudLeaveHall(this.storage);
       if (!cloud.ok && !cloud.fallback && cloud.status !== 404) {
         // Re-publish local seat so leave can retry; keep save cleared only after soft fail.
-        this.toast(cloud.error, 'bad');
+        this.toast(
+          friendlyApiError({ error: cloud.error, status: cloud.status, surface: 'clan' }),
+          'bad',
+        );
       }
     }
     this.save.clan = null;

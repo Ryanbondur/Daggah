@@ -27,6 +27,8 @@ export interface UIContext {
   clanBoardLive: ClanLeaderboardEntry[] | null;
   clanBoardSource: ClanBoardSource;
   clanBoardSeasonId: number | null;
+  /** Last board fetch failure copy (rate-limit / network); cleared on success. */
+  clanBoardError: string | null;
   /** Kick a background refresh of the season board (no-op if already loading). */
   refreshClanBoard(force?: boolean): void;
   setTab(tab: Tab): void;

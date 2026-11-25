@@ -83,6 +83,7 @@ import {
   pityBandLabel,
   type SetPieceProgress,
 } from '../game/setProgress';
+import { friendlyApiError, isRateLimitFailure } from '../util/apiErrors';
 
 const STAT_ORDER: StatKey[] = [
   'atk',
@@ -1471,7 +1472,18 @@ export function showClanQueueWait(
             finishAi(waitS, 'Matchmaking offline — AI practice');
             return;
           }
-          g.toast(res.error, 'bad');
+          const msg = friendlyApiError({
+            error: res.error,
+            status: res.status,
+            surface: 'match',
+          });
+          g.toast(msg, 'bad');
+          if (isRateLimitFailure({ error: res.error, status: res.status })) {
+            // Don't spin the queue against a hard rate limit — fall back to practice.
+            void g.cancelLivePvp();
+            finishAi(waitS, 'Matchmaking rate-limited — AI practice');
+            return;
+          }
           closed = true;
           cancelAnimationFrame(raf);
           ctx.closeModal();
@@ -1494,6 +1506,17 @@ export function showClanQueueWait(
           if (res.fallback) {
             void g.cancelLivePvp();
             finishAi(waitS, 'Matchmaking offline — AI practice');
+            return;
+          }
+          const msg = friendlyApiError({
+            error: res.error,
+            status: res.status,
+            surface: 'match',
+          });
+          g.toast(msg, 'bad');
+          if (isRateLimitFailure({ error: res.error, status: res.status })) {
+            void g.cancelLivePvp();
+            finishAi(waitS, 'Matchmaking rate-limited — AI practice');
           }
           return;
         }
@@ -1646,7 +1669,7 @@ export function showClanHall(ctx: UIContext): void {
     if (act === 'clan-create') {
       const name = (el.querySelector('#clan-name') as HTMLInputElement | null)?.value ?? '';
       void g.createClan(name).then((err) => {
-        if (err) g.toast(err, 'bad');
+        if (err) g.toast(friendlyApiError({ error: err, surface: 'clan' }), 'bad');
         else {
           ctx.closeModal();
           showClanHall(ctx);
@@ -1657,7 +1680,7 @@ export function showClanHall(ctx: UIContext): void {
     if (act === 'clan-join') {
       const code = (el.querySelector('#clan-code') as HTMLInputElement | null)?.value ?? '';
       void g.joinClan(code).then((err) => {
-        if (err) g.toast(err, 'bad');
+        if (err) g.toast(friendlyApiError({ error: err, surface: 'clan' }), 'bad');
         else {
           ctx.closeModal();
           showClanHall(ctx);
