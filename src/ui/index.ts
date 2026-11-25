@@ -35,6 +35,7 @@ import {
   showHero,
   showItemInfo,
   showLogin,
+  showLastFight,
   showPvpResult,
   showResult,
   showSeasonBoard,
@@ -609,6 +610,9 @@ export function mountUI(
         break;
       case 'tutorial':
         showTutorialCoach(ctx);
+        break;
+      case 'last-fight':
+        showLastFight(ctx);
         break;
       case 'style':
         ctx.skillStyle = d.id as PlaystyleId;

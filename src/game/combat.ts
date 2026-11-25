@@ -44,6 +44,8 @@ export interface RaidAlly {
   hitFlash: number;
   dead: boolean;
   deathT: number;
+  /** Cumulative damage dealt this run (post-fight summary). */
+  damageDealt: number;
 }
 
 export interface BattleOpts {
@@ -223,6 +225,12 @@ export class Battle {
   cds: Partial<Record<SkillId, number>> = {};
   heroSwingAnim = 0;
   heroHitFlash = 0;
+  /** Cumulative hero damage dealt this run (post-fight summary / DPS). */
+  heroDamageDealt = 0;
+  /** Enemy KO order for the last-fight strip. */
+  killLog: { name: string; role: EnemyRole; time: number }[] = [];
+  /** Ally downs (Clan Raid) for the KO strip. */
+  allyDownLog: { name: string; time: number; isPlayer: boolean }[] = [];
 
   private autoT = 0.4;
   private lockT = 0;
@@ -236,7 +244,9 @@ export class Battle {
     this.run = run;
     this.rng = rng;
     this.heroInput = hero;
-    this.raidAllies = opts.raidAllies ? opts.raidAllies.map((a) => ({ ...a })) : [];
+    this.raidAllies = opts.raidAllies
+      ? opts.raidAllies.map((a) => ({ ...a, damageDealt: a.damageDealt ?? 0 }))
+      : [];
     this.raidEnemyHpMul = opts.raidEnemyHpMul ?? 1;
     this.raidEnemyAtkMul = opts.raidEnemyAtkMul ?? 1;
     this.raidBossHpMul = opts.raidBossHpMul ?? 1;
@@ -311,6 +321,15 @@ export class Battle {
     const ev = this.events;
     this.events = [];
     return ev;
+  }
+
+  /** Attribute outgoing damage to the hero (and player raid ally mirror). */
+  private creditHeroDamage(amount: number): void {
+    const n = Math.max(0, amount);
+    if (n <= 0) return;
+    this.heroDamageDealt += n;
+    const me = this.raidAllies.find((a) => a.isPlayer);
+    if (me) me.damageDealt += n;
   }
 
   update(dt: number): void {
@@ -430,12 +449,15 @@ export class Battle {
       if (e.burnT > 0 && e.burn > 0) {
         const tick = this.heroInput.stats.atk * 0.12 * e.burn * (1 + this.heroInput.effects.burnPct / 100) * dt;
         e.hp -= tick;
+        this.creditHeroDamage(tick);
         e.burnT -= dt;
         if (e.burnT <= 0) e.burn = 0;
         if (e.hp <= 0) this.killEnemy(e);
       }
       if (e.bleedT > 0) {
-        e.hp -= e.bleedDps * dt;
+        const tick = e.bleedDps * dt;
+        e.hp -= tick;
+        this.creditHeroDamage(tick);
         e.bleedT -= dt;
         if (e.hp <= 0) this.killEnemy(e);
       }
@@ -561,6 +583,7 @@ export class Battle {
       const final = Math.max(1, Math.round(dmg));
       boss.hp -= final;
       boss.hitFlash = 0.12;
+      a.damageDealt += final;
       this.events.push({ t: 'hit', enemyId: boss.id, dmg: final, crit: false });
       if (boss.hp <= 0) this.killEnemy(boss);
       else this.checkRaidPhases(boss);
@@ -709,6 +732,7 @@ export class Battle {
       ally.hp = 0;
       ally.dead = true;
       ally.deathT = 0;
+      this.allyDownLog.push({ name: ally.name, time: this.time, isPlayer: !!ally.isPlayer });
       this.events.push({ t: 'shout', text: `${ally.name} down!` });
     }
   }
@@ -839,6 +863,7 @@ export class Battle {
     const final = Math.max(1, Math.round(dmg));
     e.hp -= final;
     e.hitFlash = 0.12;
+    this.creditHeroDamage(final);
     this.events.push({ t: 'hit', enemyId: e.id, dmg: final, crit, skill: opts.skill, aoe: opts.aoe });
     this.checkRaidPhases(e);
     if (crit && inp.effects.onCritHealPct > 0) {
@@ -891,6 +916,7 @@ export class Battle {
     e.deathT = 0;
     const xp = Math.max(1, Math.round(e.xp));
     const gold = goldFromKill(e.tier, e.def.role);
+    this.killLog.push({ name: e.def.name, role: e.def.role, time: this.time });
     this.events.push({ t: 'kill', enemyId: e.id, role: e.def.role, xp, gold, defId: e.def.id });
     const healPct = this.heroInput.effects.onKillHealPct;
     if (healPct > 0) {

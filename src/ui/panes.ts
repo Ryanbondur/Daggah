@@ -127,6 +127,9 @@ function renderCampGear(ctx: UIContext): string {
   const tut = g.tutorialIsActive
     ? `<button class="chip tut-chip" data-action="tutorial">Tutorial</button>`
     : '';
+  const lastFight = g.lastFight
+    ? `<button class="chip last-fight-chip" data-action="last-fight" title="${escapeHtml(g.lastFight.title)}">Last fight</button>`
+    : '';
   /* Direct pane-inner children (no .camp-gear wrapper / shop CTA) so .gear-grid
      flex:1 fills the parchment like the pre-Daily-Shop layout. */
   return `<div class="gear-grid">${slots}</div>
@@ -135,6 +138,7 @@ function renderCampGear(ctx: UIContext): string {
       <div class="round-btns">
         ${tut}
         <button class="round-btn" data-action="gear-loadouts" aria-label="Gear loadouts">${ICON.loadouts}</button>
+        ${lastFight}
         <button class="round-btn bag" data-action="bag" aria-label="Bag">${ICON.bag}${bagBadge}</button>
         <button class="round-btn" data-action="hero" aria-label="Hero">${ICON.crown}</button>
         <button class="round-btn" data-action="settings" aria-label="Settings">${ICON.shield}</button>

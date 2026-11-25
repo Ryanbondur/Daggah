@@ -55,9 +55,10 @@ import {
 } from '../game/clanBrackets';
 import { canApproveJoins, canKickAi, canPromoteDemote } from '../game/clan';
 import { CLAN_VENDOR, type RunResult } from '../game/game';
+import type { FightSummary } from '../game/fightSummary';
 import { defaultGearPresetName } from '../game/gearPresets';
 import type { LiveMatchPayload } from '../game/matchmakingClient';
-import type { PvpResult } from '../game/pvp';
+import type { PvpDpsEntry, PvpResult } from '../game/pvp';
 import {
   BAG_CAP,
   DUNGEON_CRYSTAL_COST_PER_KEY,
@@ -2151,11 +2152,112 @@ export function showBlacksmith(
   });
 }
 
+/** Compact DPS board HTML — shared by Act last-fight + PvP breakdown. */
+export function fightDpsBoardHtml(board: PvpDpsEntry[]): string {
+  if (!board.length) return '';
+  const maxDmg = Math.max(1, ...board.map((e) => e.damage));
+  const rows = board
+    .map((e) => {
+      const pct = Math.round((e.damage / maxDmg) * 100);
+      const side = e.team === 'ally' ? 'ally' : 'foe';
+      const tag = e.rank === 1 ? ' #1' : e.isPlayer ? ' you' : '';
+      return `<div class="pvp-dps-row ${side}${e.rank === 1 ? ' top' : ''}${e.isPlayer ? ' you' : ''}">
+        <span class="pvp-dps-rank">${e.rank}</span>
+        <span class="pvp-dps-name">${escapeHtml(e.name)}<small>${escapeHtml(e.heroClass)}${tag}</small></span>
+        <span class="pvp-dps-bar"><i style="width:${pct}%"></i></span>
+        <span class="pvp-dps-val">${fmt(e.damage)}</span>
+      </div>`;
+    })
+    .join('');
+  return `<h3>Damage dealt</h3><div class="pvp-dps-board">${rows}</div>`;
+}
+
+/** KO strip from FightSummary — elites/bosses first, then recent downs (max 8). */
+export function fightKoStripHtml(fight: FightSummary): string {
+  const notable = fight.koOrder.filter((k) => k.role === 'boss' || k.role === 'elite' || k.side === 'ally');
+  const rest = fight.koOrder.filter((k) => !notable.includes(k));
+  const picks = [...notable, ...rest.slice(-Math.max(0, 8 - notable.length))].slice(0, 8);
+  if (!picks.length) return '';
+  const chips = picks
+    .map((k) => {
+      const label = k.role === 'boss' ? 'boss' : k.role === 'elite' ? 'elite' : k.side === 'ally' ? 'down' : 'fallen';
+      return `<div class="replay-chip kill ${k.side}" title="${escapeHtml(k.name)}">
+        <b>${escapeHtml(k.name)}</b><span>${label}</span><i>${k.time.toFixed(1)}s</i>
+      </div>`;
+    })
+    .join('');
+  return `<h3>KO order</h3><div class="replay-strip">${chips}</div>`;
+}
+
+/** Loot / set-piece row for last-fight summary (display only). */
+export function fightLootHtml(ctx: UIContext, loot: Item[]): string {
+  if (!loot.length) return '';
+  const g = ctx.game;
+  const highlights = loot.map((it) =>
+    lootCompareHighlight(g.save.level, g.save.gear, it, g.save.heroClass, g.save.loadout),
+  );
+  const sets = loot.filter((it) => it.setId).length;
+  const cells = loot.map((it, i) => slotHtml(it, { bisBadge: highlights[i]!.badge })).join('');
+  return `<h3>Drops${sets ? ` · ${sets} set` : ''}</h3>
+    <div class="loot-row fight-loot-row">${cells}</div>`;
+}
+
+/** First-viewport fight summary block: meta + KO + DPS (+ optional loot). */
+export function fightSummaryBodyHtml(ctx: UIContext, fight: FightSummary, opts?: { showLoot?: boolean }): string {
+  const deathLabel =
+    fight.kind === 'pvp'
+      ? `${fight.deaths} KOs`
+      : fight.deaths
+        ? `${fight.deaths} ${fight.deaths === 1 ? 'death' : 'deaths'}`
+        : '0 deaths';
+  const dur =
+    fight.duration > 0 ? `<div class="row"><span>Duration</span><b>${fight.duration}s</b></div>` : '';
+  const deathsRow = `<div class="row"><span>${fight.kind === 'pvp' ? 'Falls' : 'Lives spent'}</span><b>${deathLabel}</b></div>`;
+  const tokens =
+    fight.tokens != null
+      ? `<div class="row"><span>Clan Tokens</span><b>+${fight.tokens}</b></div>`
+      : '';
+  const showLoot = opts?.showLoot !== false;
+  return `<div class="fight-summary">
+    ${dur}
+    ${deathsRow}
+    ${tokens}
+    ${fightKoStripHtml(fight)}
+    ${fightDpsBoardHtml(fight.dpsBoard)}
+    ${showLoot ? fightLootHtml(ctx, fight.loot) : ''}
+  </div>`;
+}
+
+/** Reopen the most recent fight summary from Camp. */
+export function showLastFight(ctx: UIContext): void {
+  const fight = ctx.game.lastFight;
+  if (!fight) {
+    ctx.game.toast('No fight recorded yet', 'info');
+    return;
+  }
+  const el = ctx.openModal(
+    `<div class="sheet fight-sheet">
+      <h2>Last fight</h2>
+      <div class="body">
+        <p class="fight-headline">${escapeHtml(fight.title)}${fight.success ? '' : ' · failed'}</p>
+        ${fight.note ? `<p class="tagline">${escapeHtml(fight.note)}</p>` : ''}
+        ${fightSummaryBodyHtml(ctx, fight)}
+      </div>
+      <div class="btns"><button class="btn gold" data-action="close">OK</button></div>
+    </div>`,
+    {},
+  );
+  el.addEventListener('click', (ev) => {
+    if ((ev.target as HTMLElement).closest('[data-action="close"]')) ctx.closeModal();
+  });
+}
+
 export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number): void {
   const row = (f: { name: string; heroClass: HeroClass; hp: number; maxHp: number; isAi: boolean }) =>
     `<div class="pvp-f"><b>${f.heroClass}</b><span>${f.isAi ? '<span class="ai-pill">AI</span> ' : '<span class="ai-pill you">YOU</span> '}${escapeHtml(f.name)}</span><i>${f.hp}/${f.maxHp}</i></div>`;
   const ally = result.allyTeam.map(row).join('');
   const enemy = result.enemyTeam.map(row).join('');
+  const fight = ctx.game.lastFight?.kind === 'pvp' ? ctx.game.lastFight : null;
   const stripEvents = result.log.filter((e) => e.t === 'skill' || e.t === 'kill');
   const strip = stripEvents
     .map((e) => {
@@ -2176,7 +2278,6 @@ export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number)
     .map((e) => `<div class="row"><span>${escapeHtml(e.text)}</span></div>`)
     .join('');
   const tier = CLAN_BRACKET_LABEL[result.bracket] ?? result.bracket;
-  const maxDmg = Math.max(1, ...result.dpsBoard.map((e) => e.damage));
   const mvp = result.mvp;
   const mvpBlock = mvp
     ? `<div class="pvp-mvp" role="status">
@@ -2188,19 +2289,6 @@ export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number)
         <i>${fmt(mvp.damage)} dmg · ${mvp.dps}/s</i>
       </div>`
     : '';
-  const dpsRows = result.dpsBoard
-    .map((e) => {
-      const pct = Math.round((e.damage / maxDmg) * 100);
-      const side = e.team === 'ally' ? 'ally' : 'foe';
-      const tag = e.rank === 1 ? ' #1' : e.isPlayer ? ' you' : '';
-      return `<div class="pvp-dps-row ${side}${e.rank === 1 ? ' top' : ''}${e.isPlayer ? ' you' : ''}">
-        <span class="pvp-dps-rank">${e.rank}</span>
-        <span class="pvp-dps-name">${escapeHtml(e.name)}<small>${escapeHtml(e.heroClass)}${tag}</small></span>
-        <span class="pvp-dps-bar"><i style="width:${pct}%"></i></span>
-        <span class="pvp-dps-val">${fmt(e.damage)}</span>
-      </div>`;
-    })
-    .join('');
   const el = ctx.openModal(
     `<div class="sheet pvp-sheet">
       <h2>${result.won ? 'Clan Victory' : 'Clan Defeat'}</h2>
@@ -2212,8 +2300,8 @@ export function showPvpResult(ctx: UIContext, result: PvpResult, tokens: number)
         <div class="row"><span>Duration</span><b>${result.duration}s</b></div>
         <div class="row"><span>Clan Tokens</span><b>+${tokens}</b></div>
         ${mvpBlock}
-        <h3>Damage dealt</h3>
-        <div class="pvp-dps-board">${dpsRows}</div>
+        ${fight ? fightKoStripHtml(fight) : ''}
+        ${fightDpsBoardHtml(result.dpsBoard)}
         <div class="pvp-teams"><div><h3>Your clan</h3>${ally}</div><div><h3>Rivals</h3>${enemy}</div></div>
         <h3>Replay strip</h3>
         <div class="replay-strip">${strip || '<span class="tagline">No casts recorded.</span>'}</div>
@@ -2316,6 +2404,12 @@ export function showResult(ctx: UIContext, r: RunResult): void {
   const g = ctx.game;
   let body = '';
   let buttons = '';
+  const fightBlock = r.fight
+    ? fightSummaryBodyHtml(ctx, r.fight, {
+        // Dungeon already lists loot in the spoils section; avoid duplicating the row.
+        showLoot: r.kind !== 'dungeon',
+      })
+    : '';
   if (r.kind === 'clanRaid') {
     const seals = r.ascendedSeals ?? 0;
     const frags = r.ascendedSealFragments ?? 0;
@@ -2325,7 +2419,8 @@ export function showResult(ctx: UIContext, r: RunResult): void {
       ${frags ? `<div class="row"><span>Seal Fragments</span><b>+${frags}</b></div>` : ''}
       <div class="row"><span>Seals owned</span><b>${g.save.ascendedSeals}</b></div>
       ${r.success && r.note ? `<p>${escapeHtml(r.note)}</p>` : ''}
-      <p class="tagline">No gear, marks, or participation chests — seals feed Ascended Nightscar.</p>`;
+      <p class="tagline">No gear, marks, or participation chests — seals feed Ascended Nightscar.</p>
+      ${fightBlock}`;
     buttons = `<button class="btn gold" data-action="res-ok">OK</button>`;
   } else if (r.kind === 'dungeon') {
     const highlights = r.loot.map((it) =>
@@ -2340,7 +2435,8 @@ export function showResult(ctx: UIContext, r: RunResult): void {
       <div class="row"><span>Gear found</span><b>${r.loot.length}</b></div>
       ${upgrades ? `<div class="row"><span>BiS upgrades</span><b class="bis-count">${upgrades}</b></div>` : ''}
       ${r.loot.length ? `<div class="loot-row">${cells}</div>` : ''}
-      ${r.success && r.note ? `<p>${escapeHtml(r.note)}</p>` : ''}`;
+      ${r.success && r.note ? `<p>${escapeHtml(r.note)}</p>` : ''}
+      ${fightBlock}`;
     buttons = r.loot.length
       ? `<button class="btn stone" data-action="res-salvage">Salvage Non-Upgrades</button>
          <button class="btn gold" data-action="res-review">Review Gear</button>`
@@ -2355,15 +2451,20 @@ export function showResult(ctx: UIContext, r: RunResult): void {
         <div class="row"><span>Stage rec. CP</span><b>${fmt(rec)}</b></div>
         <div class="row"><span>Delta</span><b class="${low ? 'bad' : 'good'}">${low ? '' : '+'}${fmt(your - rec)}</b></div>
       </div>
-      <p class="farm-nudge">${escapeHtml(r.farmHint ?? 'Farm gear → retry.')}</p>`;
+      <p class="farm-nudge">${escapeHtml(r.farmHint ?? 'Farm gear → retry.')}</p>
+      ${fightBlock}`;
     buttons = `<button class="btn stone" data-action="res-farm">Farm Dungeon</button>
       <button class="btn gold" data-action="res-retry">Retry Stage</button>`;
+  } else if (r.kind === 'stageClear') {
+    body = `${fightBlock || '<p class="tagline">Stage cleared.</p>'}`;
+    buttons = `<button class="btn gold" data-action="res-ok">Continue</button>`;
   } else {
-    body = `<p>${escapeHtml(r.note ?? '')}</p>`;
+    body = `<p>${escapeHtml(r.note ?? '')}</p>${fightBlock}`;
     buttons = `<button class="btn gold" data-action="res-ok">${r.kind === 'actClear' ? 'Onward' : 'Back to Camp'}</button>`;
   }
+  const sheetClass = r.kind === 'stageClear' ? 'sheet fight-sheet' : 'sheet';
   const el = ctx.openModal(
-    `<div class="sheet"><h2>${escapeHtml(r.title)}</h2><div class="body">${body}</div><div class="btns">${buttons}</div></div>`,
+    `<div class="${sheetClass}"><h2>${escapeHtml(r.title)}</h2><div class="body">${body}</div><div class="btns">${buttons}</div></div>`,
     {},
   );
   el.addEventListener('click', (ev) => {
