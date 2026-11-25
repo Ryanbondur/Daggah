@@ -31,6 +31,7 @@ import {
   showClassPick,
   showCompare,
   showDungeonKeyBuy,
+  showGearLoadouts,
   showHero,
   showItemInfo,
   showLogin,
@@ -283,6 +284,7 @@ export function mountUI(
     showClanArmorer: () => showClanArmorer(ctx),
     showBlacksmith: () => showBlacksmith(ctx),
     showSetProgress: () => showSetProgress(ctx),
+    showGearLoadouts: () => showGearLoadouts(ctx),
     flashSlot(slot) {
       flash = slot;
     },
@@ -587,6 +589,9 @@ export function mountUI(
       case 'bag':
         showBag(ctx);
         break;
+      case 'gear-loadouts':
+        showGearLoadouts(ctx);
+        break;
       case 'hero':
         showHero(ctx);
         break;
@@ -835,6 +840,11 @@ export function mountUI(
       case 'set-progress':
         showSetProgress(ctx);
         break;
+      case 'loadout-apply': {
+        const i = Number(d.i);
+        if (Number.isFinite(i)) game.applyGearPreset(i);
+        break;
+      }
       default:
         break;
     }

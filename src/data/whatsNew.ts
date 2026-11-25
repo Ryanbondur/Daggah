@@ -3,7 +3,7 @@
  * Bump this string on meaningful publishes so returning players see the notes once.
  * Independent of SaveData.version (schema).
  */
-export const APP_CONTENT_VERSION = '2026.11.16-capes';
+export const APP_CONTENT_VERSION = '2026.11.24-loadouts';
 
 export interface WhatsNewEntry {
   version: string;
@@ -16,11 +16,10 @@ export const WHATS_NEW: WhatsNewEntry = {
   version: APP_CONTENT_VERSION,
   title: "What's new",
   bullets: [
-    'Cape slot — fill the pad beside Boots with class-locked capes (stats + unique effects).',
-    '12 capes (3 per class) drop from Acts 7–10 / Nightscar; not set pieces.',
-    'Adventure tabs — Normal acts + Ascended (Nightscar only).',
-    'Clan Raid — harder boss (~3 min clear); fight with 3 clan AI on a 4v4-style stage; rewards stay Seals / Fragments.',
-    'Ascended Nightscar — harder Apex (6 Keys + 1 Seal) with better BiS odds.',
+    'Gear Loadouts — save up to 3 kits (PvE / PvP / Farm) and one-tap swap before Acts or 4v4.',
+    'Loadouts live on Camp, Adventure, Clan Hall, and Town — Blacksmith-style sheet, no card clutter.',
+    'Cape slot — class-locked capes with unique effects (Acts 7–10 / Nightscar).',
+    'Clan Raid + Ascended Nightscar — seal-gated endgame with better BiS odds.',
   ],
 };
 

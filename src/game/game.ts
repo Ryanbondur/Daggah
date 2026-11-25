@@ -44,6 +44,7 @@ import {
   RARITIES,
   SETS,
   SET_SLOTS,
+  SLOTS,
   capeDropChance,
   cpDelta,
   computeHero,
@@ -202,6 +203,17 @@ import { exportSaveCode, importSaveCode } from './saveCode';
 import { applyOfflineProgress, type OfflineSummary } from './offline';
 import type { DailyShopOffer } from './shop';
 import { buildDailyOffers, hashDayKey } from './shop';
+import {
+  GEAR_PRESET_COUNT,
+  GEAR_PRESET_NAME_MAX,
+  applyGearPreset as resolveGearPresetSwap,
+  captureGearPreset,
+  defaultGearPresetName,
+  gearMatchesPreset,
+  summarizeGearPreset,
+  type GearPreset,
+} from './gearPresets';
+import { sanitizePlainText } from '../util/text';
 import type { SaveData, Storage } from './state';
 import {
   BAG_CAP,
@@ -1474,6 +1486,113 @@ export class Game {
       }
       this.changed();
     }
+  }
+
+  /** Fixed-length gear loadout presets (null = empty slot). */
+  get gearPresets(): (GearPreset | null)[] {
+    if (!Array.isArray(this.save.gearPresets) || this.save.gearPresets.length !== GEAR_PRESET_COUNT) {
+      this.save.gearPresets = Array.from({ length: GEAR_PRESET_COUNT }, (_, i) =>
+        this.save.gearPresets?.[i] ?? null,
+      );
+    }
+    return this.save.gearPresets;
+  }
+
+  /** Index of the preset that matches currently equipped gear, or -1. */
+  activeGearPresetIndex(): number {
+    const list = this.gearPresets;
+    for (let i = 0; i < list.length; i++) {
+      if (gearMatchesPreset(this.save.gear, list[i])) return i;
+    }
+    return -1;
+  }
+
+  gearPresetSummary(index: number): { pieces: number; ready: number; missing: number } | null {
+    const preset = this.gearPresets[index];
+    if (!preset) return null;
+    return summarizeGearPreset(preset, this.save.gear, this.save.bag);
+  }
+
+  /**
+   * Overwrite a preset slot with the currently equipped gear.
+   * @returns error string or null on success.
+   */
+  saveGearPreset(index: number, name?: string): string | null {
+    if (index < 0 || index >= GEAR_PRESET_COUNT) return 'Invalid loadout slot.';
+    const equipped = SLOTS.some((s) => !!this.save.gear[s]);
+    if (!equipped) return 'Equip something before saving a loadout.';
+    const list = [...this.gearPresets];
+    const label =
+      (name && name.trim()) ||
+      list[index]?.name ||
+      defaultGearPresetName(index);
+    list[index] = captureGearPreset(this.save.gear, index, label);
+    this.save.gearPresets = list;
+    this.toast(`Saved “${list[index]!.name}”`, 'good');
+    this.changed();
+    return null;
+  }
+
+  /** Rename a filled preset without changing its gear snapshot. */
+  renameGearPreset(index: number, name: string): string | null {
+    const list = [...this.gearPresets];
+    const preset = list[index];
+    if (!preset) return 'That loadout is empty.';
+    list[index] = {
+      ...preset,
+      name: sanitizePlainText(name, GEAR_PRESET_NAME_MAX) || defaultGearPresetName(index),
+    };
+    this.save.gearPresets = list;
+    this.changed();
+    return null;
+  }
+
+  /** Clear a preset slot. */
+  clearGearPreset(index: number): string | null {
+    if (index < 0 || index >= GEAR_PRESET_COUNT) return 'Invalid loadout slot.';
+    const list = [...this.gearPresets];
+    if (!list[index]) return 'That loadout is empty.';
+    list[index] = null;
+    this.save.gearPresets = list;
+    this.toast('Loadout cleared', 'info');
+    this.changed();
+    return null;
+  }
+
+  /**
+   * One-tap swap to a saved gear preset (bag ↔ equipped).
+   * Preserves class/level rules; never salvages. Refuses on bag overflow.
+   */
+  applyGearPreset(index: number): string | null {
+    const preset = this.gearPresets[index];
+    if (!preset) return 'That loadout is empty — save your gear first.';
+    const result = resolveGearPresetSwap(
+      this.save.gear,
+      this.save.bag,
+      preset,
+      this.save.heroClass,
+      this.save.level,
+    );
+    if (!result.ok) {
+      this.toast(result.error, 'bad');
+      return result.error;
+    }
+    if (!result.changed) {
+      this.toast(`Already wearing “${preset.name}”`, 'info');
+      return null;
+    }
+    this.save.gear = result.gear;
+    this.save.bag = result.bag;
+    this.refreshBattleHero(false);
+    const notes: string[] = [];
+    if (result.missing.length) notes.push(`${result.missing.length} missing`);
+    if (result.blocked.length) notes.push(`${result.blocked.length} blocked`);
+    this.toast(
+      notes.length ? `Equipped “${preset.name}” (${notes.join(', ')})` : `Equipped “${preset.name}”`,
+      result.missing.length || result.blocked.length ? 'info' : 'good',
+    );
+    this.changed();
+    return null;
   }
 
   setAutoSalvageReplaced(v: boolean): void {

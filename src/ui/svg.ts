@@ -20,4 +20,6 @@ export const ICON = {
   wings: `<svg viewBox="0 0 120 40"><path d="M60 22c-8-12-26-16-50-12 8 3 12 8 14 12-6 0-12 2-18 6 14-2 26 0 36 6 4-6 10-9 18-12z" fill="#7d7766" opacity=".55"/><path d="M60 22c8-12 26-16 50-12-8 3-12 8-14 12 6 0 12 2 18 6-14-2-26 0-36 6-4-6-10-9-18-12z" fill="#7d7766" opacity=".55"/></svg>`,
   /** Ascended Seal — wax/obsidian stamp for Nightscar premium entry. */
   seal: `<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#3a1a28" stroke="#14110f" stroke-width="2.2"/><circle cx="16" cy="16" r="8.5" fill="#8b1e3d" stroke="#f0c27a" stroke-width="1.6"/><path d="M16 9.5l1.6 4.2 4.4.2-3.4 2.9 1.1 4.3L16 18.8l-3.7 2.3 1.1-4.3-3.4-2.9 4.4-.2z" fill="#f0c27a"/></svg>`,
+  /** Gear loadout presets — three kit racks. */
+  loadouts: `<svg viewBox="0 0 32 32"><path d="M6 6h6v20H6zM13 10h6v16h-6zM20 7h6v19h-6z" fill="#c9c5b8" ${stroke}/><path d="M7 8h4M14 12h4M21 9h4" stroke="#8a6a3c" stroke-width="2" stroke-linecap="round"/></svg>`,
 };
