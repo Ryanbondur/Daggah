@@ -12,6 +12,11 @@ import {
 import type { Game, RunResult } from '../game/game';
 import { dpsBoardFromPlayback } from '../game/pvp';
 import { formatKeyRegenLabel } from '../game/state';
+import {
+  claimApiErrorAnnounce,
+  friendlyApiError,
+  shouldAnnounceApiFailure,
+} from '../util/apiErrors';
 import { asset, navIcon, skillIcon } from './assets';
 import type { AdventureDiff, CampPane, ClanPane, ModalOpts, Tab, UIContext } from './context';
 import { fmt } from './context';
@@ -123,6 +128,7 @@ export function mountUI(
   let clanBoardLive: ClanLeaderboardEntry[] | null = null;
   let clanBoardSource: ClanBoardSource = 'local';
   let clanBoardSeasonId: number | null = null;
+  let clanBoardError: string | null = null;
   let clanBoardLoading = false;
   let clanBoardFetchedAt = 0;
 
@@ -143,11 +149,15 @@ export function mountUI(
     get clanBoardSeasonId() {
       return clanBoardSeasonId;
     },
+    get clanBoardError() {
+      return clanBoardError;
+    },
     refreshClanBoard(force = false) {
       const seasonId = game.save.season.seasonId;
       if (clanBoardSeasonId !== null && clanBoardSeasonId !== seasonId) {
         clanBoardLive = null;
         clanBoardSource = 'local';
+        clanBoardError = null;
       }
       const stale =
         force ||
@@ -175,13 +185,32 @@ export function mountUI(
           clanBoardLive = mergePlayerOntoBoard(result.entries, player);
           clanBoardSeasonId = seasonId;
           clanBoardSource = 'live';
+          clanBoardError = null;
         } else if (clanBoardLive && clanBoardSeasonId === seasonId && clanBoardLive.length > 0) {
           // Keep last good live snapshot for this season.
           clanBoardSource = 'live';
+          if (!result.ok && shouldAnnounceApiFailure({ error: result.reason, status: result.status })) {
+            clanBoardError = friendlyApiError({
+              error: result.reason,
+              status: result.status,
+              surface: 'leaderboard',
+            });
+            if (claimApiErrorAnnounce('leaderboard')) game.toast(clanBoardError, 'bad');
+          }
         } else {
           clanBoardLive = null;
           clanBoardSeasonId = seasonId;
           clanBoardSource = 'local';
+          if (!result.ok && shouldAnnounceApiFailure({ error: result.reason, status: result.status })) {
+            clanBoardError = friendlyApiError({
+              error: result.reason,
+              status: result.status,
+              surface: 'leaderboard',
+            });
+            if (claimApiErrorAnnounce('leaderboard')) game.toast(clanBoardError, 'bad');
+          } else {
+            clanBoardError = null;
+          }
         }
         if (ctx.tab === 'clan' && ctx.clanPane === 'board') ctx.render();
       });
@@ -690,7 +719,7 @@ export function mountUI(
       case 'clan-create': {
         const name = (pane.querySelector('#clan-name') as HTMLInputElement | null)?.value ?? '';
         void game.createClan(name).then((err) => {
-          if (err) game.toast(err, 'bad');
+          if (err) game.toast(friendlyApiError({ error: err, surface: 'clan' }), 'bad');
           else {
             ctx.clanPane = 'hall';
             ctx.render();
@@ -701,7 +730,7 @@ export function mountUI(
       case 'clan-join': {
         const code = (pane.querySelector('#clan-code') as HTMLInputElement | null)?.value ?? '';
         void game.joinClan(code).then((err) => {
-          if (err) game.toast(err, 'bad');
+          if (err) game.toast(friendlyApiError({ error: err, surface: 'clan' }), 'bad');
           else {
             ctx.clanPane = 'hall';
             ctx.render();

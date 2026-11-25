@@ -14,7 +14,7 @@ export type ClanBoardSource = 'live' | 'local' | 'loading';
 
 export type ClanBoardFetchResult =
   | { ok: true; source: 'live'; seasonId: number; entries: ClanLeaderboardEntry[] }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; status: number };
 
 type LiveEntry = {
   rank?: number;
@@ -120,13 +120,22 @@ export async function fetchLiveClanBoard(
       credentials: 'same-origin',
       headers: { accept: 'application/json' },
     });
-    if (!res.ok) return { ok: false, reason: `http ${res.status}` };
+    if (!res.ok) {
+      let error = `http_${res.status}`;
+      try {
+        const body = (await res.json()) as { error?: string };
+        if (typeof body.error === 'string' && body.error.trim()) error = body.error.trim();
+      } catch {
+        /* keep http_N */
+      }
+      return { ok: false, reason: error, status: res.status };
+    }
     const body = (await res.json()) as {
       seasonId?: number;
       source?: string;
       entries?: LiveEntry[];
     };
-    if (!Array.isArray(body.entries)) return { ok: false, reason: 'bad payload' };
+    if (!Array.isArray(body.entries)) return { ok: false, reason: 'bad payload', status: res.status };
     const entries = body.entries
       .map((e) => asEntry(e, playerCode))
       .filter((e): e is ClanLeaderboardEntry => e !== null);
@@ -137,6 +146,6 @@ export async function fetchLiveClanBoard(
       entries,
     };
   } catch {
-    return { ok: false, reason: 'unreachable' };
+    return { ok: false, reason: 'unreachable', status: 0 };
   }
 }

@@ -618,6 +618,10 @@ function renderClanBoardPane(ctx: UIContext): string {
         ? 'live season standings'
         : 'local stub rivals';
 
+  const boardErr = ctx.clanBoardError
+    ? `<p class="tagline clan-board-error" role="status">${escapeHtml(ctx.clanBoardError)}</p>`
+    : '';
+
   const you = board.find((e) => e.isPlayer);
   const rows = board
     .slice(0, 10)
@@ -643,6 +647,7 @@ function renderClanBoardPane(ctx: UIContext): string {
         <span>Season ${seasonId} · ${escapeHtml(sourceLabel)}</span>
       </div>
     </div>
+    ${boardErr}
     ${standings}
     <div class="lb-list">
       <div class="lb-head"><span>#</span><span>Clan</span><span>Record</span><span>Score</span></div>
