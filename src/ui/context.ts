@@ -20,6 +20,11 @@ export interface UIContext {
   campPane: CampPane;
   /** Adventure difficulty (Normal / Ascended). */
   adventureDiff: AdventureDiff;
+  /**
+   * Simplified Adventure: which act card is expanded (1–10).
+   * Null = auto (act of current stage).
+   */
+  adventureFocusAct: number | null;
   skillStyle: PlaystyleId;
   /** Skill bar slot index selected for swap (Skill tab). */
   skillBarFocus: number | null;
@@ -54,6 +59,8 @@ export interface UIContext {
   showBlacksmith(): void;
   showSetProgress(): void;
   showGearLoadouts(): void;
+  /** Condensed Arsenal hub (Loadouts / Craft / Sets). No-op when simplified menus are off. */
+  showGearHub(tab?: 'loadouts' | 'craft' | 'sets'): void;
   flashSlot(slot: string): void;
 }
 

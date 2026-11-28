@@ -185,6 +185,7 @@ describe('class-locked drops + equip', () => {
           autoSalvageRarityMax: 'common',
           muted: false,
           speed: 1,
+          simplifiedMenus: true,
         },
         createdAt: Date.now(),
       }),

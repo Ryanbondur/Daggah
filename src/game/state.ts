@@ -95,6 +95,11 @@ export interface Settings {
   /** Persist mute for combat SFX. */
   muted: boolean;
   speed: number;
+  /**
+   * Condensed Camp / Adventure / Clan menus (Arsenal hub, act accordion, Hall|Services).
+   * Default ON — turn off in Settings to restore the legacy menu layout without a code revert.
+   */
+  simplifiedMenus: boolean;
 }
 
 export interface SaveData {
@@ -230,6 +235,7 @@ export function defaultSave(now = Date.now()): SaveData {
       autoSalvageRarityMax: 'common',
       muted: false,
       speed: 1,
+      simplifiedMenus: true,
     },
     createdAt: now,
     clanTokens: 0,
@@ -447,6 +453,9 @@ function normalizeSettings(
   merged.autoSalvageReplaced = !!merged.autoSalvageReplaced;
   merged.autoSalvageWorse = !!merged.autoSalvageWorse;
   merged.speed = typeof merged.speed === 'number' ? merged.speed : fresh.speed;
+  // Missing key → ON so existing saves pick up the condensed shell until opted out.
+  merged.simplifiedMenus =
+    parsed && 'simplifiedMenus' in parsed ? !!parsed.simplifiedMenus : fresh.simplifiedMenus;
   return merged;
 }
 

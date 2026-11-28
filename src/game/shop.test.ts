@@ -187,7 +187,7 @@ describe('daily shop refresh', () => {
         seenSkills: [],
         questIndex: 0,
         salvageCount: 0,
-        settings: { autoSalvageReplaced: true, autoSalvageWorse: false, autoSalvageRarityMax: 'common', muted: false, speed: 1 },
+        settings: { autoSalvageReplaced: true, autoSalvageWorse: false, autoSalvageRarityMax: 'common', muted: false, speed: 1, simplifiedMenus: true },
         createdAt: Date.now(),
       }),
     });
