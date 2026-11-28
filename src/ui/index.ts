@@ -31,6 +31,7 @@ import {
   showClassPick,
   showCompare,
   showDungeonKeyBuy,
+  showGearHub,
   showGearLoadouts,
   showHero,
   showItemInfo,
@@ -142,6 +143,7 @@ export function mountUI(
     clanPane: 'hall',
     campPane: 'gear',
     adventureDiff: 'normal',
+    adventureFocusAct: null,
     skillStyle: CLASS_PLAYSTYLES[game.save.heroClass][0],
     skillBarFocus: null,
     get clanBoardLive() {
@@ -216,7 +218,12 @@ export function mountUI(
             clanBoardError = null;
           }
         }
-        if (ctx.tab === 'clan' && ctx.clanPane === 'board') ctx.render();
+        if (
+          ctx.tab === 'clan' &&
+          (ctx.clanPane === 'board' || (game.simplifiedMenus && ctx.clanPane === 'town'))
+        ) {
+          ctx.render();
+        }
       });
     },
     get modalOpen() {
@@ -230,7 +237,12 @@ export function mountUI(
       if (tab === 'adventure') void opts.ensureStage();
       // Battle / Adventure loop lands on gear; Shop stays sticky until left intentionally.
       if (tab !== 'camp') ctx.campPane = 'gear';
-      if (tab === 'clan' && ctx.clanPane === 'board') ctx.refreshClanBoard();
+      if (
+        tab === 'clan' &&
+        (ctx.clanPane === 'board' || (game.simplifiedMenus && ctx.clanPane === 'town'))
+      ) {
+        ctx.refreshClanBoard();
+      }
       ctx.render();
     },
     ensureStage: () => opts.ensureStage(),
@@ -286,6 +298,7 @@ export function mountUI(
     showBlacksmith: () => showBlacksmith(ctx),
     showSetProgress: () => showSetProgress(ctx),
     showGearLoadouts: () => showGearLoadouts(ctx),
+    showGearHub: (tab) => showGearHub(ctx, tab),
     flashSlot(slot) {
       flash = slot;
     },
@@ -591,7 +604,11 @@ export function mountUI(
         showBag(ctx);
         break;
       case 'gear-loadouts':
-        showGearLoadouts(ctx);
+        if (game.simplifiedMenus) showGearHub(ctx, 'loadouts');
+        else showGearLoadouts(ctx);
+        break;
+      case 'gear-hub':
+        showGearHub(ctx);
         break;
       case 'hero':
         showHero(ctx);
@@ -702,6 +719,14 @@ export function mountUI(
         }
         break;
       }
+      case 'act-expand': {
+        const act = Number(d.act);
+        if (Number.isFinite(act) && act >= 1 && act <= 10) {
+          ctx.adventureFocusAct = act;
+          ctx.render();
+        }
+        break;
+      }
       case 'camp-pane': {
         const paneId = d.pane as CampPane;
         if (paneId === 'gear' || paneId === 'shop') {
@@ -723,7 +748,9 @@ export function mountUI(
         const paneId = d.pane as ClanPane;
         if (paneId === 'hall' || paneId === 'board' || paneId === 'town') {
           ctx.clanPane = paneId;
-          if (paneId === 'board') ctx.refreshClanBoard();
+          if (paneId === 'board' || (game.simplifiedMenus && paneId === 'town')) {
+            ctx.refreshClanBoard();
+          }
           ctx.render();
         }
         break;
@@ -839,10 +866,12 @@ export function mountUI(
         showClanArmorer(ctx);
         break;
       case 'blacksmith':
-        showBlacksmith(ctx);
+        if (game.simplifiedMenus) showGearHub(ctx, 'craft');
+        else showBlacksmith(ctx);
         break;
       case 'set-progress':
-        showSetProgress(ctx);
+        if (game.simplifiedMenus) showGearHub(ctx, 'sets');
+        else showSetProgress(ctx);
         break;
       case 'loadout-apply': {
         const i = Number(d.i);

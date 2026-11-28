@@ -130,6 +130,9 @@ function renderCampGear(ctx: UIContext): string {
   const lastFight = g.lastFight
     ? `<button class="chip last-fight-chip" data-action="last-fight" title="${escapeHtml(g.lastFight.title)}">Last fight</button>`
     : '';
+  const arsenal = g.simplifiedMenus
+    ? `<button class="round-btn" data-action="gear-hub" aria-label="Arsenal — loadouts, craft, sets">${ICON.loadouts}</button>`
+    : `<button class="round-btn" data-action="gear-loadouts" aria-label="Gear loadouts">${ICON.loadouts}</button>`;
   /* Direct pane-inner children (no .camp-gear wrapper / shop CTA) so .gear-grid
      flex:1 fills the parchment like the pre-Daily-Shop layout. */
   return `<div class="gear-grid">${slots}</div>
@@ -137,7 +140,7 @@ function renderCampGear(ctx: UIContext): string {
       ${quest}
       <div class="round-btns">
         ${tut}
-        <button class="round-btn" data-action="gear-loadouts" aria-label="Gear loadouts">${ICON.loadouts}</button>
+        ${arsenal}
         ${lastFight}
         <button class="round-btn bag" data-action="bag" aria-label="Bag">${ICON.bag}${bagBadge}</button>
         <button class="round-btn" data-action="hero" aria-label="Hero">${ICON.crown}</button>
@@ -338,63 +341,97 @@ function renderSealCraftPanel(ctx: UIContext): string {
   </div>`;
 }
 
+function actDungeonBlock(ctx: UIContext, actId: number): string {
+  const g = ctx.game;
+  const s = g.save;
+  const act = ACTS.find((a) => a.id === actId);
+  if (!act?.dungeon) return '';
+  const d = act.dungeon;
+  const open = g.dungeonUnlocked(d);
+  const clears = s.dungeons[d.id]?.clears ?? 0;
+  const sweepReady = g.dungeonSweepUnlocked(d);
+  const keysOk = open && g.canAffordDungeonKeys(act.id);
+  const keyCost = dungeonKeyCost(act.id);
+  const keyCostLabel = formatDungeonKeyCost(keyCost);
+  const fortune =
+    d.endgame
+      ? pityAdventureHint(s.nightscarPity ?? 0, {
+          unlocked: open,
+          inBattle: g.inBattle,
+        })
+      : '';
+  const pityHint = fortune ? ` <small class="fortune-hint">${fortune}</small>` : '';
+  const sweepHint = open
+    ? sweepReady
+      ? ''
+      : `  -  Sweep at ${SWEEP_UNLOCK_CLEARS} clears (${clears}/${SWEEP_UNLOCK_CLEARS})`
+    : '';
+  const enterTitle = keysOk
+    ? `Enter for ${keyCostLabel}`
+    : `Out of Keys — buy with Crystals (${keyCostLabel}; you have ${s.keys})`;
+  const sweepTitle = !sweepReady
+    ? `Clear ${SWEEP_UNLOCK_CLEARS} times to unlock Sweep (${clears}/${SWEEP_UNLOCK_CLEARS})`
+    : keysOk
+      ? `Sweep for ${keyCostLabel}`
+      : `Out of Keys — buy with Crystals (${keyCostLabel}; you have ${s.keys})`;
+  // Enter stays clickable when short on keys (opens crystal buy confirm). Sweep stays locked until unlock.
+  const buttons = open
+    ? `<button class="btn red" data-action="dungeon-enter" data-id="${d.id}" title="${escapeHtml(enterTitle)}">Enter<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>
+       <button class="btn gold ${sweepReady ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}" title="${escapeHtml(sweepTitle)}" ${sweepReady ? '' : 'aria-disabled="true"'}>Sweep<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>`
+    : `<div style="width:9cqw;height:9cqw">${ICON.lock}</div>`;
+  return `<div class="dg ${open ? '' : 'locked'}">
+    <div class="dn"><b>${d.name}${d.endgame ? ' · Endgame' : ''}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${sweepHint}${d.endgame ? '  -  stingy drops' : ''}${pityHint}` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
+    ${buttons}
+  </div>`;
+}
+
+function actStageChips(ctx: UIContext, actId: number): string {
+  const s = ctx.game.save;
+  const base = (actId - 1) * STAGES_PER_ACT;
+  return Array.from({ length: STAGES_PER_ACT }, (_, i) => {
+    const idx = base + i;
+    const cleared = idx < s.stagesCleared;
+    const unlocked = idx <= s.stagesCleared;
+    const cur = idx === s.currentStage;
+    const frontier = idx === s.stagesCleared && idx < ACTS.length * STAGES_PER_ACT;
+    return `<button class="stg ${cleared ? 'cleared' : ''} ${cur ? 'cur' : ''} ${unlocked ? '' : 'lock'}" data-action="stage" data-i="${idx}">
+      ${frontier ? '<span class="frontier">PUSH</span>' : ''}${actId}-${i + 1}${cleared ? `<span class="tick">${ICON.check}</span>` : ''}
+    </button>`;
+  }).join('');
+}
+
 function renderNormalAdventureActs(ctx: UIContext): string {
   const g = ctx.game;
   const s = g.save;
+  const simplified = g.simplifiedMenus;
+  const autoAct = Math.min(ACTS.length, Math.floor(s.currentStage / STAGES_PER_ACT) + 1);
+  const focusAct = ctx.adventureFocusAct ?? autoAct;
+
   return ACTS.map((act) => {
-    const base = (act.id - 1) * STAGES_PER_ACT;
-    const chips = Array.from({ length: STAGES_PER_ACT }, (_, i) => {
-      const idx = base + i;
-      const cleared = idx < s.stagesCleared;
-      const unlocked = idx <= s.stagesCleared;
-      const cur = idx === s.currentStage;
-      const frontier = idx === s.stagesCleared && idx < ACTS.length * STAGES_PER_ACT;
-      return `<button class="stg ${cleared ? 'cleared' : ''} ${cur ? 'cur' : ''} ${unlocked ? '' : 'lock'}" data-action="stage" data-i="${idx}">
-        ${frontier ? '<span class="frontier">PUSH</span>' : ''}${act.id}-${i + 1}${cleared ? `<span class="tick">${ICON.check}</span>` : ''}
-      </button>`;
-    }).join('');
-    const d = act.dungeon!;
-    const open = g.dungeonUnlocked(d);
-    const clears = s.dungeons[d.id]?.clears ?? 0;
-    const sweepReady = g.dungeonSweepUnlocked(d);
-    const keysOk = open && g.canAffordDungeonKeys(act.id);
-    const keyCost = dungeonKeyCost(act.id);
-    const keyCostLabel = formatDungeonKeyCost(keyCost);
     const lo = stageRecLevel(act.id, 1);
     const hi = stageRecLevel(act.id, 5);
-    const fortune =
-      d.endgame
-        ? pityAdventureHint(s.nightscarPity ?? 0, {
-            unlocked: open,
-            inBattle: g.inBattle,
-          })
-        : '';
-    const pityHint = fortune ? ` <small class="fortune-hint">${fortune}</small>` : '';
-    const sweepHint = open
-      ? sweepReady
-        ? ''
-        : `  -  Sweep at ${SWEEP_UNLOCK_CLEARS} clears (${clears}/${SWEEP_UNLOCK_CLEARS})`
-      : '';
-    const enterTitle = keysOk
-      ? `Enter for ${keyCostLabel}`
-      : `Out of Keys — buy with Crystals (${keyCostLabel}; you have ${s.keys})`;
-    const sweepTitle = !sweepReady
-      ? `Clear ${SWEEP_UNLOCK_CLEARS} times to unlock Sweep (${clears}/${SWEEP_UNLOCK_CLEARS})`
-      : keysOk
-        ? `Sweep for ${keyCostLabel}`
-        : `Out of Keys — buy with Crystals (${keyCostLabel}; you have ${s.keys})`;
-    // Enter stays clickable when short on keys (opens crystal buy confirm). Sweep stays locked until unlock.
-    const buttons = open
-      ? `<button class="btn red" data-action="dungeon-enter" data-id="${d.id}" title="${escapeHtml(enterTitle)}">Enter<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>
-         <button class="btn gold ${sweepReady ? '' : 'disabled'}" data-action="dungeon-sweep" data-id="${d.id}" title="${escapeHtml(sweepTitle)}" ${sweepReady ? '' : 'aria-disabled="true"'}>Sweep<br /><small style="font-size:2.2cqw">${keyCostLabel}</small></button>`
-      : `<div style="width:9cqw;height:9cqw">${ICON.lock}</div>`;
-    return `<div class="act-card">
-      <div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></div>
+    const base = (act.id - 1) * STAGES_PER_ACT;
+    const actCleared = s.stagesCleared >= base + STAGES_PER_ACT;
+    const actReached = s.stagesCleared >= base;
+    const expanded = !simplified || act.id === focusAct;
+    const chips = actStageChips(ctx, act.id);
+    const dungeon = actDungeonBlock(ctx, act.id);
+
+    if (simplified && !expanded) {
+      const status = !actReached ? 'Locked' : actCleared ? 'Cleared' : 'In progress';
+      return `<button type="button" class="act-card act-collapsed ${actReached ? '' : 'locked'}" data-action="act-expand" data-act="${act.id}" aria-expanded="false">
+        <div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi} · ${status}</small></div>
+      </button>`;
+    }
+
+    return `<div class="act-card${simplified ? ' act-expanded' : ''}" ${simplified ? `data-act="${act.id}"` : ''}>
+      ${
+        simplified
+          ? `<button type="button" class="act-head act-head-btn" data-action="act-expand" data-act="${act.id}" aria-expanded="true"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></button>`
+          : `<div class="act-head"><span>Act ${act.id}: ${act.name}</span><small>Rec. Lv.${lo}-${hi}</small></div>`
+      }
       <div class="stage-row">${chips}</div>
-      <div class="dg ${open ? '' : 'locked'}">
-        <div class="dn"><b>${d.name}${d.endgame ? ' · Endgame' : ''}</b><span>${open ? `${d.floors} floors  -  Gear Lv.${d.glBand[0]}-${d.glBand[1]}  -  ${clears} clears${sweepHint}${d.endgame ? '  -  stingy drops' : ''}${pityHint}` : `Clear Act ${act.id} to unlock`}</span><br /><span>Sets: ${d.sets.map((x) => x.replace(/-/g, ' ')).join(', ')}</span></div>
-        ${buttons}
-      </div>
+      ${dungeon}
     </div>`;
   }).join('');
 }
@@ -411,8 +448,11 @@ function gearLoadoutQuickBar(ctx: UIContext): string {
     })
     .filter(Boolean)
     .join('');
+  const manage = g.simplifiedMenus
+    ? `<button type="button" class="chip" data-action="gear-hub">${ICON.loadouts} Arsenal</button>`
+    : `<button type="button" class="chip" data-action="gear-loadouts">${ICON.loadouts} Loadouts</button>`;
   return `<div class="loadout-bar" role="group" aria-label="Gear loadouts">
-    <button type="button" class="chip" data-action="gear-loadouts">${ICON.loadouts} Loadouts</button>
+    ${manage}
     ${chips}
   </div>`;
 }
@@ -424,6 +464,7 @@ export function renderAdventure(ctx: UIContext): string {
   const res = currencyStrip(ctx, { dust: true, keyTimer: true, seals: true });
   const power = g.stagePowerReadout(s.currentStage);
   const powerCls = power.underpowered ? 'low' : 'ok';
+  const simplified = g.simplifiedMenus;
   const body =
     diff === 'ascended'
       ? `<div class="act-card ascended-only">
@@ -432,11 +473,14 @@ export function renderAdventure(ctx: UIContext): string {
         </div>`
       : renderNormalAdventureActs(ctx);
   const titleLabel = diff === 'ascended' ? 'Ascended' : 'Normal';
+  // Seal craft is Ascended-facing — keep it on Ascended (or always when legacy).
+  const seals =
+    !simplified || diff === 'ascended' ? renderSealCraftPanel(ctx) : '';
   return `<div class="pane-inner scroll">
     <div class="tab-title">Adventure <small>[${titleLabel}]</small></div>
     ${res}
     ${gearLoadoutQuickBar(ctx)}
-    ${renderSealCraftPanel(ctx)}
+    ${seals}
     <div class="cp-vs-stage ${powerCls}">
       <span>Your CP <b>${fmt(power.yourCp)}</b></span>
       <span>Stage rec <b>${fmt(power.recCp)}</b></span>
@@ -447,18 +491,67 @@ export function renderAdventure(ctx: UIContext): string {
   </div>`;
 }
 
-function clanSubTabs(active: ClanPane): string {
-  const tabs: { id: ClanPane; label: string }[] = [
-    { id: 'hall', label: 'Hall' },
-    { id: 'board', label: 'Leaderboard' },
-    { id: 'town', label: 'Town' },
-  ];
-  return `<div class="clan-subs" role="tablist">${tabs
+function clanSubTabs(active: ClanPane, simplified: boolean): string {
+  const tabs: { id: ClanPane; label: string }[] = simplified
+    ? [
+        { id: 'hall', label: 'Hall' },
+        { id: 'town', label: 'Services' },
+      ]
+    : [
+        { id: 'hall', label: 'Hall' },
+        { id: 'board', label: 'Leaderboard' },
+        { id: 'town', label: 'Town' },
+      ];
+  const cols = simplified ? 'clan-subs cols-2' : 'clan-subs';
+  return `<div class="${cols}" role="tablist">${tabs
     .map(
       (t) =>
         `<button type="button" class="clan-sub ${t.id === active ? 'on' : ''}" data-action="clan-pane" data-pane="${t.id}" role="tab" aria-selected="${t.id === active}">${t.label}</button>`,
     )
     .join('')}</div>`;
+}
+
+/** Compact season board peek for simplified Hall (full board still on Services). */
+function clanBoardPeek(ctx: UIContext): string {
+  const g = ctx.game;
+  const clan = g.clan;
+  const seasonId = g.save.season.seasonId;
+  const player = clan
+    ? {
+        name: clan.name,
+        code: clan.code,
+        wins: g.save.clanWins,
+        losses: g.save.clanLosses,
+        tokens: g.save.clanTokens,
+        members: clan.members.length,
+      }
+    : null;
+  const liveReady =
+    ctx.clanBoardSource === 'live' &&
+    ctx.clanBoardLive &&
+    ctx.clanBoardSeasonId === seasonId &&
+    ctx.clanBoardLive.length > 0;
+  const board = liveReady
+    ? mergePlayerOntoBoard(ctx.clanBoardLive!, player)
+    : localClanBoard(seasonId, player);
+  const you = board.find((e) => e.isPlayer);
+  const top = board.slice(0, 3)
+    .map(
+      (e) =>
+        `<span class="lb-peek-row${e.isPlayer ? ' mine' : ''}">#${e.rank} ${escapeHtml(e.name)} · ${fmt(e.score)}</span>`,
+    )
+    .join('');
+  const rankLine = you
+    ? `Your clan <b>#${you.rank}</b> · ${fmt(you.score)} score`
+    : 'Join a clan to appear on the board';
+  return `<div class="clan-board-peek">
+    <div class="clan-board-peek-head">
+      <b>Season board</b>
+      <button type="button" class="chip" data-action="clan-pane" data-pane="town">Full standings</button>
+    </div>
+    <p class="lb-you">${rankLine}</p>
+    <div class="lb-peek-list">${top}</div>
+  </div>`;
 }
 
 function clanMemberBadge(m: ClanMember): string {
@@ -604,13 +697,15 @@ function renderClanHallPane(ctx: UIContext): string {
       <button type="button" class="btn tan" data-action="clan-leave">Leave clan</button>
     </div>
     <p class="tagline">${escapeHtml(bracket.label)} payout Win +${win} / Loss +${loss} (cap ${TOKEN_DAY_CAP}/day). Live queue needs sign-in; AI practice if no peers. Scout ${BRACKET_TOKEN_WIN.scout}/${BRACKET_TOKEN_LOSS.scout} · Veteran ${BRACKET_TOKEN_WIN.veteran}/${BRACKET_TOKEN_LOSS.veteran} · Nightscar ${BRACKET_TOKEN_WIN.nightscar}/${BRACKET_TOKEN_LOSS.nightscar}.</p>
+    ${g.simplifiedMenus ? clanBoardPeek(ctx) : ''}
   </div>`;
 }
 
-function renderClanBoardPane(ctx: UIContext): string {
+function renderClanBoardPane(ctx: UIContext, opts: { embed?: boolean } = {}): string {
   const g = ctx.game;
   const clan = g.clan;
   const seasonId = g.save.season.seasonId;
+  const embed = !!opts.embed;
   const player = clan
     ? {
         name: clan.name,
@@ -660,7 +755,8 @@ function renderClanBoardPane(ctx: UIContext): string {
     ? `<p class="lb-you">Your clan ranks <b>#${you.rank}</b> with <b>${fmt(you.score)}</b> season score.</p>`
     : `<p class="lb-you">Create or join a clan to appear on the board.</p>`;
 
-  return `<div class="clan-panel">
+  const wrapClass = embed ? 'clan-board-embed' : 'clan-panel';
+  return `<div class="${wrapClass}">
     <div class="lb-hero">
       <img src="${asset('ui/season-board.webp')}" alt="" />
       <div>
@@ -696,6 +792,7 @@ function renderClanTownPane(ctx: UIContext): string {
   const day = g.seasonDay;
   const remain = fmtSeasonRemain(g.seasonRemainingMs);
   const tokens = g.save.clanTokens;
+  const simplified = g.simplifiedMenus;
   const quests = QUESTS.map((q, i) => {
     const state = i < g.save.questIndex ? 'on' : i === g.save.questIndex ? '' : 'off';
     return `<div class="row ${state}"><span>${i < g.save.questIndex ? '[x] ' : '[ ] '}${escapeHtml(q.text)}</span></div>`;
@@ -705,16 +802,14 @@ function renderClanTownPane(ctx: UIContext): string {
   const dailyRow = `<div class="row ${g.save.daily.claimed ? 'on' : g.dailyReady() ? '' : 'off'}"><span>${g.save.daily.claimed ? '[x] ' : '[ ] '}${escapeHtml(dq.text)} (${dprog}/${dq.goal})</span></div>`;
 
   const shopLeft = DAILY_SHOP_SIZE - g.save.shop.purchased.length;
-  return `<div class="clan-panel">
-    ${currencyStrip(ctx, { dust: false, keyTimer: false })}
-    <div class="town-grid">
-      <button type="button" class="town-card clickable shop-featured" data-action="open-daily-shop">
-        <img src="${navIcon('gold')}" alt="" />
-        <b>Daily Shop</b>
-        <span>Rotating gear &amp; set pieces for Gold. Fresh each day.</span>
-        <span class="live">${shopLeft} left · ${fmt(g.save.gold)} gold</span>
-      </button>
-      <button type="button" class="town-card clickable" data-action="blacksmith">
+  const gearCards = simplified
+    ? `<button type="button" class="town-card clickable arsenal-featured" data-action="gear-hub">
+        <img src="${asset('icons/gear-a/chest.webp')}" alt="" />
+        <b>Arsenal</b>
+        <span>Loadouts, Blacksmith craft, and Set Tracker in one place.</span>
+        <span class="live">${g.gearPresets.filter(Boolean).length}/3 kits · ${nightscarTrackerLive(g)} · <i class="dust"></i>${fmt(g.save.dust)}</span>
+      </button>`
+    : `<button type="button" class="town-card clickable" data-action="blacksmith">
         <img src="${asset('icons/gear-a/weapon.webp')}" alt="" />
         <b>Blacksmith</b>
         <span>Spend dust to craft missing or chosen class set pieces.</span>
@@ -731,7 +826,23 @@ function renderClanTownPane(ctx: UIContext): string {
         <b>Set Tracker</b>
         <span>Owned pieces toward set bonuses &amp; soft Fortune (out of combat).</span>
         <span class="live">${nightscarTrackerLive(g)}</span>
+      </button>`;
+
+  const boardBlock = simplified
+    ? `<h3 class="pane-h">Leaderboard</h3>${renderClanBoardPane(ctx, { embed: true })}`
+    : '';
+
+  return `<div class="clan-panel">
+    ${currencyStrip(ctx, { dust: false, keyTimer: false })}
+    ${boardBlock}
+    <div class="town-grid">
+      <button type="button" class="town-card clickable shop-featured" data-action="open-daily-shop">
+        <img src="${navIcon('gold')}" alt="" />
+        <b>Daily Shop</b>
+        <span>Rotating gear &amp; set pieces for Gold. Fresh each day.</span>
+        <span class="live">${shopLeft} left · ${fmt(g.save.gold)} gold</span>
       </button>
+      ${gearCards}
       <button type="button" class="town-card clickable" data-action="season-board">
         <img src="${asset('ui/season-board.webp')}" alt="" />
         <b>Season Board</b>
@@ -754,7 +865,7 @@ function renderClanTownPane(ctx: UIContext): string {
   </div>`;
 }
 
-/** Clan tab — Hall / Leaderboard / Town services. */
+/** Clan tab — Hall / Leaderboard / Town services (or Hall | Services when simplified). */
 export function renderClan(ctx: UIContext): string {
   const g = ctx.game;
   g.refreshClanTokenDay();
@@ -762,10 +873,15 @@ export function renderClan(ctx: UIContext): string {
   const remain = fmtSeasonRemain(g.seasonRemainingMs);
   const tokens = g.save.clanTokens;
   const earned = g.save.clanTokensEarnedToday;
+  const simplified = g.simplifiedMenus;
+  // Condensed shell folds Leaderboard into Services — don't leave a stranded board pane.
+  const paneId = simplified && ctx.clanPane === 'board' ? 'town' : ctx.clanPane;
+  if (paneId === 'board') ctx.refreshClanBoard();
+  if (simplified && paneId === 'town') ctx.refreshClanBoard();
   const pane =
-    ctx.clanPane === 'board'
+    paneId === 'board'
       ? renderClanBoardPane(ctx)
-      : ctx.clanPane === 'town'
+      : paneId === 'town'
         ? renderClanTownPane(ctx)
         : renderClanHallPane(ctx);
 
@@ -776,7 +892,7 @@ export function renderClan(ctx: UIContext): string {
       <span class="res"><img src="${navIcon('crystal')}" alt="" />${fmt(g.save.crystals)}</span>
       <span class="res">${g.save.clanWins}W / ${g.save.clanLosses}L</span>
     </div>
-    ${clanSubTabs(ctx.clanPane)}
+    ${clanSubTabs(paneId === 'board' ? 'board' : paneId, simplified)}
     ${pane}
   </div>`;
 }

@@ -3368,6 +3368,17 @@ export class Game {
     return !!this.save.settings.muted;
   }
 
+  /** Condensed menus shell (Settings → Simplified menus). */
+  setSimplifiedMenus(v: boolean): void {
+    this.save.settings.simplifiedMenus = !!v;
+    this.persist();
+    this.emit({ t: 'change' });
+  }
+
+  get simplifiedMenus(): boolean {
+    return this.save.settings.simplifiedMenus !== false;
+  }
+
   /** CP vs recommended for the currently selected stage (adventure / push tension). */
   stagePowerReadout(stageIndex = this.save.currentStage): { yourCp: number; recCp: number; underpowered: boolean } {
     const { act, stage } = stageToActStage(stageIndex);

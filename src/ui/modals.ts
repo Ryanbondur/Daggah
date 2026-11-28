@@ -89,6 +89,7 @@ import {
   type SetPieceProgress,
 } from '../game/setProgress';
 import { friendlyApiError, isRateLimitFailure } from '../util/apiErrors';
+import { gearHubTabRow, isGearHubTab, type GearHubTab } from './gearHub';
 
 const STAT_ORDER: StatKey[] = [
   'atk',
@@ -618,7 +619,9 @@ export function showHero(ctx: UIContext): void {
         <div class="row"><span>Combat Power</span><b>${fmt(t.cp)}</b></div>
         ${rows}
         ${sets || '<p style="margin-top:2cqw">Equip 2, 4 or 6 pieces of one set for bonuses.</p>'}
-        <button type="button" class="chip" data-action="set-tracker" style="margin-top:2cqw">Set progress &amp; fortune</button>
+        <button type="button" class="chip" data-action="set-tracker" style="margin-top:2cqw">${
+          g.simplifiedMenus ? 'Arsenal · sets &amp; fortune' : 'Set progress &amp; fortune'
+        }</button>
         <h3>Resources</h3>
         <div class="row"><span>Crystals</span><b>${fmt(g.save.crystals)}</b></div>
         <div class="row"><span>Dust</span><b>${fmt(g.save.dust)}</b></div>
@@ -635,7 +638,8 @@ export function showHero(ctx: UIContext): void {
     if (t.dataset.action === 'close') ctx.closeModal();
     else if (t.dataset.action === 'set-tracker') {
       ctx.closeModal();
-      showSetProgress(ctx);
+      if (g.simplifiedMenus) showGearHub(ctx, 'sets');
+      else showSetProgress(ctx);
     }
   });
 }
@@ -680,8 +684,9 @@ function setProgressRowHtml(p: SetPieceProgress): string {
 }
 
 /** Set ownership + soft Fortune tracker (hidden mid-fight). Out of combat only. */
-export function showSetProgress(ctx: UIContext): void {
+export function showSetProgress(ctx: UIContext, opts: { hub?: boolean } = {}): void {
   const g = ctx.game;
+  const hub = !!opts.hub && g.simplifiedMenus;
   const apex = getDungeon('nightscar-apex');
   const snap = buildSetProgressSnapshot({
     heroClass: g.save.heroClass,
@@ -729,8 +734,10 @@ export function showSetProgress(ctx: UIContext): void {
 
   const el = ctx.openModal(
     `<div class="sheet set-progress-sheet">
-      <h2>Set Progress</h2>
+      <h2>${hub ? 'Arsenal' : 'Set Progress'}</h2>
+      ${hub ? gearHubTabRow('sets') : ''}
       <div class="body">
+        ${hub ? '<p class="hub-pane-label">Set progress &amp; fortune</p>' : ''}
         <h3>Nightscar Regalia</h3>
         ${nightscarHtml}
         <h3>Fortune</h3>
@@ -739,7 +746,11 @@ export function showSetProgress(ctx: UIContext): void {
         ${others || '<p class="tagline">No other class sets unlocked yet. Clear early acts or craft at the Blacksmith.</p>'}
       </div>
       <div class="btns">
-        <button class="btn stone" data-action="blacksmith">Blacksmith</button>
+        ${
+          hub
+            ? ''
+            : '<button class="btn stone" data-action="blacksmith">Blacksmith</button>'
+        }
         <button class="btn gold" data-action="close">Close</button>
       </div>
     </div>`,
@@ -749,9 +760,12 @@ export function showSetProgress(ctx: UIContext): void {
     const t = (ev.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
     if (!t) return;
     if (t.dataset.action === 'close') ctx.closeModal();
-    else if (t.dataset.action === 'blacksmith') {
+    else if (t.dataset.action === 'gear-hub-tab' && isGearHubTab(t.dataset.tab)) {
+      showGearHub(ctx, t.dataset.tab);
+    } else if (t.dataset.action === 'blacksmith') {
       ctx.closeModal();
-      showBlacksmith(ctx);
+      if (g.simplifiedMenus) showGearHub(ctx, 'craft');
+      else showBlacksmith(ctx);
     }
   });
 }
@@ -780,6 +794,7 @@ export function showSettings(ctx: UIContext): void {
       <h2>Settings</h2>
       <div class="body">
         <button class="toggle" data-action="set-mute"><span>Mute combat SFX<small>Hit and skill sounds (persists)</small></span><i class="sw ${s.muted ? 'on' : ''}"></i></button>
+        <button class="toggle" data-action="set-simplified-menus"><span>Simplified menus<small>Arsenal hub, act accordion, Clan Hall|Services — off restores the previous layout</small></span><i class="sw ${s.simplifiedMenus !== false ? 'on' : ''}"></i></button>
         <button class="toggle" data-action="set-auto-replaced"><span>Auto-salvage replaced gear<small>Default for the Replace dialog</small></span><i class="sw ${s.autoSalvageReplaced ? 'on' : ''}"></i></button>
         <button class="toggle" data-action="set-auto-worse"><span>Auto-salvage non-upgrades<small>Skip the compare dialog for drops that would lower your CP</small></span><i class="sw ${s.autoSalvageWorse ? 'on' : ''}"></i></button>
         <h3>Auto-salvage rarity</h3>
@@ -1070,6 +1085,14 @@ export function showSettings(ctx: UIContext): void {
       case 'set-mute':
         g.setMuted(!g.save.settings.muted);
         ctx.closeModal();
+        showSettings(ctx);
+        break;
+      case 'set-simplified-menus':
+        g.setSimplifiedMenus(!g.simplifiedMenus);
+        // Drop board-only pane when switching to condensed Clan tabs.
+        if (g.simplifiedMenus && ctx.clanPane === 'board') ctx.clanPane = 'hall';
+        ctx.closeModal();
+        ctx.render();
         showSettings(ctx);
         break;
       case 'set-auto-replaced':
@@ -2120,9 +2143,11 @@ export function showBlacksmith(
     missingOnly?: boolean;
     legendary?: boolean;
     category?: CraftCategory;
+    hub?: boolean;
   } = {},
 ): void {
   const g = ctx.game;
+  const hub = !!opts.hub && g.simplifiedMenus;
   const category: CraftCategory = opts.category ?? 'sets';
   const sets = g.craftableSets();
   const missingOnly = opts.missingOnly ?? false;
@@ -2269,13 +2294,16 @@ export function showBlacksmith(
       missingOnly: next.missingOnly ?? missingOnly,
       legendary: next.legendary ?? legendary,
       category: next.category ?? category,
+      hub,
     });
   };
 
   const el = ctx.openModal(
     `<div class="sheet craft-sheet">
-      <h2>Blacksmith</h2>
+      <h2>${hub ? 'Arsenal' : 'Blacksmith'}</h2>
+      ${hub ? gearHubTabRow('craft') : ''}
       <div class="body">
+        ${hub ? '<p class="hub-pane-label">Blacksmith</p>' : ''}
         <div class="row"><span>Your dust</span><b><i class="dust" aria-hidden="true"></i> ${fmt(g.save.dust)}</b></div>
         ${catRow}
         ${bodyInner}
@@ -2300,6 +2328,10 @@ export function showBlacksmith(
     const action = t.dataset.action;
     if (action === 'close') {
       ctx.closeModal();
+      return;
+    }
+    if (action === 'gear-hub-tab' && isGearHubTab(t.dataset.tab)) {
+      showGearHub(ctx, t.dataset.tab);
       return;
     }
     if (action === 'craft-cat') {
@@ -2698,11 +2730,29 @@ export function showResult(ctx: UIContext, r: RunResult): void {
 }
 
 /**
+ * Condensed Arsenal hub — Loadouts / Craft / Sets in one sheet (simplified menus).
+ * When simplified menus are off, opens the legacy Loadouts sheet.
+ */
+export function showGearHub(ctx: UIContext, tab: GearHubTab = 'loadouts'): void {
+  if (ctx.modalOpen) ctx.closeModal();
+  if (!ctx.game.simplifiedMenus) {
+    if (tab === 'craft') showBlacksmith(ctx);
+    else if (tab === 'sets') showSetProgress(ctx);
+    else showGearLoadouts(ctx);
+    return;
+  }
+  if (tab === 'craft') showBlacksmith(ctx, { hub: true });
+  else if (tab === 'sets') showSetProgress(ctx, { hub: true });
+  else showGearLoadouts(ctx, { hub: true });
+}
+
+/**
  * Gear loadout presets — save 3 named kits, one-tap swap before Act / PvP.
  * Sheet matches Blacksmith (vendor rows, no card wall).
  */
-export function showGearLoadouts(ctx: UIContext): void {
+export function showGearLoadouts(ctx: UIContext, opts: { hub?: boolean } = {}): void {
   const g = ctx.game;
+  const hub = !!opts.hub && g.simplifiedMenus;
   const active = g.activeGearPresetIndex();
   const presets = g.gearPresets;
 
@@ -2752,8 +2802,10 @@ export function showGearLoadouts(ctx: UIContext): void {
 
   const el = ctx.openModal(
     `<div class="sheet craft-sheet loadout-sheet">
-      <h2>Gear Loadouts</h2>
+      <h2>${hub ? 'Arsenal' : 'Gear Loadouts'}</h2>
+      ${hub ? gearHubTabRow('loadouts') : ''}
       <div class="body">
+        ${hub ? '<p class="hub-pane-label">Gear loadouts</p>' : ''}
         <p>Save up to <b>3</b> kits and one-tap swap before Acts or 4v4. Class and level rules still apply — missing pieces stay as-is.</p>
         ${quick ? `<div class="craft-modes loadout-quick" role="group" aria-label="Quick equip">${quick}</div>` : ''}
         <div class="vendor-list craft-slots">${rows}</div>
@@ -2765,7 +2817,7 @@ export function showGearLoadouts(ctx: UIContext): void {
 
   const reopen = () => {
     ctx.closeModal();
-    showGearLoadouts(ctx);
+    showGearLoadouts(ctx, { hub });
   };
 
   el.addEventListener('click', (ev) => {
@@ -2775,6 +2827,10 @@ export function showGearLoadouts(ctx: UIContext): void {
     const i = Number(t.dataset.i);
     if (action === 'close') {
       ctx.closeModal();
+      return;
+    }
+    if (action === 'gear-hub-tab' && isGearHubTab(t.dataset.tab)) {
+      showGearHub(ctx, t.dataset.tab);
       return;
     }
     if (action === 'loadout-save' && Number.isFinite(i)) {
